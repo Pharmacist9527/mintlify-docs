@@ -1,0 +1,335 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GroAPI 图像生成接口",
+    "description": "使用AI模型生成高质量图像，支持多种主流图像生成模型",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://your-domain.com/v1",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/images/generations": {
+      "post": {
+        "summary": "图像生成接口",
+        "description": "使用AI模型生成高质量图像，支持多种主流图像生成模型",
+        "operationId": "createImageGeneration",
+        "tags": ["图像生成"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "图像生成响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerationResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "异步任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率过高",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ImageGenerationRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "图像生成模型",
+            "enum": ["dall-e-3", "dall-e-2", "midjourney-v6", "stable-diffusion-xl", "flux-pro"]
+          },
+          "prompt": {
+            "type": "string",
+            "description": "图像描述提示词",
+            "example": "A beautiful sunset over the mountains"
+          },
+          "n": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 1,
+            "description": "生成图像数量"
+          },
+          "size": {
+            "type": "string",
+            "enum": ["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"],
+            "default": "1024x1024",
+            "description": "图像尺寸"
+          },
+          "quality": {
+            "type": "string",
+            "enum": ["standard", "hd"],
+            "default": "standard",
+            "description": "图像质量"
+          },
+          "style": {
+            "type": "string",
+            "enum": ["vivid", "natural"],
+            "default": "vivid",
+            "description": "图像风格"
+          },
+          "response_format": {
+            "type": "string",
+            "enum": ["url", "b64_json"],
+            "default": "url",
+            "description": "响应格式"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "模型特定参数",
+            "properties": {
+              "guidance_scale": {
+                "type": "number",
+                "description": "引导强度 (Stable Diffusion)",
+                "minimum": 1,
+                "maximum": 30
+              },
+              "num_inference_steps": {
+                "type": "integer",
+                "description": "推理步数 (Flux)",
+                "minimum": 1,
+                "maximum": 100
+              }
+            }
+          },
+          "callback_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "异步任务回调地址"
+          }
+        }
+      },
+      "ImageGenerationResponse": {
+        "type": "object",
+        "required": ["id", "object", "created", "model", "data"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "生成任务ID",
+            "example": "img-unified-123"
+          },
+          "object": {
+            "type": "string",
+            "enum": ["image.generation"],
+            "description": "对象类型"
+          },
+          "created": {
+            "type": "integer",
+            "description": "创建时间戳",
+            "example": 1699000000
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型",
+            "example": "midjourney-v6"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeneratedImage"
+            },
+            "description": "生成的图像列表"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ImageUsage",
+            "description": "使用统计"
+          }
+        }
+      },
+      "GeneratedImage": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "图像URL",
+            "example": "https://example.com/image.png"
+          },
+          "b64_json": {
+            "type": "string",
+            "description": "Base64编码的图像数据"
+          },
+          "revised_prompt": {
+            "type": "string",
+            "description": "修订后的提示词"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "mime_type": {
+                "type": "string"
+              },
+              "file_size": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ImageUsage": {
+        "type": "object",
+        "properties": {
+          "images_generated": {
+            "type": "integer",
+            "description": "生成的图像数量"
+          },
+          "credits_used": {
+            "type": "number",
+            "description": "消耗的积分数"
+          },
+          "compute_time_ms": {
+            "type": "integer",
+            "description": "计算耗时（毫秒）"
+          }
+        }
+      },
+      "AsyncTaskResponse": {
+        "type": "object",
+        "required": ["id", "object", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-123"
+          },
+          "object": {
+            "type": "string",
+            "enum": ["async.task"],
+            "description": "对象类型"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending"],
+            "description": "任务状态"
+          },
+          "task_info": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["generation"]
+              },
+              "estimated_time": {
+                "type": "integer",
+                "description": "预计耗时（秒）"
+              },
+              "queue_position": {
+                "type": "integer",
+                "nullable": true,
+                "description": "队列位置"
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["message", "type"],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "错误消息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "相关参数"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "使用Bearer Token进行认证，格式：Authorization: Bearer YOUR_API_KEY"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "图像生成",
+      "description": "AI图像生成相关接口"
+    }
+  ]
+}

@@ -1,0 +1,332 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GroAPI 视频生成接口",
+    "description": "使用AI模型生成高质量视频，支持文本到视频和图片到视频生成",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://your-domain.com/v1",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "视频生成接口",
+        "description": "使用AI模型生成高质量视频，支持文本到视频和图片到视频生成",
+        "operationId": "createVideoGeneration",
+        "tags": ["视频生成"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "异步任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率过高",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "视频生成模型",
+            "enum": ["sora", "runway-gen3", "luma-dream", "kling-v1", "pika-1.0"]
+          },
+          "prompt": {
+            "type": "string",
+            "description": "视频描述提示词",
+            "example": "A serene lake with mountains in the background, gentle waves"
+          },
+          "duration": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 60,
+            "default": 5,
+            "description": "视频时长（秒）"
+          },
+          "size": {
+            "type": "string",
+            "enum": ["1024x576", "576x1024", "768x768", "1280x720", "1920x1080"],
+            "default": "1024x576",
+            "description": "视频尺寸"
+          },
+          "fps": {
+            "type": "integer",
+            "enum": [24, 25, 30],
+            "default": 24,
+            "description": "帧率"
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "description": "参考图像URL（图片到视频）"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "模型特定参数",
+            "properties": {
+              "guidance_scale": {
+                "type": "number",
+                "description": "引导强度 (RunwayML)",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "motion_strength": {
+                "type": "number",
+                "description": "运动强度 (Luma)",
+                "minimum": 0.1,
+                "maximum": 1.0
+              },
+              "mode": {
+                "type": "string",
+                "description": "生成模式 (可灵Kling)",
+                "enum": ["std", "pro"]
+              }
+            }
+          },
+          "callback_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "异步回调地址"
+          }
+        }
+      },
+      "VideoTaskResponse": {
+        "type": "object",
+        "required": ["id", "object", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "video-task-123"
+          },
+          "object": {
+            "type": "string",
+            "enum": ["video.generation.task"],
+            "description": "对象类型"
+          },
+          "created": {
+            "type": "integer",
+            "description": "创建时间戳",
+            "example": 1699000000
+          },
+          "model": {
+            "type": "string",
+            "description": "使用的模型",
+            "example": "sora"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "completed", "failed"],
+            "description": "任务状态"
+          },
+          "progress": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "任务进度百分比"
+          },
+          "data": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "$ref": "#/components/schemas/GeneratedVideo"
+            },
+            "description": "生成的视频列表（完成后）"
+          },
+          "task_info": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["generation"],
+                "description": "任务类型"
+              },
+              "estimated_time": {
+                "type": "integer",
+                "description": "预计耗时（秒）"
+              },
+              "queue_position": {
+                "type": "integer",
+                "nullable": true,
+                "description": "队列位置"
+              },
+              "can_cancel": {
+                "type": "boolean",
+                "description": "是否可以取消"
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用统计"
+          }
+        }
+      },
+      "GeneratedVideo": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "视频URL",
+            "example": "https://example.com/video.mp4"
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "缩略图URL"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "type": "number",
+                "description": "实际时长（秒）"
+              },
+              "width": {
+                "type": "integer",
+                "description": "宽度"
+              },
+              "height": {
+                "type": "integer",
+                "description": "高度"
+              },
+              "fps": {
+                "type": "integer",
+                "description": "帧率"
+              },
+              "bitrate": {
+                "type": "integer",
+                "description": "码率"
+              },
+              "file_size": {
+                "type": "integer",
+                "description": "文件大小（字节）"
+              }
+            }
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "properties": {
+          "duration_generated": {
+            "type": "number",
+            "description": "生成的视频时长（秒）"
+          },
+          "credits_used": {
+            "type": "number",
+            "description": "消耗的积分数"
+          },
+          "credits_reserved": {
+            "type": "integer",
+            "description": "预留的积分数"
+          },
+          "compute_time_ms": {
+            "type": "integer",
+            "description": "计算耗时（毫秒）"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["message", "type"],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "错误消息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "相关参数"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "使用Bearer Token进行认证，格式：Authorization: Bearer YOUR_API_KEY"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "视频生成",
+      "description": "AI视频生成相关接口"
+    }
+  ]
+}
