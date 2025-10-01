@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Get Task Details API",
-    "description": "Query the status, progress, and result information of asynchronous tasks by task ID",
+    "title": "wan2.5-image-to-image Interface",
+    "description": "Use WAN2.5 model for image-to-image generation with simplified model parameter configuration",
     "license": {
       "name": "MIT"
     },
@@ -11,7 +11,7 @@
   "servers": [
     {
       "url": "https://api.evolink.ai",
-      "description": "Production Environment"
+      "description": "Production environment"
     }
   ],
   "security": [
@@ -20,39 +20,37 @@
     }
   ],
   "paths": {
-    "/v1/tasks/{task_id}": {
-      "get": {
-        "summary": "Query Task Status",
-        "description": "Query the status, progress, and result information of asynchronous tasks by task ID",
-        "operationId": "getTaskDetail",
+    "/v1/images/generations": {
+      "post": {
+        "summary": "wan2.5-image-to-image Interface",
+        "description": "- Asynchronous processing mode, returns task ID for subsequent queries\n- Supports image-to-image, image editing and other generation modes\n- Generated image links are valid for 24 hours, please save them promptly",
+        "operationId": "createWan25ImageToImageGeneration",
         "tags": [
-          "Task Management"
+          "Image Generation"
         ],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Task ID, ignore {} when querying, append the id from the async task response body at the end of the path",
-            "example": "task-unified-1756817821-4x3rx6ny"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Wan25ImageToImageRequest"
+              }
+            }
           }
-        ],
+        },
         "responses": {
           "200": {
-            "description": "Task status details",
+            "description": "Image task created successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskDetailResponse"
+                  "$ref": "#/components/schemas/ImageGenerationResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Request parameter error, format error",
+            "description": "Invalid request parameters",
             "content": {
               "application/json": {
                 "schema": {
@@ -61,16 +59,16 @@
                 "example": {
                   "error": {
                     "code": 400,
-                    "message": "Invalid task ID format",
+                    "message": "Invalid request format",
                     "type": "invalid_request_error",
-                    "param": "task_id"
+                    "param": "model"
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "Unauthenticated, token invalid or expired",
+            "description": "Authentication failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -79,33 +77,15 @@
                 "example": {
                   "error": {
                     "code": 401,
-                    "message": "Invalid or expired token",
+                    "message": "Invalid authentication credentials",
                     "type": "authentication_error"
                   }
                 }
               }
             }
           },
-          "402": {
-            "description": "Insufficient quota, recharge required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": 402,
-                    "message": "Insufficient quota",
-                    "type": "insufficient_quota_error",
-                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
-                  }
-                }
-              }
-            }
-          },
           "403": {
-            "description": "No permission to access",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -114,15 +94,16 @@
                 "example": {
                   "error": {
                     "code": 403,
-                    "message": "Access denied",
-                    "type": "permission_error"
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
                   }
                 }
               }
             }
           },
           "404": {
-            "description": "Resource does not exist",
+            "description": "Resource not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -131,16 +112,17 @@
                 "example": {
                   "error": {
                     "code": 404,
-                    "message": "Task not found or expired",
+                    "message": "Specified model not found",
                     "type": "not_found_error",
-                    "param": "task_id"
+                    "param": "model",
+                    "fallback_suggestion": "wan2.5-image-to-image"
                   }
                 }
               }
             }
           },
           "429": {
-            "description": "Request rate limit exceeded",
+            "description": "Rate limit exceeded",
             "content": {
               "application/json": {
                 "schema": {
@@ -185,7 +167,7 @@
                 "example": {
                   "error": {
                     "code": 502,
-                    "message": "Upstream service error",
+                    "message": "Bad gateway",
                     "type": "upstream_error",
                     "fallback_suggestion": "try again later"
                   }
@@ -217,51 +199,80 @@
   },
   "components": {
     "schemas": {
-      "TaskDetailResponse": {
+      "Wan25ImageToImageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt",
+          "image_urls"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model name",
+            "enum": [
+              "wan2.5-image-to-image"
+            ],
+            "default": "wan2.5-image-to-image",
+            "example": "wan2.5-image-to-image"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt describing the image to generate or how to edit the input image",
+            "example": "Replace the background with a starry sky",
+            "maxLength": 1000
+          },
+          "n": {
+            "type": "integer",
+            "description": "Number of images to generate, supports any integer value between `[1,4]`\n\n**Note:**\n- A single request will be pre-charged based on the value of `n`, and the actual charge will be based on the number of generated images",
+            "example": 1
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "Reference image URL list for image-to-image and image editing functions\n\n**Note:**\n- Maximum number of input images per request: `2` images\n- Image size: no more than `10MB`\n- Supported image formats: `.jpeg`, `.jpg`, `.png` (transparent channels not supported), `.bmp`, `.webp`\n- Image resolution: image width and height range is `[384, 5000]` pixels\n- Image URLs must be directly accessible by the server, or the image URL should directly download when accessed (typically these URLs end with image file extensions, such as `.png`, `.jpg`)",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": [
+              "https://example.com/image1.png",
+              "https://example.com/image2.png"
+            ]
+          }
+        }
+      },
+      "ImageGenerationResponse": {
         "type": "object",
         "properties": {
           "created": {
             "type": "integer",
             "description": "Task creation timestamp",
-            "example": 1756817821
+            "example": 1757156493
           },
           "id": {
             "type": "string",
             "description": "Task ID",
-            "example": "task-unified-1756817821-4x3rx6ny"
+            "example": "task-unified-1757156493-imcg5zqt"
           },
           "model": {
             "type": "string",
-            "description": "Model used",
-            "example": "gpt-4o-image"
+            "description": "Actual model name used",
+            "example": "wan2.5-image-to-image"
           },
           "object": {
             "type": "string",
-            "description": "Task type",
             "enum": [
-              "image.generation.task",
-              "video.generation.task",
-              "audio.generation.task"
+              "image.generation.task"
             ],
-            "example": "image.generation.task"
+            "description": "Specific task type"
           },
           "progress": {
             "type": "integer",
+            "description": "Task progress percentage (0-100)",
             "minimum": 0,
             "maximum": 100,
-            "description": "Task progress percentage",
-            "example": 100
-          },
-          "results": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "Task result list (provided when completed)",
-            "example": [
-              "http://example.com/image.jpg"
-            ]
+            "example": 0
           },
           "status": {
             "type": "string",
@@ -272,29 +283,73 @@
               "completed",
               "failed"
             ],
-            "example": "completed"
+            "example": "pending"
           },
           "task_info": {
-            "type": "object",
-            "description": "Task detailed information",
-            "properties": {
-              "can_cancel": {
-                "type": "boolean",
-                "description": "Whether the task can be cancelled",
-                "example": false
-              }
-            }
+            "$ref": "#/components/schemas/TaskInfo",
+            "description": "Asynchronous task information"
           },
           "type": {
             "type": "string",
-            "description": "Task type",
             "enum": [
+              "text",
               "image",
-              "video",
               "audio",
-              "text"
+              "video"
             ],
+            "description": "Task output type",
             "example": "image"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "Usage and billing information"
+          }
+        }
+      },
+      "TaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Whether the task can be cancelled",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Estimated completion time (seconds)",
+            "minimum": 0,
+            "example": 30
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Usage and billing information",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Billing rule",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Estimated credits consumed",
+            "minimum": 0,
+            "example": 1.2
+          },
+          "user_group": {
+            "type": "string",
+            "description": "User group category",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
           }
         }
       },
@@ -306,23 +361,23 @@
             "properties": {
               "code": {
                 "type": "integer",
-                "description": "HTTP status error code",
-                "example": 404
+                "description": "Error code"
               },
               "message": {
                 "type": "string",
-                "description": "Error description message",
-                "example": "Task does not exist"
+                "description": "Error message"
               },
               "type": {
                 "type": "string",
-                "description": "Error type",
-                "example": "not_found_error"
+                "description": "Error type"
               },
               "param": {
                 "type": "string",
-                "description": "Related parameter name",
-                "example": "task_id"
+                "description": "Parameter name that caused the error"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Suggested solution"
               }
             }
           }
@@ -336,11 +391,5 @@
         "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header when using:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
-  },
-  "tags": [
-    {
-      "name": "Task Management",
-      "description": "Asynchronous task management related APIs"
-    }
-  ]
+  }
 }

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Veo3-Fast API",
-    "description": "Create video generation tasks using AI models, supporting text-to-video, image-to-video and other generation modes",
+    "title": "gpt-4o-image Interface",
+    "description": "Use AI models to create image tasks, supporting multiple models and parameter configurations",
     "license": {
       "name": "MIT"
     },
@@ -20,29 +20,31 @@
     }
   ],
   "paths": {
-    "/v1/videos/generations": {
+    "/v1/images/generations": {
       "post": {
-        "summary": "Veo3-Fast API",
-        "description": "Submit video generation tasks using Veo3-Fast\n\nAsynchronous processing mode, returns task ID for subsequent queries\n\nSupports text-to-video, video frame insertion and other generation modes.",
-        "operationId": "createVideoGeneration",
-        "tags": ["Video Generation"],
+        "summary": "gpt-4o-image Interface",
+        "description": "- Asynchronous processing mode, returns task ID for subsequent queries\n- Supports text-to-image, image-to-image, image editing and other generation modes\n- Generated image links are valid for 24 hours, please save them promptly",
+        "operationId": "createImageGeneration",
+        "tags": [
+          "Image Generation"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VideoGenerationRequest"
+                "$ref": "#/components/schemas/ImageGenerationRequest"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Video generation task created successfully",
+            "description": "Image task created successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                  "$ref": "#/components/schemas/ImageGenerationResponse"
                 }
               }
             }
@@ -57,17 +59,15 @@
                 "example": {
                   "error": {
                     "code": 400,
-                    "message": "Invalid duration parameter",
-                    "type": "invalid_request_error",
-                    "param": "duration",
-                    "fallback_suggestion": "use duration between 1-12 seconds"
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "Unauthorized, invalid or expired token",
+            "description": "Unauthenticated, invalid or expired token",
             "content": {
               "application/json": {
                 "schema": {
@@ -132,7 +132,7 @@
                     "message": "Specified model not found",
                     "type": "not_found_error",
                     "param": "model",
-                    "fallback_suggestion": "veo3-fast"
+                    "fallback_suggestion": "gpt-4o-image"
                   }
                 }
               }
@@ -235,61 +235,89 @@
   },
   "components": {
     "schemas": {
-      "VideoGenerationRequest": {
+      "ImageGenerationRequest": {
         "type": "object",
-        "required": ["model", "prompt"],
+        "required": [
+          "model",
+          "prompt"
+        ],
         "properties": {
           "model": {
             "type": "string",
-            "description": "Video generation model name",
-            "default": "veo3-fast",
-            "example": "veo3-fast"
+            "description": "Image generation model name",
+            "enum": [
+              "gpt-4o-image"
+            ],
+            "default": "gpt-4o-image",
+            "example": "gpt-4o-image"
           },
           "prompt": {
             "type": "string",
-            "description": "Prompt describing the video to generate",
-            "example": "A cat playing piano",
+            "description": "Prompt describing the desired image to generate, or describing how to edit the input image",
+            "example": "A beautiful sunset over the ocean with vibrant colors",
             "maxLength": 1000
           },
-          "aspect_ratio": {
+          "size": {
             "type": "string",
-            "description": "Video aspect ratio",
-            "enum": ["16:9"],
-            "example": "16:9"
+            "description": "Size of the generated image, supports two formats:\n\n**Simplified ratio format:**\n- Supports `1:1`, `2:3`, `3:2` values\n\n**Pixel format:**\n- Supports `1024x1024`, `1024x1536`, `1536x1024` values",
+            "enum": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "1024x1024",
+              "1024x1536",
+              "1536x1024"
+            ],
+            "example": "1024x1024"
+          },
+          "n": {
+            "type": "integer",
+            "description": "Number of images to generate, currently only supports `1`, `2`, `4` values.\n\n**Note:**\n- A single request will be pre-charged based on the value of `n`, and the actual charge will be based on the number of generated images",
+            "example": 1
           },
           "image_urls": {
             "type": "array",
-            "description": "List of reference image URLs for image-to-video feature\n\n**Restrictions:**\n\n- Currently supports only 1 image\n- Supported formats: `.jpg`, `.jpeg`, `.png`, `.webp`\n- Image size cannot exceed 10MB\n- Image URLs must be directly accessible by the server, or the image URL should directly download when accessed (typically these URLs end with image file extensions, such as `.png`, `.jpg`)",
+            "description": "Reference image URL list for image-to-image and image editing features\n\n**Note:**\n- Maximum number of input images per request: `5` images\n- Single image size: no more than `10MB`\n- Supported file formats: `.jpeg`, `.jpg`, `.png`, `.webp`\n- Image URLs must be directly accessible by the server, or the image URL should directly download when accessed (typically these URLs end with image file extensions, such as `.png`, `.jpg`)",
             "items": {
               "type": "string",
               "format": "uri"
             },
-            "maxItems": 1,
-            "example": ["http://example.com/image1.jpg"]
+            "example": [
+              "https://example.com/image1.png",
+              "https://example.com/image2.png"
+            ]
+          },
+          "mask_url": {
+            "type": "string",
+            "description": "Mask image URL\n\n**Note:**\n- When using this parameter, the mask image and reference image must be in PNG format with the same dimensions\n- Mask image size cannot exceed 4MB\n- This parameter cannot be used when the `image_urls` parameter contains more than 1 image",
+            "format": "uri",
+            "example": "https://example.com/mask.png"
           }
         }
       },
-      "VideoGenerationResponse": {
+      "ImageGenerationResponse": {
         "type": "object",
         "properties": {
           "created": {
             "type": "integer",
             "description": "Task creation timestamp",
-            "example": 1757169743
+            "example": 1757156493
           },
           "id": {
             "type": "string",
             "description": "Task ID",
-            "example": "task-unified-1757169743-7cvnl5zw"
+            "example": "task-unified-1757156493-imcg5zqt"
           },
           "model": {
             "type": "string",
             "description": "Actual model name used",
-            "example": "veo3-fast"
+            "example": "gpt-4o-image"
           },
           "object": {
             "type": "string",
-            "enum": ["video.generation.task"],
+            "enum": [
+              "image.generation.task"
+            ],
             "description": "Specific task type"
           },
           "progress": {
@@ -302,12 +330,17 @@
           "status": {
             "type": "string",
             "description": "Task status",
-            "enum": ["pending", "processing", "completed", "failed"],
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
             "example": "pending"
-          },          
+          },
           "task_info": {
-            "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Video task detailed information"
+            "$ref": "#/components/schemas/TaskInfo",
+            "description": "Asynchronous task information"
           },
           "type": {
             "type": "string",
@@ -318,15 +351,15 @@
               "video"
             ],
             "description": "Task output type",
-            "example": "video"
+            "example": "image"
           },
           "usage": {
-            "$ref": "#/components/schemas/VideoUsage",
+            "$ref": "#/components/schemas/Usage",
             "description": "Usage and billing information"
           }
         }
       },
-      "VideoTaskInfo": {
+      "TaskInfo": {
         "type": "object",
         "properties": {
           "can_cancel": {
@@ -338,16 +371,11 @@
             "type": "integer",
             "description": "Estimated completion time (seconds)",
             "minimum": 0,
-            "example": 180
-          },
-          "video_duration": {
-            "type": "integer",
-            "description": "Video duration (seconds)",
-            "example": 8
+            "example": 100
           }
         }
       },
-      "VideoUsage": {
+      "Usage": {
         "type": "object",
         "description": "Usage and billing information",
         "properties": {
@@ -361,7 +389,7 @@
             "type": "number",
             "description": "Estimated credits consumed",
             "minimum": 0,
-            "example": 25.7
+            "example": 2.5
           },
           "user_group": {
             "type": "string",
@@ -382,23 +410,19 @@
               },
               "message": {
                 "type": "string",
-                "description": "Error description",
-                "example": "Invalid request parameters"
+                "description": "Error description"
               },
               "type": {
                 "type": "string",
-                "description": "Error type",
-                "example": "invalid_request_error"
+                "description": "Error type"
               },
               "param": {
                 "type": "string",
-                "description": "Related parameter name",
-                "example": "model"
+                "description": "Related parameter name"
               },
               "fallback_suggestion": {
                 "type": "string",
-                "description": "Suggestion for error resolution",
-                "example": "runway-gen3"
+                "description": "Suggestion when error occurs"
               }
             }
           }
@@ -415,8 +439,8 @@
   },
   "tags": [
     {
-      "name": "Video Generation",
-      "description": "AI video generation related APIs"
+      "name": "Image Generation",
+      "description": "AI image generation related APIs"
     }
   ]
 }

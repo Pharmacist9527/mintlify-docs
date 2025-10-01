@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Get Task Details API",
-    "description": "Query the status, progress, and result information of asynchronous tasks by task ID",
+    "title": "veo3-fast Interface",
+    "description": "Use AI models to create video generation tasks, supporting text-to-video, image-to-video and other generation modes",
     "license": {
       "name": "MIT"
     },
@@ -11,7 +11,7 @@
   "servers": [
     {
       "url": "https://api.evolink.ai",
-      "description": "Production Environment"
+      "description": "Production environment"
     }
   ],
   "security": [
@@ -20,39 +20,35 @@
     }
   ],
   "paths": {
-    "/v1/tasks/{task_id}": {
-      "get": {
-        "summary": "Query Task Status",
-        "description": "Query the status, progress, and result information of asynchronous tasks by task ID",
-        "operationId": "getTaskDetail",
-        "tags": [
-          "Task Management"
-        ],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Task ID, ignore {} when querying, append the id from the async task response body at the end of the path",
-            "example": "task-unified-1756817821-4x3rx6ny"
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "veo3-fast Interface",
+        "description": "- Asynchronous processing mode, returns task ID for subsequent queries\n- Supports text-to-video, first-frame image-to-video and other modes.\n- Generated video links are valid for 24 hours, please save them promptly",
+        "operationId": "createVideoGeneration",
+        "tags": ["Video Generation"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              }
+            }
           }
-        ],
+        },
         "responses": {
           "200": {
-            "description": "Task status details",
+            "description": "Video generation task created successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskDetailResponse"
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Request parameter error, format error",
+            "description": "Invalid request parameters",
             "content": {
               "application/json": {
                 "schema": {
@@ -61,16 +57,17 @@
                 "example": {
                   "error": {
                     "code": 400,
-                    "message": "Invalid task ID format",
+                    "message": "Invalid duration parameter",
                     "type": "invalid_request_error",
-                    "param": "task_id"
+                    "param": "duration",
+                    "fallback_suggestion": "use duration between 1-12 seconds"
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "Unauthenticated, token invalid or expired",
+            "description": "Unauthorized, invalid or expired token",
             "content": {
               "application/json": {
                 "schema": {
@@ -105,7 +102,7 @@
             }
           },
           "403": {
-            "description": "No permission to access",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -114,15 +111,16 @@
                 "example": {
                   "error": {
                     "code": 403,
-                    "message": "Access denied",
-                    "type": "permission_error"
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
                   }
                 }
               }
             }
           },
           "404": {
-            "description": "Resource does not exist",
+            "description": "Resource not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -131,16 +129,36 @@
                 "example": {
                   "error": {
                     "code": 404,
-                    "message": "Task not found or expired",
+                    "message": "Specified model not found",
                     "type": "not_found_error",
-                    "param": "task_id"
+                    "param": "model",
+                    "fallback_suggestion": "veo3-fast"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request entity too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Image file too large",
+                    "type": "request_too_large_error",
+                    "param": "image_urls",
+                    "fallback_suggestion": "compress image to under 4MB"
                   }
                 }
               }
             }
           },
           "429": {
-            "description": "Request rate limit exceeded",
+            "description": "Rate limit exceeded",
             "content": {
               "application/json": {
                 "schema": {
@@ -185,9 +203,9 @@
                 "example": {
                   "error": {
                     "code": 502,
-                    "message": "Upstream service error",
+                    "message": "Upstream AI service unavailable",
                     "type": "upstream_error",
-                    "fallback_suggestion": "try again later"
+                    "fallback_suggestion": "try different model"
                   }
                 }
               }
@@ -217,84 +235,138 @@
   },
   "components": {
     "schemas": {
-      "TaskDetailResponse": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Video generation model name",
+            "default": "veo3-fast",
+            "example": "veo3-fast"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt describing what kind of video to generate",
+            "example": "A cat playing piano",
+            "maxLength": 1000
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Video aspect ratio",
+            "enum": ["16:9"],
+            "example": "16:9"
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "Reference image URL list for image-to-video feature\n\n**Note:**\n- Single request supports input image quantity: `1` image\n- Image size: no more than `10MB`\n- Supported file formats: `.jpg`, `.jpeg`, `.png`, `.webp`\n- Image URLs must be directly viewable by the server, or the image URL should trigger direct download when accessed (typically these URLs end with image file extensions, such as `.png`, `.jpg`)",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 1,
+            "example": ["http://example.com/image1.jpg"]
+          }
+        }
+      },
+      "VideoGenerationResponse": {
         "type": "object",
         "properties": {
           "created": {
             "type": "integer",
             "description": "Task creation timestamp",
-            "example": 1756817821
+            "example": 1757169743
           },
           "id": {
             "type": "string",
             "description": "Task ID",
-            "example": "task-unified-1756817821-4x3rx6ny"
+            "example": "task-unified-1757169743-7cvnl5zw"
           },
           "model": {
             "type": "string",
-            "description": "Model used",
-            "example": "gpt-4o-image"
+            "description": "Actual model name used",
+            "example": "veo3-fast"
           },
           "object": {
             "type": "string",
-            "description": "Task type",
-            "enum": [
-              "image.generation.task",
-              "video.generation.task",
-              "audio.generation.task"
-            ],
-            "example": "image.generation.task"
+            "enum": ["video.generation.task"],
+            "description": "Specific task type"
           },
           "progress": {
             "type": "integer",
+            "description": "Task progress percentage (0-100)",
             "minimum": 0,
             "maximum": 100,
-            "description": "Task progress percentage",
-            "example": 100
-          },
-          "results": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "Task result list (provided when completed)",
-            "example": [
-              "http://example.com/image.jpg"
-            ]
+            "example": 0
           },
           "status": {
             "type": "string",
             "description": "Task status",
-            "enum": [
-              "pending",
-              "processing",
-              "completed",
-              "failed"
-            ],
-            "example": "completed"
+            "enum": ["pending", "processing", "completed", "failed"],
+            "example": "pending"
           },
           "task_info": {
-            "type": "object",
-            "description": "Task detailed information",
-            "properties": {
-              "can_cancel": {
-                "type": "boolean",
-                "description": "Whether the task can be cancelled",
-                "example": false
-              }
-            }
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Video task detailed information"
           },
           "type": {
             "type": "string",
-            "description": "Task type",
             "enum": [
+              "text",
               "image",
-              "video",
               "audio",
-              "text"
+              "video"
             ],
-            "example": "image"
+            "description": "Task output type",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Usage and billing information"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Whether the task can be cancelled",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Estimated completion time (seconds)",
+            "minimum": 0,
+            "example": 180
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Video duration (seconds)",
+            "example": 8
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Usage and billing information",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Billing rule",
+            "enum": ["per_call", "per_token", "per_second"],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Estimated credits consumed",
+            "minimum": 0,
+            "example": 25.7
+          },
+          "user_group": {
+            "type": "string",
+            "description": "User group category",
+            "example": "default"
           }
         }
       },
@@ -306,23 +378,27 @@
             "properties": {
               "code": {
                 "type": "integer",
-                "description": "HTTP status error code",
-                "example": 404
+                "description": "HTTP status error code"
               },
               "message": {
                 "type": "string",
-                "description": "Error description message",
-                "example": "Task does not exist"
+                "description": "Error description",
+                "example": "Invalid request parameters"
               },
               "type": {
                 "type": "string",
                 "description": "Error type",
-                "example": "not_found_error"
+                "example": "invalid_request_error"
               },
               "param": {
                 "type": "string",
                 "description": "Related parameter name",
-                "example": "task_id"
+                "example": "model"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Suggestion for error resolution",
+                "example": "runway-gen3"
               }
             }
           }
@@ -339,8 +415,8 @@
   },
   "tags": [
     {
-      "name": "Task Management",
-      "description": "Asynchronous task management related APIs"
+      "name": "Video Generation",
+      "description": "AI video generation related APIs"
     }
   ]
 }
