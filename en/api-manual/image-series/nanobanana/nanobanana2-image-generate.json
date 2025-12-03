@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "wan2.5-text-to-video Interface",
-    "description": "Use WAN2.5 model for text-to-video generation, supporting simplified model parameter configuration",
+    "title": "Nano Banana 2 Interface",
+    "description": "Create image tasks using AI models, supporting multiple models and parameter configurations",
     "license": {
       "name": "MIT"
     },
@@ -20,27 +20,27 @@
     }
   ],
   "paths": {
-    "/v1/videos/generations": {
+    "/v1/images/generations": {
       "post": {
-        "summary": "wan2.5-text-to-video Interface",
-        "description": "- WAN2.5 (wan2.5-text-to-video) model supports text-to-video mode\n- Asynchronous processing mode, use the returned task ID to [query](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
-        "operationId": "createWan25TextToVideoGeneration",
+        "summary": "Nano Banana 2 Interface",
+        "description": "- Nano Banana 2 (gemini-3-pro-image-preview) model supports text-to-image, image-to-image, image editing and other generation modes\n- Asynchronous processing mode, use the returned task ID to [query](/en/api-manual/task-management/get-task-detail)\n- Generated image links are valid for 24 hours, please save them promptly",
+        "operationId": "createImageGenerationNano2",
         "tags": [
-          "Video Generation"
+          "Image Generation"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Wan25TextToVideoRequest"
+                "$ref": "#/components/schemas/ImageGenerationRequest"
               },
               "examples": {
-                "text_to_video": {
-                  "summary": "Text to Video",
+                "text_to_image": {
+                  "summary": "Text to Image",
                   "value": {
-                    "model": "wan2.5-text-to-video",
-                    "prompt": "A cat playing piano"
+                    "model": "gemini-3-pro-image-preview",
+                    "prompt": "A cat playing on the grass"
                   }
                 }
               }
@@ -49,11 +49,11 @@
         },
         "responses": {
           "200": {
-            "description": "Video task created successfully",
+            "description": "Image generation task created successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                  "$ref": "#/components/schemas/ImageGenerationResponse"
                 }
               }
             }
@@ -68,16 +68,15 @@
                 "example": {
                   "error": {
                     "code": 400,
-                    "message": "Invalid request format",
-                    "type": "invalid_request_error",
-                    "param": "model"
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "Authentication failed",
+            "description": "Unauthenticated, invalid or expired token",
             "content": {
               "application/json": {
                 "schema": {
@@ -86,8 +85,26 @@
                 "example": {
                   "error": {
                     "code": 401,
-                    "message": "Invalid authentication credentials",
+                    "message": "Invalid or expired token",
                     "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota, recharge required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
                   }
                 }
               }
@@ -124,7 +141,26 @@
                     "message": "Specified model not found",
                     "type": "not_found_error",
                     "param": "model",
-                    "fallback_suggestion": "wan2.5-text-to-video"
+                    "fallback_suggestion": "gemini-3-pro-image-preview"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Image file too large",
+                    "type": "request_too_large_error",
+                    "param": "image_urls",
+                    "fallback_suggestion": "compress image to under 4MB"
                   }
                 }
               }
@@ -176,9 +212,9 @@
                 "example": {
                   "error": {
                     "code": 502,
-                    "message": "Bad gateway",
+                    "message": "Upstream AI service unavailable",
                     "type": "upstream_error",
-                    "fallback_suggestion": "try again later"
+                    "fallback_suggestion": "try different model"
                   }
                 }
               }
@@ -208,7 +244,7 @@
   },
   "components": {
     "schemas": {
-      "Wan25TextToVideoRequest": {
+      "ImageGenerationRequest": {
         "type": "object",
         "required": [
           "model",
@@ -217,72 +253,87 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Model name",
+            "description": "Image generation model name, official channel with better stability and controllability, suitable for commercial scenarios",
+            "example": "gemini-3-pro-image-preview",
             "enum": [
-              "wan2.5-text-to-video"
+              "gemini-3-pro-image-preview"
             ],
-            "default": "wan2.5-text-to-video",
-            "example": "wan2.5-text-to-video"
+            "default": "gemini-3-pro-image-preview"
           },
           "prompt": {
             "type": "string",
-            "description": "Prompt describing what kind of video to generate, limited to 2000 tokens",
-            "example": "A cat playing the piano",
+            "description": "Prompt describing the image you want to generate, or describing how to edit the input image, limited to 2000 tokens",
+            "example": "A cat playing on the grass",
             "maxLength": 2000
           },
-          "aspect_ratio": {
+          "size": {
             "type": "string",
-            "description": "Video aspect ratio, defaults to `16:9`\n\n**Description:**\n- `480p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square)\n- `720p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`\n- `1080p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`",
-            "default": "16:9",
-            "example": "16:9"
+            "description": "Aspect ratio of generated image, default is `auto`",
+            "enum": [
+              "auto",
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
           },
           "quality": {
             "type": "string",
-            "description": "Video quality, defaults to `720p`\n\n**Description:**\n- `480p`: Lower quality, lower price\n- `720p`: Standard quality, standard price, this is the default\n- `1080p`: High quality, higher price\n\n**Note:** Different quality levels support different aspect ratios, see `aspect_ratio` parameter for details",
-            "default": "720p",
-            "example": "720p"
+            "description": "Quality of generated image, default is `2K`\n\n**Note:**\n- `4K` quality will incur additional charges",
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ]
           },
-          "duration": {
-            "type": "integer",
-            "description": "Specifies the duration of the generated video (seconds)\n\n**Note:**\n- Only supports values `5` and `10`, representing `5 seconds` and `10 seconds` respectively\n- A single request will pre-charge based on the value of `duration`, with actual charges based on the generated video duration in seconds",
-            "example": 5
-          },
-          "prompt_extend": {
-            "type": "boolean",
-            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large language model will optimize the prompt. This is particularly effective for prompts that lack detail or are too simple. Default value is `true`",
-            "default": true,
-            "example": true
+          "image_urls": {
+            "type": "array",
+            "description": "Reference image URL list for image-to-image and image editing features\n\n**Note:**\n- Single request supports input image quantity: `10` images\n- Image size: no more than `10MB`\n- Supported file formats: `.jpeg`, `.jpg`, `.png`, `.webp`\n- Image URLs must be directly viewable by the server, or the image URL should trigger direct download when accessed (typically these URLs end with image file extensions, such as `.png`, `.jpg`)\n- Maximum `5` real person images can be uploaded",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "example": [
+              "https://example.com/image1.png",
+              "https://example.com/image2.png"
+            ]
           },
           "callback_url": {
             "type": "string",
             "description": "HTTPS callback address after task completion\n\n**Callback Timing:**\n- Triggered when task is completed, failed, or cancelled\n- Sent after billing confirmation is completed\n\n**Security Restrictions:**\n- Only HTTPS protocol is supported\n- Callback to internal IP addresses is prohibited (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- URL length must not exceed `2048` characters\n\n**Callback Mechanism:**\n- Timeout: `10` seconds\n- Maximum `3` retries on failure (retries after `1` second/`2` seconds/`4` seconds)\n- Callback response body format is consistent with the task query API response format\n- Callback address returning 2xx status code is considered successful, other status codes will trigger retry",
             "format": "uri",
-            "example": "https://your-domain.com/webhooks/video-task-completed"
+            "example": "https://your-domain.com/webhooks/image-task-completed"
           }
         }
       },
-      "VideoGenerationResponse": {
+      "ImageGenerationResponse": {
         "type": "object",
         "properties": {
           "created": {
             "type": "integer",
             "description": "Task creation timestamp",
-            "example": 1757169743
+            "example": 1757165031
           },
           "id": {
             "type": "string",
             "description": "Task ID",
-            "example": "task-unified-1757169743-7cvnl5zw"
+            "example": "task-unified-1757165031-uyujaw3d"
           },
           "model": {
             "type": "string",
             "description": "Actual model name used",
-            "example": "wan2.5-text-to-video"
+            "example": "gemini-3-pro-image-preview"
           },
           "object": {
             "type": "string",
             "enum": [
-              "video.generation.task"
+              "image.generation.task"
             ],
             "description": "Specific task type"
           },
@@ -305,8 +356,8 @@
             "example": "pending"
           },
           "task_info": {
-            "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Video task detailed information"
+            "$ref": "#/components/schemas/TaskInfo",
+            "description": "Async task information"
           },
           "type": {
             "type": "string",
@@ -317,7 +368,7 @@
               "video"
             ],
             "description": "Task output type",
-            "example": "video"
+            "example": "image"
           },
           "usage": {
             "$ref": "#/components/schemas/Usage",
@@ -325,7 +376,7 @@
           }
         }
       },
-      "VideoTaskInfo": {
+      "TaskInfo": {
         "type": "object",
         "properties": {
           "can_cancel": {
@@ -337,7 +388,7 @@
             "type": "integer",
             "description": "Estimated completion time (seconds)",
             "minimum": 0,
-            "example": 120
+            "example": 45
           }
         }
       },
@@ -359,7 +410,7 @@
             "type": "number",
             "description": "Estimated credits consumed",
             "minimum": 0,
-            "example": 5
+            "example": 1.6
           },
           "user_group": {
             "type": "string",
@@ -380,11 +431,11 @@
             "properties": {
               "code": {
                 "type": "integer",
-                "description": "Error code"
+                "description": "HTTP status error code"
               },
               "message": {
                 "type": "string",
-                "description": "Error message"
+                "description": "Error description"
               },
               "type": {
                 "type": "string",
@@ -392,7 +443,7 @@
               },
               "param": {
                 "type": "string",
-                "description": "Parameter name that caused the error"
+                "description": "Related parameter name"
               },
               "fallback_suggestion": {
                 "type": "string",
@@ -410,5 +461,11 @@
         "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header when using:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "Image Generation",
+      "description": "AI image generation related APIs"
+    }
+  ]
 }
