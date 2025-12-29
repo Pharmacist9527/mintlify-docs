@@ -1,0 +1,116 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sora-2-Preview API",
+    "description": "Create video generation tasks using AI models, supporting text-to-video, image-to-video and more",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "https://api.evolink.ai", "description": "Production" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [{ "name": "Video Generation", "description": "AI video generation APIs" }],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Sora-2-Preview API",
+        "description": "- Sora 2 Preview (sora-2-preview) supports text-to-video, image-to-video and more\n- Async processing, use returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save promptly\n\n**Note:**\n- Sora2 has very strict content moderation, tasks may fail due to this\n- Real person images are not supported",
+        "operationId": "createVideoGeneration",
+        "tags": ["Video Generation"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VideoGenerationRequest" },
+              "examples": {
+                "text_to_video": {
+                  "summary": "Text-to-Video",
+                  "value": { "model": "sora-2-preview", "prompt": "A cat playing piano" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Video generation task created successfully", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VideoGenerationResponse" } } } },
+          "400": { "description": "Invalid request parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized, invalid or expired token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "Insufficient quota, recharge required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Access denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Resource not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "Rate limit exceeded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Internal server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": { "type": "string", "description": "Video generation model name", "default": "sora-2-preview", "example": "sora-2-preview" },
+          "prompt": { "type": "string", "description": "Prompt describing the video to generate, max 5000 tokens", "example": "A cat playing piano", "maxLength": 5000 },
+          "aspect_ratio": { "type": "string", "description": "Video aspect ratio. `16:9` for landscape, `9:16` for portrait", "enum": ["16:9", "9:16"], "example": "16:9" },
+          "duration": { "type": "integer", "description": "Video duration (seconds), default `4`\n\n**Note:**\n- Only supports `4`, `8`, `12` seconds\n- Longer duration costs more", "example": 4 },
+          "image_urls": {
+            "type": "array",
+            "description": "Reference image URLs for image-to-video\n\n**Note:**\n- Real person images not supported\n- Max 1 image per request\n- Max size: 10MB\n- Formats: .jpg, .jpeg, .png, .webp",
+            "items": { "type": "string", "format": "uri" },
+            "maxItems": 1,
+            "example": ["http://example.com/image1.jpg"]
+          },
+          "callback_url": { "type": "string", "description": "HTTPS callback URL for task completion", "format": "uri", "example": "https://your-domain.com/webhooks/video-task-completed" }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": { "type": "integer", "description": "Task creation timestamp", "example": 1757169743 },
+          "id": { "type": "string", "description": "Task ID", "example": "task-unified-1757169743-7cvnl5zw" },
+          "model": { "type": "string", "description": "Model name used", "example": "sora-2-preview" },
+          "object": { "type": "string", "enum": ["video.generation.task"], "description": "Task type" },
+          "progress": { "type": "integer", "description": "Task progress (0-100)", "minimum": 0, "maximum": 100, "example": 0 },
+          "status": { "type": "string", "description": "Task status", "enum": ["pending", "processing", "completed", "failed"], "example": "pending" },
+          "task_info": { "$ref": "#/components/schemas/VideoTaskInfo" },
+          "type": { "type": "string", "enum": ["text", "image", "audio", "video"], "description": "Output type", "example": "video" },
+          "usage": { "$ref": "#/components/schemas/VideoUsage" }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": { "type": "boolean", "description": "Whether task can be cancelled", "example": true },
+          "estimated_time": { "type": "integer", "description": "Estimated completion time (seconds)", "example": 300 },
+          "video_duration": { "type": "integer", "description": "Video duration (seconds)", "example": 9 }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "properties": {
+          "billing_rule": { "type": "string", "enum": ["per_call", "per_token", "per_second"], "example": "per_call" },
+          "credits_reserved": { "type": "number", "description": "Estimated credits", "example": 7 },
+          "user_group": { "type": "string", "example": "default" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "integer", "description": "HTTP error code" },
+              "message": { "type": "string", "description": "Error description" },
+              "type": { "type": "string", "description": "Error type" },
+              "param": { "type": "string", "description": "Related parameter" },
+              "fallback_suggestion": { "type": "string", "description": "Suggested solution" }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "## All APIs require Bearer Token authentication\n\n**Get API Key:**\n\nVisit [API Key Management](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```" }
+    }
+  }
+}

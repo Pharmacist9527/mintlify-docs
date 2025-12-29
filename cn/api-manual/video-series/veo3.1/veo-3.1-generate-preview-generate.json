@@ -1,0 +1,298 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "veo-3.1-generate-preview接口",
+    "description": "使用AI模型创建视频生成任务，支持文本转视频、图片转视频等多种生成模式",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "veo-3.1-generate-preview接口",
+        "description": "- Veo 3.1 Generate Preview (veo-3.1-generate-preview) 模型支持文生视频、首帧图生视频等多种模式\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
+        "operationId": "createVideoGeneration",
+        "tags": ["视频生成"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "文本生成视频",
+                  "value": {
+                    "model": "veo-3.1-generate-preview",
+                    "prompt": "A cat playing piano"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "视频生成任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "视频生成模型名称",
+            "default": "veo-3.1-generate-preview",
+            "example": "veo-3.1-generate-preview"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "提示词，描述想要生成什么样的视频，限制为2000token",
+            "example": "A cat playing piano",
+            "maxLength": 2000
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "参考图像URL列表，用于图生视频功能\n\n**注意：**\n- 单次请求最多支持`2`张图像\n- 图像大小：不超过 `10MB`\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`、`.webp`",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": ["http://example.com/image1.jpg"]
+          },
+          "generation_type": {
+            "type": "string",
+            "description": "视频生成模式，默认会根据图像数量进行匹配，建议手动选择，可选三种模式：\n\n- `TEXT`：文本生视频\n- `FIRST&LAST`：首尾帧生视频，可传入`1`~`2`张图像\n- `REFERENCE`：参考图生视频，最多可传入`3`张图像，时长需固定为`8`秒，比例需固定为`16:9`，除`generate_audio`参数外，其他高级参数均不支持",
+            "enum": ["TEXT", "FIRST&LAST", "REFERENCE"]
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "视频宽高比。设置为 `auto` 时：图生视频会根据输入图片的比例自动选择，文生视频会根据提示词内容自动选择",
+            "enum": ["auto", "16:9", "9:16"],
+            "default": "auto",
+            "example": "auto"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "description": "是否生成音频，启用后会增加费用",
+            "default": true,
+            "example": true
+          },
+          "duration": {
+            "type": "integer",
+            "description": "视频时长（秒），时长越长费用越高",
+            "enum": [4, 6, 8],
+            "default": 4,
+            "example": 4
+          },
+          "n": {
+            "type": "integer",
+            "description": "生成视频数量，数量越多费用越高",
+            "minimum": 1,
+            "maximum": 4,
+            "default": 1,
+            "example": 1
+          },
+          "quality": {
+            "type": "string",
+            "description": "视频分辨率",
+            "enum": ["720p", "1080p"],
+            "default": "720p",
+            "example": "720p"
+          },
+          "seed": {
+            "type": "integer",
+            "description": "随机种子，用于复现生成结果",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "负面提示词，描述不希望在视频中出现的内容"
+          },
+          "compression_quality": {
+            "type": "string",
+            "description": "压缩质量",
+            "enum": ["optimized", "lossless"],
+            "default": "optimized",
+            "example": "optimized"
+          },
+          "person_generation": {
+            "type": "string",
+            "description": "人物生成控制。`allow_adult`：仅允许生成成人；`dont_allow`：禁止在视频中包含人物/人脸",
+            "enum": ["allow_adult", "dont_allow"],
+            "default": "allow_adult",
+            "example": "allow_adult"
+          },
+          "resize_mode": {
+            "type": "string",
+            "description": "调整模式（仅图生视频有效）",
+            "enum": ["pad", "crop"],
+            "default": "pad",
+            "example": "pad"
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "任务完成后的HTTPS回调地址",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "veo-3.1-generate-preview"
+          },
+          "status": {
+            "type": "string",
+            "description": "任务状态",
+            "enum": ["pending", "processing", "completed", "failed"],
+            "example": "pending"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP状态错误代码"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "使用Bearer Token进行认证"
+      }
+    }
+  },
+  "tags": [{"name": "视频生成", "description": "AI视频生成相关接口"}]
+}

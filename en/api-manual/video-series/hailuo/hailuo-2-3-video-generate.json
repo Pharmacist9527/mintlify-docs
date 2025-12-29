@@ -1,0 +1,102 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hailuo 2.3 API",
+    "description": "Create video generation tasks using MiniMax Hailuo 2.3 model, supporting T2V and I2V modes",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "https://api.evolink.ai", "description": "Production" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [{ "name": "Video Generation", "description": "AI video generation APIs" }],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": ["Video Generation"],
+        "summary": "Hailuo 2.3 API",
+        "description": "- Hailuo 2.3 (MiniMax-Hailuo-2.3) supports T2V (Text-to-Video) and I2V (Image-to-Video) modes\n- Auto mode detection: 0 images=T2V, 1 image=I2V\n- SOTA instruction following, high-quality output\n- Supports 15 camera motion commands like `[Pan left]`, `[Push in]`, `[Static shot]`\n- Async processing, use returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save promptly",
+        "operationId": "createVideoGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VideoGenerationRequest" },
+              "examples": {
+                "text_to_video": {
+                  "summary": "Text-to-Video (T2V)",
+                  "value": { "model": "hailuo-2.3", "prompt": "A beautiful sunset over the ocean, waves gently crashing on the shore [Static shot]", "quality": "768p", "duration": 10 }
+                },
+                "image_to_video": {
+                  "summary": "Image-to-Video (I2V)",
+                  "value": { "model": "hailuo-2.3", "prompt": "The flower blooms slowly [Zoom in]", "image_urls": ["https://example.com/flower.jpg"], "quality": "1080p", "duration": 6, "model_params": { "prompt_optimizer": false } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Video generation task created successfully", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VideoGenerationResponse" } } } },
+          "400": { "description": "Invalid request parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized, invalid or expired token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "Insufficient quota, recharge required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": { "type": "string", "description": "Video generation model name", "default": "hailuo-2.3", "example": "hailuo-2.3" },
+          "prompt": { "type": "string", "description": "Prompt describing video content and camera motion. Required for T2V, optional for I2V. Max 2000 characters\n\n**15 Camera Commands:**\n- Truck: `[Truck left]`, `[Truck right]`\n- Pan: `[Pan left]`, `[Pan right]`\n- Dolly: `[Push in]`, `[Pull out]`\n- Pedestal: `[Pedestal up]`, `[Pedestal down]`\n- Tilt: `[Tilt up]`, `[Tilt down]`\n- Zoom: `[Zoom in]`, `[Zoom out]`\n- Special: `[Shake]`\n- Follow: `[Tracking shot]`\n- Static: `[Static shot]`\n\n**Usage:**\n- Combined: Multiple commands in one `[]` execute simultaneously, e.g. `[Pan left,Pedestal up]`, max 3 recommended\n- Sequential: Commands execute in text order, e.g. `...slowly [Push in], then quickly [Pull out]`", "example": "A beautiful sunset over the ocean [Static shot]", "maxLength": 2000 },
+          "image_urls": {
+            "type": "array",
+            "description": "Reference image URLs for I2V mode, optional\n\n**Mode Detection:**\n- 0 images = T2V (Text-to-Video)\n- 1 image = I2V (Image-to-Video)\n\n**Requirements:**\n- Image size: max 20MB\n- Formats: JPG, JPEG, PNG, WebP\n- Aspect ratio: 2:5 to 5:2\n- Short edge > 300px",
+            "items": { "type": "string", "format": "uri" },
+            "maxItems": 1,
+            "example": ["https://example.com/image.jpg"]
+          },
+          "quality": { "type": "string", "description": "Video resolution\n\n**Supported by mode:**\n- I2V: 768p, 1080p\n- T2V: 768p, 1080p\n\n**Duration & Resolution:**\n- 768p: 6s, 10s\n- 1080p: 6s only", "enum": ["768p", "1080p"], "default": "768p", "example": "768p" },
+          "duration": { "type": "integer", "description": "Video duration (seconds)\n- 6 seconds (default)\n- 10 seconds (not available for 1080p)", "enum": [6, 10], "default": 6, "example": 10 },
+          "model_params": {
+            "type": "object",
+            "description": "Model-specific parameters",
+            "properties": {
+              "prompt_optimizer": { "type": "boolean", "description": "Auto-optimize prompt. Set false for precise control", "default": true, "example": true },
+              "fast_pretreatment": { "type": "boolean", "description": "Enable fast preprocessing to reduce optimization time", "default": false, "example": false }
+            }
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": { "type": "integer", "description": "Task creation timestamp", "example": 1757169743 },
+          "id": { "type": "string", "description": "Task ID", "example": "task-unified-1757169743-7cvnl5zw" },
+          "model": { "type": "string", "description": "Model name used", "example": "hailuo-2.3" },
+          "object": { "type": "string", "enum": ["video.generation.task"], "description": "Task type" },
+          "progress": { "type": "integer", "description": "Task progress (0-100)", "minimum": 0, "maximum": 100, "example": 0 },
+          "status": { "type": "string", "description": "Task status", "enum": ["pending", "processing", "completed", "failed"], "example": "pending" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "integer", "description": "HTTP error code" },
+              "message": { "type": "string", "description": "Error description" },
+              "type": { "type": "string", "description": "Error type" }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "## All APIs require Bearer Token authentication\n\n**Get API Key:**\n\nVisit [API Key Management](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```" }
+    }
+  }
+}
