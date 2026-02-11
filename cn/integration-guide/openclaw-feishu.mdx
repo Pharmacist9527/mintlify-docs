@@ -1,0 +1,394 @@
+---
+title: "OpenClaw + 飞书"
+description: "将 OpenClaw 通过飞书连接到 EvoLink.AI"
+---
+
+## 概述
+
+OpenClaw 是一个开源的 AI 智能体 Gateway 网关，充当聊天应用与 AI 智能体之间的桥梁。它通过一个中心化的 Gateway 进程，将 Telegram、WhatsApp、Discord、飞书等聊天平台连接到 AI 编程智能体，实现在聊天窗口中直接与 AI 进行编程交互。
+
+通过将 **EvoLink API** 配置为 OpenClaw 的自定义模型提供商，并接入 **飞书机器人**，你可以在飞书中直接使用 EvoLink 提供的 Claude 模型（如 **Claude 4.6 Opus**、**Claude 4.5 Sonnet**、**Claude 4.5 Haiku**）进行 AI 辅助编程对话。
+
+飞书渠道使用 **WebSocket 长连接**模式接收消息，无需公网 URL。
+
+**本文将介绍：**
+- 安装并配置 OpenClaw Gateway
+- 在飞书开放平台创建企业自建应用
+- 将 EvoLink API 配置为自定义模型提供商
+- 验证连接并开始使用
+
+## 使用前准备
+
+在开始配置之前，请确保已完成以下准备工作：
+
+### 1. 安装 Node.js
+
+OpenClaw 通过 npm 安装，需要先安装 [Node.js](https://nodejs.org/zh-cn/download)。
+
+### 2. 获取 EvoLink API Key
+
+- 登录 [EvoLink 控制台](https://evolink.ai/dashboard)
+- 在控制台中找到 API Keys，点击"创建新Key"按钮，然后复制生成的 Key
+- API Key 通常以 `sk-` 开头，请妥善保存
+
+### 3. 准备飞书账号
+
+需要拥有飞书企业账号，用于在飞书开放平台创建应用。
+
+## 第一步：安装 OpenClaw
+
+在终端中执行：
+
+```bash
+npm install -g openclaw@latest
+```
+
+安装飞书插件：
+
+```bash
+openclaw plugins install @openclaw/feishu
+```
+
+## 第二步：初始化引导
+
+运行新手引导命令，OpenClaw 会引导你完成初始配置并安装后台守护服务：
+
+```bash
+openclaw onboard --install-daemon
+```
+
+### 1. 确认安装
+
+系统会提示安装风险说明，确认同意后继续：
+
+![确认安装](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011629_241.png)
+
+### 2. 选择安装模式
+
+系统会提示选择安装模式，选择 **Quickstart** 即可：
+
+![选择 Quickstart](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011705_241.png)
+
+### 3. 选择供应商
+
+系统会提示选择模型供应商，这里选择 **跳过（Skip）**，后续我们会手动配置 EvoLink 作为自定义供应商：
+
+![跳过供应商选择](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011742_033.png)
+
+### 4. 选择模型
+
+系统会提示选择要启用的模型，选择 **All（全部）** 即可：
+
+![选择所有模型](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011808_857.png)
+
+### 5. 选择默认模型
+
+系统会提示选择默认模型，选择 **Keep current（保持当前）** 即可：
+
+![保持当前模型](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011825_375.png)
+
+## 第三步：创建飞书应用
+
+### 1. 登录飞书开放平台
+
+访问 [飞书开放平台](https://open.feishu.cn/app)，使用飞书账号登录。
+
+<Note>
+Lark（国际版）请使用 [https://open.larksuite.com/app](https://open.larksuite.com/app)，并在后续配置中设置 `domain: "lark"`。
+</Note>
+
+### 2. 创建应用
+
+点击 **创建企业自建应用**，填写应用名称和描述，选择应用图标。
+
+![创建应用](/images/OpenClaw-Feishu/create-app.avif)
+
+### 3. 获取应用凭证
+
+在应用的 **凭证与基础信息** 页面，复制：
+
+- **App ID**（格式如 `cli_xxx`）
+- **App Secret**
+
+<Warning>
+请妥善保管 App Secret，不要分享给他人。
+</Warning>
+
+![获取应用凭证](/images/OpenClaw-Feishu/get-credentials.avif)
+
+### 4. 配置应用权限
+
+在 **权限管理** 页面，点击 **批量导入** 按钮，粘贴以下 JSON 配置一键导入所需权限：
+
+```json
+{
+  "scopes": {
+    "tenant": [
+      "aily:file:read",
+      "aily:file:write",
+      "application:application.app_message_stats.overview:readonly",
+      "application:application:self_manage",
+      "application:bot.menu:write",
+      "cardkit:card:write",
+      "contact:user.employee_id:readonly",
+      "corehr:file:download",
+      "docs:document.content:read",
+      "event:ip_list",
+      "im:chat",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "im:chat.members:bot_access",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.group_msg",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource",
+      "sheets:spreadsheet",
+      "wiki:wiki:readonly"
+    ],
+    "user": [
+      "aily:file:read",
+      "aily:file:write",
+      "im:chat.access_event.bot_p2p_chat:read"
+    ]
+  }
+}
+```
+
+![配置应用权限](/images/OpenClaw-Feishu/configure-permissions.avif)
+
+### 5. 启用机器人能力
+
+在 **应用能力 > 机器人** 页面，开启机器人能力并配置机器人名称。
+
+![启用机器人能力](/images/OpenClaw-Feishu/enable-bot.avif)
+
+### 6. 配置事件订阅
+
+<Warning>
+在配置事件订阅前，请确保已完成以下步骤：
+- 已完成飞书渠道配置（见第四步）
+- 网关处于启动状态（可通过 `openclaw gateway status` 检查）
+</Warning>
+
+在 **事件订阅** 页面：
+
+1. 选择 **使用长连接接收事件**（WebSocket 模式）
+2. 添加事件：`im.message.receive_v1`（接收消息）
+
+<Warning>
+如果网关未启动或渠道未添加，长连接设置将保存失败。
+</Warning>
+
+![配置事件订阅](/images/OpenClaw-Feishu/event-subscription.avif)
+
+### 7. 发布应用
+
+在 **版本管理与发布** 页面创建版本，提交审核并发布。企业自建应用通常自动通过审批。
+
+## 第四步：配置 OpenClaw
+
+OpenClaw 的配置集中在 `~/.openclaw/openclaw.json` 文件中。你需要理解三个关键配置域：
+
+- `plugins.entries.*` — 控制加载哪个插件
+- `channels.*` — 控制渠道连接方式和账号凭据
+- `models.providers.*` — 控制模型提供商
+
+### 1. 添加飞书渠道
+
+<Tabs>
+  <Tab title="手动编辑配置">
+    打开 `~/.openclaw/openclaw.json`：
+
+    启用飞书插件（`plugins.entries`）：
+
+    ```json
+    "plugins": {
+      "entries": {
+        "feishu": {
+          "enabled": true
+        }
+      }
+    }
+    ```
+
+    配置飞书渠道凭证（`channels.feishu`）：
+
+    ```json
+    "channels": {
+      "feishu": {
+        "enabled": true,
+        "dmPolicy": "pairing",
+        "accounts": {
+          "main": {
+            "appId": "cli_xxx",
+            "appSecret": "你的App Secret",
+            "botName": "我的AI助手"
+          }
+        }
+      }
+    }
+    ```
+
+    <Warning>
+    飞书凭证必须放在 `channels.feishu.accounts` 下，而不是 `plugins.entries.feishu` 中。如果放错位置会报 `Unrecognized key` 错误。
+    </Warning>
+
+    也可以通过环境变量配置：
+
+    ```bash
+    export FEISHU_APP_ID="cli_xxx"
+    export FEISHU_APP_SECRET="xxx"
+    ```
+  </Tab>
+  <Tab title="命令行添加">
+    运行以下命令，根据提示选择 Feishu 并输入 App ID 和 App Secret：
+
+    ```bash
+    openclaw channels add
+    ```
+
+    <Warning>
+    较新版本的 OpenClaw 使用此命令可能会出现配置冲突，建议优先使用手动编辑配置的方式。
+    </Warning>
+  </Tab>
+</Tabs>
+
+### 2. 配置 EvoLink API
+
+在同一个 `openclaw.json` 中，找到 `models` 字段，添加 EvoLink 作为自定义模型提供商：
+
+```json
+"models": {
+  "providers": {
+    "anthropic": {
+      "api": "anthropic-messages",
+      "baseUrl": "https://code.evolink.ai",
+      "apiKey": "你的EvoLink API Key",
+      "models": [
+        {
+          "id": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
+```
+
+<Warning>
+将 `"你的EvoLink API Key"` 替换为你在 [EvoLink 控制台](https://evolink.ai/dashboard) 获取的实际 API Key。
+</Warning>
+
+### 3. 配置默认模型
+
+在 `agents` 字段中配置默认使用的模型：
+
+```json
+"model": {
+  "primary": "anthropic/claude-opus-4-6"
+}
+```
+
+### 4. 重启网关
+
+配置完成后，重启 OpenClaw Gateway 使配置生效：
+
+```bash
+openclaw gateway restart
+```
+
+<Warning>
+请使用 `openclaw gateway restart` 而不是手动再起一个进程，否则会因端口占用而报错。
+</Warning>
+
+可通过以下命令确认配置是否正确加载：
+
+```bash
+openclaw gateway status
+```
+
+## 第五步：验证连接
+
+### 1. 在飞书中找到机器人
+
+打开飞书，搜索你创建的机器人名称，开始对话。
+
+### 2. 获取配对码
+
+向机器人发送任意消息，机器人会返回一个配对码（Pairing Code）。
+
+### 3. 完成配对
+
+新开一个终端窗口，运行以下命令完成配对：
+
+```bash
+openclaw pairing approve feishu <配对码>
+```
+
+<Warning>
+将 `<配对码>` 替换为机器人返回的实际配对码，注意去掉两边的尖括号 `<>`。
+</Warning>
+
+### 4. 测试对话
+
+配对成功后，在飞书中向机器人发送消息测试：
+
+```
+你好，请介绍一下你自己
+```
+
+如果收到 AI 回复，说明接入已完成。
+
+## 访问控制
+
+### 私聊访问
+
+默认 `dmPolicy: "pairing"`，陌生用户会收到配对码，需要管理员批准：
+
+```bash
+openclaw pairing list feishu        # 查看待审批列表
+openclaw pairing approve feishu <CODE>  # 批准
+```
+
+也可以通过 `channels.feishu.allowFrom` 配置白名单用户 Open ID。
+
+### 群组访问
+
+群组策略通过 `channels.feishu.groupPolicy` 控制：
+
+- `"open"` — 允许群组中所有人（默认）
+- `"allowlist"` — 仅允许 `groupAllowFrom` 中的用户
+- `"disabled"` — 禁用群组消息
+
+默认需要 @机器人才会响应（`requireMention: true`）。
+
+## 常用命令
+
+| 命令 | 说明 |
+|------|------|
+| `openclaw gateway status` | 查看网关运行状态 |
+| `openclaw gateway restart` | 重启网关服务 |
+| `openclaw logs --follow` | 实时查看日志输出 |
+| `openclaw pairing list feishu` | 查看待审批配对列表 |
+| `openclaw plugins list` | 查看已安装插件 |
+
+## 故障排除
+
+| 问题 | 排查方法 |
+|------|----------|
+| 机器人在群组中不响应 | 检查是否已 @机器人；检查 `groupPolicy` 是否为 `"disabled"` |
+| 机器人收不到消息 | 检查应用是否已发布审批；检查事件订阅是否配置了 `im.message.receive_v1`；确认选择了长连接模式 |
+| App Secret 泄露 | 在飞书开放平台重置 App Secret，更新配置文件，重启网关 |
+| 发送消息失败 | 检查是否有 `im:message:send_as_bot` 权限；查看日志 `openclaw logs --follow` |
