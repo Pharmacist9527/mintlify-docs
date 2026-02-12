@@ -1,0 +1,229 @@
+---
+title: "OpenClaw 自动安装"
+description: "通过 OpenClaw Manager 一键安装和管理 OpenClaw 实例"
+---
+
+## 概述
+
+OpenClaw Manager 是一个可视化管理工具，帮助你快速安装、配置和管理 OpenClaw 实例。无需手动编辑配置文件，只需 3 步即可完成部署。
+
+支持两种消息通道：
+
+| | Telegram | 飞书（Feishu） |
+|---|---|---|
+| 连接方式 | Bot API（长轮询） | WebSocket 长连接 |
+| 需要的凭证 | Bot Token + 你的 User ID | App ID + App Secret |
+| 平台侧配置 | 仅创建 Bot | 创建应用 + 开启 WebSocket 订阅 |
+| 用户鉴权 | 通过 User ID 绑定，仅授权用户可对话 | 所有能给 Bot 发消息的用户均可对话 |
+| 适合场景 | 个人使用、海外用户 | 团队协作、国内用户 |
+
+## 前置准备
+
+### 通用
+
+- **Node.js 22+**：如果本地未安装 OpenClaw，脚本会通过 npm 自动安装，因此需要 Node.js 环境
+- **EvoLink API Key**：从 [evolink.ai](https://evolink.ai/dashboard) 注册并获取 API Key
+
+### 通道凭证
+
+<Accordion title="Telegram / 飞书 凭证获取指引">
+<Tabs>
+  <Tab title="Telegram">
+    1. 在 Telegram 中搜索 [@BotFather](https://t.me/BotFather)，点击 **START BOT** 开始对话
+
+    ![启动 BotFather](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_023944_999.png)
+
+    2. 发送 `/newbot`，按提示设置 Bot 名称，获得 **Bot Token**（格式：`123456789:ABCdef...`）
+
+    ![创建 Bot](/images/OpenClaw-Telegram/85be2352-3788-4d21-815e-6a46b2754ca7.png)
+
+    3. 获取你的 **Telegram User ID**：向 [@userinfobot](https://t.me/userinfobot) 发送 `/start`，记下返回的数字 ID
+  </Tab>
+  <Tab title="飞书">
+    1. 前往 [飞书开放平台](https://open.feishu.cn/app)，创建一个企业自建应用
+
+    ![创建应用](/images/OpenClaw-Feishu/create-app.avif)
+
+    2. 在应用的「凭证与基础信息」页面获取 **App ID** 和 **App Secret**
+
+    ![获取应用凭证](/images/OpenClaw-Feishu/get-credentials.avif)
+
+    3. 在「权限管理」页面，点击 **批量导入**，粘贴以下 JSON 一键导入所需权限：
+
+    ```json
+    {
+      "scopes": {
+        "tenant": [
+          "aily:file:read",
+          "aily:file:write",
+          "application:application.app_message_stats.overview:readonly",
+          "application:application:self_manage",
+          "application:bot.menu:write",
+          "cardkit:card:write",
+          "contact:contact.base:readonly",
+          "contact:user.employee_id:readonly",
+          "corehr:file:download",
+          "docs:document.content:read",
+          "event:ip_list",
+          "im:chat",
+          "im:chat.access_event.bot_p2p_chat:read",
+          "im:chat.members:bot_access",
+          "im:message",
+          "im:message.group_at_msg:readonly",
+          "im:message.group_msg",
+          "im:message.p2p_msg:readonly",
+          "im:message:readonly",
+          "im:message:send_as_bot",
+          "im:resource",
+          "sheets:spreadsheet",
+          "wiki:wiki:readonly"
+        ],
+        "user": [
+          "aily:file:read",
+          "aily:file:write",
+          "im:chat.access_event.bot_p2p_chat:read"
+        ]
+      }
+    }
+    ```
+
+    ![配置应用权限](/images/OpenClaw-Feishu/configure-permissions.avif)
+
+    4. 在「应用能力  > 机器人」页面，开启机器人能力并配置机器人名称
+
+    ![启用机器人能力](/images/OpenClaw-Feishu/enable-bot.avif)
+
+    <Warning>
+    到此为止，飞书应用的基础配置已完成。接下来的事件订阅和版本发布需要在网关部署完成后再操作，否则长连接设置将保存失败。请先完成下方第一步和第二步的部署，再回到飞书开放平台继续配置。
+    </Warning>
+  </Tab>
+</Tabs>
+</Accordion>
+
+## 第一步：下载并运行
+
+从 [Releases](https://github.com/open-claw/openclaw-manager/releases) 下载对应平台的可执行文件：
+
+![GitHub Releases 页面](/images/OpenClaw-Auto/github-releases.png)
+
+![下载可执行文件](/images/OpenClaw-Auto/github-repo.png)
+
+| 平台 | 文件名 |
+|------|--------|
+| Windows | `openclaw-manager-win-x64.exe` |
+| macOS (Intel) | `openclaw-manager-macos-x64` |
+| macOS (Apple Silicon) | `openclaw-manager-macos-arm64` |
+| Linux | `openclaw-manager-linux-x64` |
+
+Windows 用户直接双击运行。macOS / Linux 用户在终端中执行：
+
+```bash
+chmod +x ./openclaw-manager && ./openclaw-manager
+```
+
+脚本会自动检查并安装 OpenClaw，然后启动本地 Web 管理界面并打开浏览器。
+
+![创建新实例](/images/OpenClaw-Auto/home-new-instance.png)
+
+## 第二步：创建实例
+
+### 2.1 — 基本信息
+
+| 字段 | 说明 |
+|------|------|
+| Instance Name | 实例名称（如 `mybot`），同一台机器上不可重复 |
+| Model | 选择模型：Haiku 4.5 / Sonnet 4.5 / Opus 4.5 / Opus 4.6 |
+| Channel | 选择通道：Telegram 或 Feishu |
+
+![填写基本信息](/images/OpenClaw-Auto/wizard-step1-basic-info.png)
+
+### 2.2 — 填写凭证并部署
+
+所有通道都需要填写 **EvoLink API Key**。
+
+<Tabs>
+  <Tab title="Telegram">
+    填写从 @BotFather 获取的 **Bot Token**，点击 **Deploy**。
+
+    脚本会自动完成：
+    1. 创建 OpenClaw 配置文件
+    2. 写入模型和 API Key 配置
+    3. 配置 Telegram 插件并启用
+    4. 安装并启动网关服务
+
+    ![Telegram 凭证配置](/images/OpenClaw-Auto/wizard-step2-telegram-credentials.png)
+  </Tab>
+  <Tab title="飞书">
+    填写从飞书开放平台获取的 **App ID** 和 **App Secret**，点击 **Deploy**。
+
+    脚本会自动完成：
+    1. 创建 OpenClaw 配置文件
+    2. 写入模型和 API Key 配置
+    3. 配置飞书插件（写入 App ID / App Secret）并启用
+    4. 安装并启动网关服务
+
+    ![飞书凭证配置](/images/OpenClaw-Auto/wizard-step2-credentials.png)
+  </Tab>
+</Tabs>
+
+等待进度条完成后自动进入下一步。
+
+### 2.3 — 连接
+
+<Tabs>
+  <Tab title="Telegram">
+    填写你的 **Telegram User ID**（从 @userinfobot 获取的数字 ID），点击 **Connect**。
+
+    脚本会将该 ID 写入配置的 `allowedUsers`，只有该用户可以与 Bot 对话。连接完成后自动跳转到主页。
+
+    ![Telegram 连接](/images/OpenClaw-Auto/wizard-step3-telegram-connect.png)
+  </Tab>
+  <Tab title="飞书">
+    部署已完成，现在回到飞书开放平台配置事件订阅。
+
+    <Warning>
+    在配置事件订阅前，请确保已完成以下步骤：
+    - 已完成飞书渠道配置（见第二步部署）
+    - 网关处于启动状态（可通过 `openclaw gateway status` 检查）
+    </Warning>
+
+    在 **事件订阅** 页面：
+
+    1. 选择 **使用长连接接收事件**（WebSocket 模式）
+    2. 添加事件：`im.message.receive_v1`（接收消息）
+
+    <Warning>
+    如果网关未启动或渠道未添加，长连接设置将保存失败。
+    </Warning>
+
+    ![配置事件订阅](/images/OpenClaw-Feishu/event-subscription.avif)
+
+    3. 在「版本管理与发布」页面创建版本，提交审核并发布
+
+    <Note>
+    飞书应用需要管理员审批发布后才能正常使用。企业自建应用通常自动通过审批。
+    </Note>
+
+    确认后点击 **Done**，脚本会重启网关以加载飞书 WebSocket 连接。跳转到主页后即可在飞书中给 Bot 发消息。
+
+    ![飞书连接](/images/OpenClaw-Auto/wizard-step3-feishu-connect.png)
+  </Tab>
+</Tabs>
+
+## 管理实例
+
+部署完成后，主页会显示所有实例：
+
+![实例管理主页](/images/OpenClaw-Auto/home-instance-running.png)
+
+| 状态 | 说明 |
+|------|------|
+| 🟢 绿点 | 网关运行中 |
+| 🔴 红点 | 网关已停止 |
+
+每个实例卡片会显示使用的模型和通道，可用操作：
+
+- **Start / Stop**：启动或停止网关服务
+- **Delete**：删除实例（停止网关并清理所有配置文件）
+
+点击 **+ New Instance** 可创建多个实例，每个实例独立运行在不同端口上。
