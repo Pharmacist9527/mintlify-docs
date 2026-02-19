@@ -1,0 +1,259 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hailuo 02 API",
+    "description": "T2V, I2V 및 FLF 모드를 지원하는 MiniMax Hailuo 02 모델로 비디오 생성 작업을 생성합니다",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "존재 페널티, -2.0에서 2.0 사이의 숫자\n\n**참고**:\n- 양수 값은 텍스트에 나타나는지 여부에 따라 새 토큰에 페널티를 부여하여 새로운 주제 논의 가능성을 높입니다"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "비디오 생성",
+      "description": "AI 비디오 생성 API"
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "비디오 생성"
+        ],
+        "summary": "Hailuo 02 API",
+        "description": "- Hailuo 02 (MiniMax-Hailuo-02)는 T2V (텍스트-투-비디오), I2V (이미지-투-비디오) 및 FLF (첫 프레임-마지막 프레임) 모드를 지원합니다\n- 자동 모드 감지: 이미지 0개=T2V, 이미지 1개=I2V, 이미지 2개=FLF\n- 풀 기능 모델, 512P 해상도 지원 (I2V 모드만)\n- `[Pan left]`, `[Push in]`, `[Static shot]` 등 15개 카메라 모션 명령 지원\n- 비동기 처리, 반환된 작업 ID를 사용하여 [상태 조회](/ko/api-manual/task-management/get-task-detail)\n- 생성된 비디오 링크는 24시간 동안 유효하며, 즉시 저장하세요",
+        "operationId": "createVideoGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "텍스트-투-비디오 (T2V)",
+                  "value": {
+                    "model": "MiniMax-Hailuo-02",
+                    "prompt": "A beautiful sunset over the ocean [Static shot]"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "비디오 생성 작업이 성공적으로 생성되었습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청 매개변수",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음, 유효하지 않거나 만료된 토큰",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량 부족, 충전 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "비디오 생성 모델 이름",
+            "default": "MiniMax-Hailuo-02",
+            "example": "MiniMax-Hailuo-02"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "비디오 내용 및 카메라 모션을 설명하는 프롬프트. T2V에서는 필수, I2V/FLF에서는 선택 사항. 최대 2000자\n\n**15개 카메라 명령:**\n- 트럭: `[Truck left]`, `[Truck right]`\n- 팬: `[Pan left]`, `[Pan right]`\n- 돌리: `[Push in]`, `[Pull out]`\n- 페데스탈: `[Pedestal up]`, `[Pedestal down]`\n- 틸트: `[Tilt up]`, `[Tilt down]`\n- 줌: `[Zoom in]`, `[Zoom out]`\n- 특수: `[Shake]`\n- 팔로우: `[Tracking shot]`\n- 고정: `[Static shot]`\n\n**사용법:**\n- 결합: 하나의 `[]`에 여러 명령을 넣으면 동시에 실행됩니다. 예: `[Pan left,Pedestal up]`, 최대 3개 권장\n- 순차: 명령은 텍스트 순서대로 실행됩니다. 예: `...천천히 [Push in], 그런 다음 빠르게 [Pull out]`",
+            "example": "A young girl gradually grows into an adult woman",
+            "maxLength": 2000
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "I2V 및 FLF 모드용 참조 이미지 URL\n\n**모드 감지:**\n- 이미지 0개 = T2V (텍스트-투-비디오)\n- 이미지 1개 = I2V (이미지-투-비디오)\n- 이미지 2개 = FLF (첫 프레임-마지막 프레임 전환)\n\n**요구사항:**\n- 이미지 크기: 최대 20MB\n- 형식: JPG, JPEG, PNG, WebP\n- 화면 비율: 2:5 ~ 5:2\n- 짧은 변 > 300px\n\n**FLF 참고:** 비디오 해상도는 첫 번째 프레임을 따르며, 마지막 프레임은 이에 맞게 잘립니다",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": [
+              "https://example.com/first.jpg",
+              "https://example.com/last.jpg"
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "description": "비디오 해상도\n\n**모드별 지원:**\n- I2V: 512p, 768p, 1080p\n- T2V: 768p, 1080p\n- FLF: 768p, 1080p\n\n**길이 & 해상도:**\n- 512p: 6초, 10초\n- 768p: 6초, 10초\n- 1080p: 6초만\n\n참고: 512p는 I2V 모드에서만 사용 가능",
+            "enum": [
+              "512p",
+              "768p",
+              "1080p"
+            ],
+            "default": "768p",
+            "example": "768p"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "비디오 길이 (초)\n- 6초 (기본값)\n- 10초 (1080p에서는 사용 불가)",
+            "enum": [
+              6,
+              10
+            ],
+            "default": 6,
+            "example": 6
+          },
+          "model_params": {
+            "type": "object",
+            "description": "모델별 매개변수",
+            "properties": {
+              "prompt_optimizer": {
+                "type": "boolean",
+                "description": "프롬프트 자동 최적화. 정밀 제어를 위해 false로 설정",
+                "default": true,
+                "example": true
+              },
+              "fast_pretreatment": {
+                "type": "boolean",
+                "description": "빠른 전처리를 활성화하여 최적화 시간 단축",
+                "default": false,
+                "example": true
+              }
+            }
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "작업 생성 타임스탬프",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "작업 ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "사용된 모델 이름",
+            "example": "MiniMax-Hailuo-02"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "작업 유형"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "작업 진행률 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "작업 상태",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 오류 코드"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명"
+              },
+              "type": {
+                "type": "string",
+                "description": "오류 유형"
+              },
+              "param": {
+                "type": "string",
+                "description": "관련 매개변수"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "제안된 해결 방법"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 API는 Bearer Token 인증이 필요합니다##\n\n**API Key 받기:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)를 방문하여 API Key를 받으세요\n\n**요청 헤더에 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}
