@@ -1,0 +1,349 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "sora-character API",
+    "description": "Generar perfiles de personajes a partir de videos, extrayendo nombres de personajes y fotos de perfil",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "sora-character API",
+        "description": "- El modelo Sora Character (sora-character) genera perfiles de personajes a partir de videos\n- Modo de procesamiento asíncrono, use el ID de tarea devuelto para [consultar estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de fotos de perfil generados son válidos durante 24 horas, guárdelos de inmediato",
+        "operationId": "createCharacterGeneration",
+        "tags": [
+          "Generación de personajes"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterGenerationRequest"
+              },
+              "examples": {
+                "character_generation": {
+                  "summary": "Generar personaje a partir de video",
+                  "value": {
+                    "model": "sora-character",
+                    "video_url": "https://example.com/video.mp4",
+                    "timestamps": "1,3"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tarea de generación de personaje creada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid timestamps parameter",
+                    "type": "invalid_request_error",
+                    "param": "timestamps"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado, token inválido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Cuota insuficiente",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Semilla aleatoria, rango `[1, 2147483647]`\n\n**Nota:**\n- Usar el mismo valor de semilla puede mantener resultados de generación consistentes\n- Dejar vacío para semilla aleatoria",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Semilla aleatoria, rango `[1, 2147483647]`\n\n**Nota:**\n- Usar el mismo valor de semilla puede mantener resultados de generación consistentes\n- Dejar vacío para semilla aleatoria",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Error interno del servidor",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CharacterGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "video_url"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo",
+            "enum": [
+              "sora-character"
+            ],
+            "default": "sora-character",
+            "example": "sora-character"
+          },
+          "video_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL del video\n\n**Nota:**\n- La URL del video debe ser directamente accesible por el servidor\n- Formatos admitidos: `.mp4`, `.mov`, `.webm`",
+            "example": "https://example.com/video.mp4"
+          },
+          "timestamps": {
+            "type": "string",
+            "description": "Marcas de tiempo que especifican de qué puntos temporales extraer personajes\n\n**Formato:**\n- Use coma para separar múltiples puntos temporales, por ejemplo, `1,3` significa el 1er y 3er segundo\n- La unidad de tiempo es segundos\n- **Límite de rango temporal:** El intervalo entre los puntos temporales seleccionados no debe exceder `2 seconds`\n- **Predeterminado:** `0,2` (de 0 a 2 segundos)",
+            "example": "1,3"
+          }
+        }
+      },
+      "CharacterGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Marca de tiempo de creación de la tarea",
+            "example": 1767917446
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tarea para consultar el estado de la tarea",
+            "example": "task-unified-1767917446-5lqy8zzv"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo utilizado",
+            "example": "sora-character"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Tipo de objeto de tarea"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Porcentaje de progreso de la tarea (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la tarea",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/TaskInfo"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "video"
+            ],
+            "description": "Tipo de salida de la tarea",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "result_data": {
+            "$ref": "#/components/schemas/ResultData",
+            "description": "Datos del resultado (solo se devuelve cuando el estado es completed)"
+          }
+        }
+      },
+      "TaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Si la tarea puede ser cancelada",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Créditos estimados",
+            "example": 150
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Duración del video (segundos)",
+            "example": 8
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Excluir herramientas",
+            "example": 0.1
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Grupo de usuario",
+            "example": "vip"
+          }
+        }
+      },
+      "ResultData": {
+        "type": "object",
+        "properties": {
+          "character_name": {
+            "type": "string",
+            "description": "Nombre del personaje generado (identificador único)",
+            "example": "chr_Axtjik3O#"
+          },
+          "profile_picture_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL de la foto de perfil del personaje, válida durante 24 horas",
+            "example": "https://example.com/profile.jpg"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "param": {
+                "type": "string"
+              },
+              "fallback_suggestion": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las APIs requieren autenticación Bearer Token##\n\n**Obtener API Key:**\n\nVisita la [Página de gestión de API Key](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Agregar al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Generación de personajes",
+      "description": "APIs de generación de personajes con IA"
+    }
+  ]
+}

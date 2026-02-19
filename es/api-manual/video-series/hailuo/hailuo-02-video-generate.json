@@ -1,0 +1,259 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hailuo 02 API",
+    "description": "Crea tareas de generación de video usando el modelo MiniMax Hailuo 02, soportando modos T2V, I2V y FLF",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Generación de video",
+      "description": "APIs de generación de video con IA"
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "Generación de video"
+        ],
+        "summary": "Hailuo 02 API",
+        "description": "- Hailuo 02 (MiniMax-Hailuo-02) soporta modos T2V (Texto a Video), I2V (Imagen a Video) y FLF (Primer-Último-Fotograma)\n- Detección automática de modo: 0 imágenes=T2V, 1 imagen=I2V, 2 imágenes=FLF\n- Modelo con funciones completas, soporta resolución 512P (solo modo I2V)\n- Soporta 15 comandos de movimiento de cámara como `[Pan left]`, `[Push in]`, `[Static shot]`\n- Procesamiento asíncrono, usa el ID de tarea devuelto para [consultar estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de video generados son válidos por 24 horas, guárdalos oportunamente",
+        "operationId": "createVideoGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "Texto a Video (T2V)",
+                  "value": {
+                    "model": "MiniMax-Hailuo-02",
+                    "prompt": "A beautiful sunset over the ocean [Static shot]"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tarea de generación de video creada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado, token inválido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente, se requiere recarga",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo de generación de video",
+            "default": "MiniMax-Hailuo-02",
+            "example": "MiniMax-Hailuo-02"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt que describe el contenido del video y el movimiento de cámara. Requerido para T2V, opcional para I2V/FLF. Máx 2000 caracteres\n\n**15 Comandos de Cámara:**\n- Truck: `[Truck left]`, `[Truck right]`\n- Pan: `[Pan left]`, `[Pan right]`\n- Dolly: `[Push in]`, `[Pull out]`\n- Pedestal: `[Pedestal up]`, `[Pedestal down]`\n- Tilt: `[Tilt up]`, `[Tilt down]`\n- Zoom: `[Zoom in]`, `[Zoom out]`\n- Especial: `[Shake]`\n- Seguimiento: `[Tracking shot]`\n- Estático: `[Static shot]`\n\n**Uso:**\n- Combinado: Múltiples comandos en un `[]` se ejecutan simultáneamente, ej. `[Pan left,Pedestal up]`, máx 3 recomendado\n- Secuencial: Los comandos se ejecutan en orden del texto, ej. `...lentamente [Push in], luego rápidamente [Pull out]`",
+            "example": "A young girl gradually grows into an adult woman",
+            "maxLength": 2000
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "URLs de imágenes de referencia para modos I2V y FLF\n\n**Detección de Modo:**\n- 0 imágenes = T2V (Texto a Video)\n- 1 imagen = I2V (Imagen a Video)\n- 2 imágenes = FLF (Transición Primer-Último-Fotograma)\n\n**Requisitos:**\n- Tamaño de imagen: máx 20MB\n- Formatos: JPG, JPEG, PNG, WebP\n- Relación de aspecto: 2:5 a 5:2\n- Borde corto > 300px\n\n**Nota FLF:** La resolución del video sigue al primer fotograma, el último fotograma se recortará para coincidir",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": [
+              "https://example.com/first.jpg",
+              "https://example.com/last.jpg"
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "description": "Resolución de video\n\n**Soportado por modo:**\n- I2V: 512p, 768p, 1080p\n- T2V: 768p, 1080p\n- FLF: 768p, 1080p\n\n**Duración y Resolución:**\n- 512p: 6s, 10s\n- 768p: 6s, 10s\n- 1080p: solo 6s\n\nNota: 512p solo disponible en modo I2V",
+            "enum": [
+              "512p",
+              "768p",
+              "1080p"
+            ],
+            "default": "768p",
+            "example": "768p"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Duración del video (segundos)\n- 6 segundos (predeterminado)\n- 10 segundos (no disponible para 1080p)",
+            "enum": [
+              6,
+              10
+            ],
+            "default": 6,
+            "example": 6
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Parámetros específicos del modelo",
+            "properties": {
+              "prompt_optimizer": {
+                "type": "boolean",
+                "description": "Optimización automática del prompt. Establece false para control preciso",
+                "default": true,
+                "example": true
+              },
+              "fast_pretreatment": {
+                "type": "boolean",
+                "description": "Habilitar preprocesamiento rápido para reducir el tiempo de optimización",
+                "default": false,
+                "example": true
+              }
+            }
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Marca de tiempo de creación de la tarea",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tarea",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo utilizado",
+            "example": "MiniMax-Hailuo-02"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Tipo de tarea"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Progreso de la tarea (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la tarea",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "Código de error HTTP"
+              },
+              "message": {
+                "type": "string",
+                "description": "Mensaje de descripción del error"
+              },
+              "type": {
+                "type": "string",
+                "description": "Tiempo estimado de finalización (segundos)"
+              },
+              "param": {
+                "type": "string",
+                "description": "Parámetro relacionado"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Solución sugerida"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las APIs requieren autenticación Bearer Token##\n\n**Obtener API Key:**\n\nVisita la [Página de gestión de API Key](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Agregar al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}
