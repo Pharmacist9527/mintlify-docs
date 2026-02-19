@@ -1,0 +1,250 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hailuo 2.3 API",
+    "description": "Créer des tâches de génération vidéo en utilisant le modèle MiniMax Hailuo 2.3, prenant en charge les modes T2V et I2V",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Génération vidéo",
+      "description": "APIs de génération de vidéos IA"
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "Génération vidéo"
+        ],
+        "summary": "Hailuo 2.3 API",
+        "description": "- Hailuo 2.3 (MiniMax-Hailuo-2.3) prend en charge les modes T2V (Text-to-Video) et I2V (Image-to-Video)\n- Détection automatique du mode : 0 image=T2V, 1 image=I2V\n- Suivi d'instructions SOTA, sortie de haute qualité\n- Prend en charge 15 commandes de mouvement de caméra comme `[Pan left]`, `[Push in]`, `[Static shot]`\n- Traitement asynchrone, utilisez l'ID de tâche retourné pour [interroger le statut](/fr/api-manual/task-management/get-task-detail)\n- Les liens vidéo générés sont valides pendant 24 heures, veuillez les enregistrer rapidement",
+        "operationId": "createVideoGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "Texte-vers-vidéo (T2V)",
+                  "value": {
+                    "model": "MiniMax-Hailuo-2.3",
+                    "prompt": "A beautiful sunset over the ocean [Static shot]"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tâche de génération vidéo créée avec succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autorisé, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Quota insuffisant, recharge requise",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle de génération vidéo",
+            "default": "MiniMax-Hailuo-2.3",
+            "example": "MiniMax-Hailuo-2.3"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Invite décrivant le contenu vidéo et le mouvement de caméra. Requis pour T2V, optionnel pour I2V. Max 2000 caractères\n\n**15 commandes de caméra :**\n- Truck: `[Truck left]`, `[Truck right]`\n- Pan: `[Pan left]`, `[Pan right]`\n- Dolly: `[Push in]`, `[Pull out]`\n- Pedestal: `[Pedestal up]`, `[Pedestal down]`\n- Tilt: `[Tilt up]`, `[Tilt down]`\n- Zoom: `[Zoom in]`, `[Zoom out]`\n- Special: `[Shake]`\n- Follow: `[Tracking shot]`\n- Static: `[Static shot]`\n\n**Utilisation :**\n- Combiné : Plusieurs commandes dans un `[]` s'exécutent simultanément, par ex. `[Pan left,Pedestal up]`, max 3 recommandé\n- Séquentiel : Les commandes s'exécutent dans l'ordre du texte, par ex. `...slowly [Push in], then quickly [Pull out]`",
+            "example": "A beautiful sunset over the ocean [Static shot]",
+            "maxLength": 2000
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "URLs des images de référence pour le mode I2V, optionnel\n\n**Détection du mode :**\n- 0 image = T2V (Text-to-Video)\n- 1 image = I2V (Image-to-Video)\n\n**Exigences :**\n- Taille de l'image : max 20 Mo\n- Formats : JPG, JPEG, PNG, WebP\n- Rapport d'aspect : 2:5 à 5:2\n- Bord court > 300px",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 1,
+            "example": [
+              "https://example.com/image.jpg"
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "description": "Résolution vidéo\n\n**Pris en charge par mode :**\n- I2V : 768p, 1080p\n- T2V : 768p, 1080p\n\n**Durée et résolution :**\n- 768p : 6s, 10s\n- 1080p : 6s uniquement",
+            "enum": [
+              "768p",
+              "1080p"
+            ],
+            "default": "768p",
+            "example": "768p"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Durée de la vidéo (secondes)\n- 6 secondes (par défaut)\n- 10 secondes (non disponible pour 1080p)",
+            "enum": [
+              6,
+              10
+            ],
+            "default": 6,
+            "example": 10
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Paramètres spécifiques au modèle",
+            "properties": {
+              "prompt_optimizer": {
+                "type": "boolean",
+                "description": "Optimisation automatique du prompt. Définir sur false pour un contrôle précis",
+                "default": true,
+                "example": true
+              },
+              "fast_pretreatment": {
+                "type": "boolean",
+                "description": "Activer le prétraitement rapide pour réduire le temps d'optimisation",
+                "default": false,
+                "example": false
+              }
+            }
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Horodatage de création de la tâche",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tâche",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle utilisé",
+            "example": "MiniMax-Hailuo-2.3"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Type de tâche"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Progression de la tâche (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Statut de la tâche",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "Code d'erreur HTTP"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              },
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API :**\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête :**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}
