@@ -1,0 +1,259 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hailuo 02 API",
+    "description": "MiniMax Hailuo 02モデルを使用した動画生成タスクの作成、T2V、I2V、FLFモードをサポート",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "動画生成",
+      "description": "AI動画生成API"
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "動画生成"
+        ],
+        "summary": "Hailuo 02 API",
+        "description": "- Hailuo 02（MiniMax-Hailuo-02）はT2V（テキストから動画）、I2V（画像から動画）、FLF（最初と最後のフレーム）モードをサポート\n- 自動モード検出: 画像0枚=T2V、画像1枚=I2V、画像2枚=FLF\n- フル機能モデル、512P解像度をサポート（I2Vモードのみ）\n- `[Pan left]`、`[Push in]`、`[Static shot]`など15種類のカメラモーションコマンドをサポート\n- 非同期処理、返されたタスクIDを使用して[ステータスを照会](/ja/api-manual/task-management/get-task-detail)\n- 生成された動画リンクは24時間有効です。速やかに保存してください",
+        "operationId": "createVideoGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "テキストから動画（T2V）",
+                  "value": {
+                    "model": "MiniMax-Hailuo-02",
+                    "prompt": "A beautiful sunset over the ocean [Static shot]"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "動画生成タスクが正常に作成されました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "無効なリクエストパラメータ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認可、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージが必要です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "動画生成モデル名",
+            "default": "MiniMax-Hailuo-02",
+            "example": "MiniMax-Hailuo-02"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "動画の内容とカメラモーションを説明するプロンプト。T2Vでは必須、I2V/FLFではオプション。最大2000文字\n\n**15種類のカメラコマンド:**\n- トラック: `[Truck left]`, `[Truck right]`\n- パン: `[Pan left]`, `[Pan right]`\n- ドリー: `[Push in]`, `[Pull out]`\n- ペデスタル: `[Pedestal up]`, `[Pedestal down]`\n- ティルト: `[Tilt up]`, `[Tilt down]`\n- ズーム: `[Zoom in]`, `[Zoom out]`\n- 特殊: `[Shake]`\n- フォロー: `[Tracking shot]`\n- 静止: `[Static shot]`\n\n**使用方法:**\n- 組み合わせ: 1つの`[]`内に複数のコマンドを同時実行、例: `[Pan left,Pedestal up]`、最大3つ推奨\n- 順次: コマンドはテキスト順に実行、例: `...ゆっくり[Push in]、その後素早く[Pull out]`",
+            "example": "A young girl gradually grows into an adult woman",
+            "maxLength": 2000
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "I2VおよびFLFモード用の参照画像URL\n\n**モード検出:**\n- 画像0枚 = T2V（テキストから動画）\n- 画像1枚 = I2V（画像から動画）\n- 画像2枚 = FLF（最初と最後のフレーム遷移）\n\n**要件:**\n- 画像サイズ: 最大20MB\n- 形式: JPG, JPEG, PNG, WebP\n- アスペクト比: 2:5から5:2\n- 短辺 > 300px\n\n**FLF注意:** 動画の解像度は最初のフレームに従い、最後のフレームはそれに合わせてクロップされます",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": [
+              "https://example.com/first.jpg",
+              "https://example.com/last.jpg"
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "description": "動画解像度\n\n**モード別サポート:**\n- I2V: 512p, 768p, 1080p\n- T2V: 768p, 1080p\n- FLF: 768p, 1080p\n\n**長さと解像度:**\n- 512p: 6秒, 10秒\n- 768p: 6秒, 10秒\n- 1080p: 6秒のみ\n\n注意: 512pはI2Vモードでのみ利用可能",
+            "enum": [
+              "512p",
+              "768p",
+              "1080p"
+            ],
+            "default": "768p",
+            "example": "768p"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "動画の長さ（秒）\n- 6秒（デフォルト）\n- 10秒（1080pでは利用不可）",
+            "enum": [
+              6,
+              10
+            ],
+            "default": 6,
+            "example": 6
+          },
+          "model_params": {
+            "type": "object",
+            "description": "モデル固有のパラメータ",
+            "properties": {
+              "prompt_optimizer": {
+                "type": "boolean",
+                "description": "プロンプトの自動最適化。精密な制御にはfalseに設定",
+                "default": true,
+                "example": true
+              },
+              "fast_pretreatment": {
+                "type": "boolean",
+                "description": "高速前処理を有効にして最適化時間を短縮",
+                "default": false,
+                "example": true
+              }
+            }
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "タスク ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "使用されたモデル名",
+            "example": "MiniMax-Hailuo-02"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "タスクタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗（0-100）",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクステータス",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTPエラーコード"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              },
+              "param": {
+                "type": "string",
+                "description": "関連パラメータ"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "推奨される解決策"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIにBearer Token認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}

@@ -1,0 +1,233 @@
+---
+title: "OpenClaw 自動インストール"
+description: "OpenClaw Manager を使用して OpenClaw インスタンスをインストール・管理する"
+---
+
+## 概要
+
+OpenClaw Manager は、OpenClaw インスタンスの迅速なインストール、設定、管理を支援するビジュアル管理ツールです。設定ファイルの手動編集は不要で、わずか3ステップでデプロイできます。
+
+2つのメッセージチャネルに対応しています：
+
+| | Telegram | Feishu (Lark) |
+|---|---|---|
+| 接続方式 | Bot API（ロングポーリング） | WebSocket 持続接続 |
+| 必要な認証情報 | Bot Token + ユーザー ID | App ID + App Secret |
+| プラットフォーム設定 | Bot の作成のみ | アプリの作成 + WebSocket サブスクリプションの有効化 |
+| ユーザー認証 | ユーザー ID で紐付け — 認証されたユーザーのみチャット可能 | Bot にメッセージを送信できるすべてのユーザーがチャット可能 |
+| 適した用途 | 個人利用、海外ユーザー | チームコラボレーション、中国国内のユーザー |
+
+## 前提条件
+
+### 共通
+
+- **Node.js 22+**：スクリプトは npm 経由で OpenClaw をインストールするため、Node.js が必要です
+- **EvoLink API Key**：[evolink.ai](https://evolink.ai/dashboard) でサインアップし、API Key を取得してください
+
+### チャネル認証情報
+
+<Accordion title="Telegram / Feishu 認証情報の設定ガイド">
+<Tabs>
+  <Tab title="Telegram">
+    1. Telegram で [@BotFather](https://t.me/BotFather) を検索し、**START BOT** をクリック
+
+    ![Start BotFather](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_023944_999.png)
+
+    2. `/newbot` を送信し、プロンプトに従って名前を設定し、**Bot Token**（形式：`123456789:ABCdef...`）を取得
+
+    ![Create Bot](/images/OpenClaw-Telegram/85be2352-3788-4d21-815e-6a46b2754ca7.png)
+
+    3. **Telegram ユーザー ID** を取得：[@userinfobot](https://t.me/userinfobot) に `/start` を送信し、数値の ID を控えてください
+  </Tab>
+  <Tab title="Feishu">
+    1. [Feishu Open Platform](https://open.feishu.cn/app) にアクセスし、カスタムエンタープライズアプリを作成
+
+    ![Create app](/images/OpenClaw-Feishu/create-app.avif)
+
+    2. 「認証情報と基本情報」ページから **App ID** と **App Secret** を取得
+
+    ![Get credentials](/images/OpenClaw-Feishu/get-credentials.avif)
+
+    3. 「権限とスコープ」で **一括インポート** をクリックし、以下の JSON を貼り付けて必要な権限をすべてインポート：
+
+    ```json
+    {
+      "scopes": {
+        "tenant": [
+          "aily:file:read",
+          "aily:file:write",
+          "application:application.app_message_stats.overview:readonly",
+          "application:application:self_manage",
+          "application:bot.menu:write",
+          "cardkit:card:write",
+          "contact:contact.base:readonly",
+          "contact:user.employee_id:readonly",
+          "corehr:file:download",
+          "docs:document.content:read",
+          "event:ip_list",
+          "im:chat",
+          "im:chat.access_event.bot_p2p_chat:read",
+          "im:chat.members:bot_access",
+          "im:message",
+          "im:message.group_at_msg:readonly",
+          "im:message.group_msg",
+          "im:message.p2p_msg:readonly",
+          "im:message:readonly",
+          "im:message:send_as_bot",
+          "im:resource",
+          "sheets:spreadsheet",
+          "wiki:wiki:readonly"
+        ],
+        "user": [
+          "aily:file:read",
+          "aily:file:write",
+          "im:chat.access_event.bot_p2p_chat:read"
+        ]
+      }
+    }
+    ```
+
+    ![Configure permissions](/images/OpenClaw-Feishu/configure-permissions.avif)
+
+    4. 「アプリ機能 > Bot」で Bot 機能を有効にし、Bot 名を設定
+
+    ![Enable bot](/images/OpenClaw-Feishu/enable-bot.png)
+
+    <Warning>
+    Feishu アプリの基本設定はこれで完了です。残りのステップ（イベントサブスクリプションとバージョンリリース）は、ゲートウェイがデプロイされて稼働した後に行う必要があります。そうしないとロングコネクション設定の保存に失敗します。まず以下のステップ 1 とステップ 2 を完了してから、Feishu Open Platform に戻って続行してください。
+    </Warning>
+  </Tab>
+</Tabs>
+</Accordion>
+
+## ステップ 1：ダウンロードと実行
+
+お使いのプラットフォーム用の実行ファイルを [Releases](https://github.com/open-claw/openclaw-manager/releases) からダウンロード：
+
+![GitHub Releases page](/images/OpenClaw-Auto/github-releases.png)
+
+![Download executable](/images/OpenClaw-Auto/github-repo.png)
+
+| プラットフォーム | ファイル |
+|----------|------|
+| Windows | `openclaw-manager-win-x64.exe` |
+| macOS (Intel) | `openclaw-manager-macos-x64` |
+| macOS (Apple Silicon) | `openclaw-manager-macos-arm64` |
+| Linux | `openclaw-manager-linux-x64` |
+
+<Warning>
+[Node.js 22+](https://nodejs.org/ja/download) がインストールされていることを確認してください。
+</Warning>
+
+Windows ユーザーは右クリックして管理者として実行してください。macOS / Linux ユーザーはターミナルで `sudo` を使用して実行：
+
+```bash
+chmod +x ./openclaw-manager && sudo ./openclaw-manager
+```
+
+スクリプトは OpenClaw の有無を確認し、必要に応じてインストールした後、ローカル Web 管理画面を起動してブラウザを開きます。
+
+![Create new instance](/images/OpenClaw-Auto/home-new-instance.png)
+
+## ステップ 2：インスタンスの作成
+
+### 2.1 — 基本情報
+
+| フィールド | 説明 |
+|-------|-------------|
+| インスタンス名 | インスタンスの名前（例：`mybot`）、このマシン上で一意である必要があります |
+| モデル | モデルを選択：Haiku 4.5 / Sonnet 4.5 / Opus 4.5 / Opus 4.6 |
+| チャネル | チャネルを選択：Telegram または Feishu |
+
+![Basic info](/images/OpenClaw-Auto/wizard-step1-basic-info.png)
+
+### 2.2 — 認証情報とデプロイ
+
+すべてのチャネルで **EvoLink API Key** が必要です。
+
+<Tabs>
+  <Tab title="Telegram">
+    @BotFather から取得した **Bot Token** を入力し、**Deploy** をクリック。
+
+    スクリプトが自動的に以下を実行します：
+    1. OpenClaw 設定ファイルの作成
+    2. モデルと API Key 設定の書き込み
+    3. Telegram プラグインの設定と有効化
+    4. ゲートウェイサービスのインストールと起動
+
+    ![Telegram credentials](/images/OpenClaw-Auto/wizard-step2-telegram-credentials.png)
+  </Tab>
+  <Tab title="Feishu">
+    Feishu Open Platform から取得した **App ID** と **App Secret** を入力し、**Deploy** をクリック。
+
+    スクリプトが自動的に以下を実行します：
+    1. OpenClaw 設定ファイルの作成
+    2. モデルと API Key 設定の書き込み
+    3. Feishu プラグインの設定（App ID / App Secret の書き込み）と有効化
+    4. ゲートウェイサービスのインストールと起動
+
+    ![Feishu credentials](/images/OpenClaw-Auto/wizard-step2-credentials.png)
+  </Tab>
+</Tabs>
+
+プログレスバーが完了するまで待つと、自動的に次のステップに進みます。
+
+### 2.3 — 接続
+
+<Tabs>
+  <Tab title="Telegram">
+    **Telegram ユーザー ID**（@userinfobot から取得した数値の ID）を入力し、**Connect** をクリック。
+
+    スクリプトはこの ID を `allowedUsers` 設定に書き込みます — このユーザーのみが Bot とチャットできるようになります。接続が完了すると、ホームページにリダイレクトされます。
+
+    ![Telegram connect](/images/OpenClaw-Auto/wizard-step3-telegram-connect.png)
+  </Tab>
+  <Tab title="Feishu">
+    デプロイが完了しました。次に Feishu Open Platform に戻ってイベントサブスクリプションを設定します。
+
+    <Warning>
+    イベントサブスクリプションを設定する前に、以下が完了していることを確認してください：
+    - Feishu チャネルの設定が完了していること（ステップ 2 のデプロイを参照）
+    - ゲートウェイが稼働中であること（`openclaw gateway status` で確認）
+    </Warning>
+
+    **イベントサブスクリプション** ページで：
+
+    1. **ロングコネクションを使用してイベントを受信** を選択（WebSocket モード）
+    2. イベントを追加：`im.message.receive_v1`（メッセージ受信）
+
+    <Warning>
+    ゲートウェイが起動していない、またはチャネルが追加されていない場合、ロングコネクション設定の保存に失敗します。
+    </Warning>
+
+    ![Event subscription](/images/OpenClaw-Feishu/event-subscription.avif)
+
+    3. 「バージョン管理とリリース」でバージョンを作成し、審査に提出
+
+    <Note>
+    Feishu アプリは使用前に管理者の承認が必要です。エンタープライズカスタムアプリは通常自動的に承認されます。
+    </Note>
+
+    **Done** をクリック — スクリプトがゲートウェイを再起動して Feishu WebSocket 接続を確立します。ホームページにリダイレクトされた後、Feishu で Bot にメッセージを送信できます。
+
+    ![Feishu connect](/images/OpenClaw-Auto/wizard-step3-feishu-connect.png)
+  </Tab>
+</Tabs>
+
+## インスタンス管理
+
+デプロイ後、ホームページにすべてのインスタンスが表示されます：
+
+![Instance management](/images/OpenClaw-Auto/home-instance-running.png)
+
+| ステータス | 説明 |
+|--------|-------------|
+| 🟢 緑 | ゲートウェイ稼働中 |
+| 🔴 赤 | ゲートウェイ停止中 |
+
+各インスタンスカードには使用中のモデルとチャネルが表示されます。利用可能な操作：
+
+- **Start / Stop**：ゲートウェイサービスの起動または停止
+- **Delete**：インスタンスの削除（ゲートウェイを停止し、すべての設定ファイルをクリーンアップ）
+
+**+ New Instance** をクリックして複数のインスタンスを作成できます。各インスタンスは異なるポートで独立して動作します。

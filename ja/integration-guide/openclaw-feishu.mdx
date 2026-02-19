@@ -1,0 +1,395 @@
+---
+title: "OpenClaw + Feishu"
+description: "Feishu（Lark）を通じて OpenClaw を EvoLink.AI に接続する"
+---
+
+## 概要
+
+OpenClaw は、チャットアプリケーションと AI エージェントの橋渡しをするオープンソースの AI エージェント Gateway です。集中型 Gateway プロセスを通じて、Telegram、WhatsApp、Discord、Feishu（Lark）などのチャットプラットフォームを AI コーディングエージェントに接続し、チャットウィンドウ内で直接 AI プログラミングのやり取りを可能にします。
+
+OpenClaw で **EvoLink API** をカスタムモデルプロバイダーとして設定し、**Feishu Bot** を接続することで、EvoLink の Claude モデル（**Claude 4.6 Opus**、**Claude 4.5 Sonnet**、**Claude 4.5 Haiku** など）を使用して、Feishu 上で直接 AI アシスタントとのコーディング会話ができます。
+
+Feishu チャネルは **WebSocket ロングコネクション** モードでメッセージを受信するため、パブリック URL は不要です。
+
+**本ガイドの内容：**
+- OpenClaw Gateway のインストールと設定
+- ボット機能を持つ Feishu エンタープライズアプリケーションの作成
+- EvoLink API をカスタムモデルプロバイダーとして設定
+- 接続の確認と利用開始
+
+## 前提条件
+
+設定を始める前に、以下を準備してください：
+
+### 1. Node.js のインストール
+
+OpenClaw は npm 経由でインストールします。まず [Node.js](https://nodejs.org/ja/download) をインストールしてください。
+
+### 2. EvoLink API キーの取得
+
+- [EvoLink Dashboard](https://evolink.ai/dashboard) にログイン
+- ダッシュボードで API Keys を見つけ、「新しいキーを作成」ボタンをクリックし、生成されたキーをコピー
+- API キーは通常 `sk-` で始まります
+
+### 3. Feishu アカウントの準備
+
+Feishu Open Platform でアプリケーションを作成するには、Feishu エンタープライズアカウントが必要です。
+
+## ステップ 1：OpenClaw のインストール
+
+ターミナルで以下のコマンドを実行します：
+
+```bash
+npm install -g openclaw@latest
+```
+
+Feishu プラグインをインストールします：
+
+```bash
+openclaw plugins install @openclaw/feishu
+```
+
+## ステップ 2：オンボーディング
+
+オンボーディングコマンドを実行します。OpenClaw が初期設定をガイドし、バックグラウンドデーモンサービスをインストールします：
+
+```bash
+openclaw onboard --install-daemon
+```
+
+### 1. インストールの確認
+
+システムがリスク免責事項を表示します。確認して続行してください：
+
+![Confirm Installation](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011629_241.png)
+
+### 2. インストールモードの選択
+
+インストールモードの選択を求められたら、**Quickstart** を選択します：
+
+![Select Quickstart](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011705_241.png)
+
+### 3. プロバイダーの選択
+
+モデルプロバイダーの選択を求められたら、**Skip** を選択します。後ほど EvoLink をカスタムプロバイダーとして手動で設定します：
+
+![Skip Provider Selection](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011742_033.png)
+
+### 4. モデルの選択
+
+有効にするモデルの選択を求められたら、**All** を選択します：
+
+![Select All Models](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011808_857.png)
+
+### 5. デフォルトモデルの選択
+
+デフォルトモデルの選択を求められたら、**Keep current** を選択します：
+
+![Keep Current Model](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011825_375.png)
+
+## ステップ 3：Feishu アプリケーションの作成
+
+### 1. Feishu Open Platform にログイン
+
+[Feishu Open Platform](https://open.feishu.cn/app) にアクセスし、Feishu アカウントでログインします。
+
+<Note>
+Lark（国際版）の場合は、[https://open.larksuite.com/app](https://open.larksuite.com/app) を使用し、設定で `domain: "lark"` を指定してください。
+</Note>
+
+### 2. アプリケーションの作成
+
+**企業自作アプリケーションを作成** をクリックし、アプリケーション名と説明を入力して、アイコンを選択します。
+
+![Create Application](/images/OpenClaw-Feishu/create-app.avif)
+
+### 3. 認証情報の取得
+
+**認証情報と基本情報** ページで、以下をコピーします：
+
+- **App ID**（形式：`cli_xxx`）
+- **App Secret**
+
+<Warning>
+App Secret は安全に保管してください。他人と共有しないでください。
+</Warning>
+
+![Get Credentials](/images/OpenClaw-Feishu/get-credentials.avif)
+
+### 4. 権限の設定
+
+**権限管理** ページで、**一括インポート** をクリックし、以下の JSON を貼り付けて必要な権限をすべてインポートします：
+
+```json
+{
+  "scopes": {
+    "tenant": [
+      "aily:file:read",
+      "aily:file:write",
+      "application:application.app_message_stats.overview:readonly",
+      "application:application:self_manage",
+      "application:bot.menu:write",
+      "cardkit:card:write",
+      "contact:contact.base:readonly",
+      "contact:user.employee_id:readonly",
+      "corehr:file:download",
+      "docs:document.content:read",
+      "event:ip_list",
+      "im:chat",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "im:chat.members:bot_access",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.group_msg",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource",
+      "sheets:spreadsheet",
+      "wiki:wiki:readonly"
+    ],
+    "user": [
+      "aily:file:read",
+      "aily:file:write",
+      "im:chat.access_event.bot_p2p_chat:read"
+    ]
+  }
+}
+```
+
+![Configure Permissions](/images/OpenClaw-Feishu/configure-permissions.avif)
+
+### 5. ボット機能の有効化
+
+左サイドバーで **アプリ機能** をクリックし、**ボット** カードを見つけて、**メニューステータス** を有効に切り替えます。有効にしたら、ボット名と説明を入力します。ユーザーが Feishu でボットを検索したりチャットしたりする際に、これらの情報が表示されます。
+
+![Enable Bot Capability](/images/OpenClaw-Feishu/enable-bot.png)
+
+### 6. イベントサブスクリプションの設定
+
+<Warning>
+イベントサブスクリプションを設定する前に、以下を確認してください：
+- Feishu チャネルの設定が完了していること（ステップ 4 を参照）
+- Gateway が実行中であること（`openclaw gateway status` で確認）
+</Warning>
+
+**イベントサブスクリプション** ページで：
+
+1. **ロングコネクションでイベントを受信** を選択（WebSocket モード）
+2. イベントを追加：`im.message.receive_v1`（メッセージ受信）
+
+<Warning>
+Gateway が実行されていないか、チャネルが追加されていない場合、ロングコネクションの設定は保存に失敗します。
+</Warning>
+
+![Configure Event Subscriptions](/images/OpenClaw-Feishu/event-subscription.avif)
+
+### 7. アプリケーションの公開
+
+**バージョン管理とリリース** に移動し、バージョンを作成して、審査に提出し公開します。エンタープライズ自作アプリケーションは通常、自動的に承認されます。
+
+## ステップ 4：OpenClaw の設定
+
+OpenClaw の設定は `~/.openclaw/openclaw.json` に集約されています。主な設定領域は 3 つあります：
+
+- `plugins.entries.*` — 読み込むプラグインを制御
+- `channels.*` — チャネル接続とアカウント認証情報を制御
+- `models.providers.*` — モデルプロバイダーを制御
+
+### 1. Feishu チャネルの追加
+
+<Tabs>
+  <Tab title="手動設定">
+    `~/.openclaw/openclaw.json` を開きます：
+
+    Feishu プラグインを有効にします（`plugins.entries`）：
+
+    ```json
+    "plugins": {
+      "entries": {
+        "feishu": {
+          "enabled": true
+        }
+      }
+    }
+    ```
+
+    Feishu チャネルの認証情報を設定します（`channels.feishu`）：
+
+    ```json
+    "channels": {
+      "feishu": {
+        "enabled": true,
+        "dmPolicy": "pairing",
+        "accounts": {
+          "main": {
+            "appId": "cli_xxx",
+            "appSecret": "your-app-secret",
+            "botName": "My AI Assistant"
+          }
+        }
+      }
+    }
+    ```
+
+    <Warning>
+    Feishu の認証情報は `channels.feishu.accounts` の下に配置する必要があります。`plugins.entries.feishu` の下ではありません。間違った場所に配置すると `Unrecognized key` エラーが発生します。
+    </Warning>
+
+    環境変数で設定することもできます：
+
+    ```bash
+    export FEISHU_APP_ID="cli_xxx"
+    export FEISHU_APP_SECRET="xxx"
+    ```
+  </Tab>
+  <Tab title="CLI コマンド">
+    以下のコマンドを実行し、Feishu を選択して、プロンプトに従って App ID と App Secret を入力します：
+
+    ```bash
+    openclaw channels add
+    ```
+
+    <Warning>
+    新しいバージョンの OpenClaw では、このコマンドに設定の競合が発生する場合があります。手動設定を推奨します。
+    </Warning>
+  </Tab>
+</Tabs>
+
+### 2. EvoLink API の設定
+
+同じ `openclaw.json` で、`models` フィールドを見つけて、EvoLink をカスタムモデルプロバイダーとして追加します：
+
+```json
+"models": {
+  "providers": {
+    "anthropic": {
+      "api": "anthropic-messages",
+      "baseUrl": "https://code.evolink.ai",
+      "apiKey": "your-evolink-api-key",
+      "models": [
+        {
+          "id": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
+```
+
+<Warning>
+`"your-evolink-api-key"` を [EvoLink Dashboard](https://evolink.ai/dashboard) から取得した実際の API キーに置き換えてください。
+</Warning>
+
+### 3. デフォルトモデルの設定
+
+`agents` フィールドで、デフォルトモデルを設定します：
+
+```json
+"model": {
+  "primary": "anthropic/claude-opus-4-6"
+}
+```
+
+### 4. Gateway の再起動
+
+設定を反映するために OpenClaw Gateway を再起動します：
+
+```bash
+openclaw gateway restart
+```
+
+<Warning>
+手動で別のプロセスを起動するのではなく、必ず `openclaw gateway restart` を使用してください。そうしないとポート競合エラーが発生します。
+</Warning>
+
+設定が正しく読み込まれたことを確認します：
+
+```bash
+openclaw gateway status
+```
+
+## ステップ 5：接続の確認
+
+### 1. Feishu でボットを検索
+
+Feishu を開き、作成したボット名を検索して、会話を開始します。
+
+### 2. ペアリングコードの取得
+
+ボットに任意のメッセージを送信します。ボットがペアリングコードを返します。
+
+### 3. ペアリングの完了
+
+新しいターミナルウィンドウを開き、以下を実行します：
+
+```bash
+openclaw pairing approve feishu <pairing-code>
+```
+
+<Warning>
+`<pairing-code>` をボットが返した実際のコードに置き換えてください。山括弧 `<>` は削除してください。
+</Warning>
+
+### 4. 接続のテスト
+
+ペアリングが完了したら、Feishu でボットにメッセージを送信します：
+
+```
+こんにちは、自己紹介をしてください
+```
+
+AI の応答を受信できれば、統合は完了です。
+
+## アクセス制御
+
+### ダイレクトメッセージのアクセス
+
+デフォルトは `dmPolicy: "pairing"` です。未知のユーザーにはペアリングコードが送信され、管理者の承認が必要です：
+
+```bash
+openclaw pairing list feishu        # 承認待ちの一覧を表示
+openclaw pairing approve feishu <CODE>  # 承認
+```
+
+`channels.feishu.allowFrom` でユーザー Open ID の許可リストを設定することもできます。
+
+### グループアクセス
+
+グループポリシーは `channels.feishu.groupPolicy` で制御します：
+
+- `"open"` — グループ内の全ユーザーを許可（デフォルト）
+- `"allowlist"` — `groupAllowFrom` のユーザーのみ許可
+- `"disabled"` — グループメッセージを無効化
+
+デフォルトでは、ボットは @メンション された場合のみ応答します（`requireMention: true`）。
+
+## よく使うコマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `openclaw gateway status` | Gateway のステータスを確認 |
+| `openclaw gateway restart` | Gateway サービスを再起動 |
+| `openclaw logs --follow` | リアルタイムログを表示 |
+| `openclaw pairing list feishu` | 承認待ちのペアリングリクエストを表示 |
+| `openclaw plugins list` | インストール済みプラグインを表示 |
+
+## トラブルシューティング
+
+| 問題 | 解決方法 |
+|------|----------|
+| グループでボットが応答しない | ボットを @メンション したか確認してください。`groupPolicy` が `"disabled"` になっていないか確認してください |
+| ボットがメッセージを受信しない | アプリが公開・承認されているか確認してください。イベントサブスクリプション `im.message.receive_v1` が設定されているか確認してください。WebSocket ロングコネクションモードが選択されているか確認してください |
+| App Secret が漏洩した | Feishu Open Platform で App Secret をリセットし、設定を更新して Gateway を再起動してください |
+| メッセージの送信に失敗する | `im:message:send_as_bot` 権限が付与されているか確認してください。`openclaw logs --follow` でログを確認してください |
