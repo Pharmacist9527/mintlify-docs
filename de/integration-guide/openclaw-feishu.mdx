@@ -1,0 +1,395 @@
+---
+title: "OpenClaw + Feishu"
+description: "OpenClaw über Feishu (Lark) mit EvoLink.AI verbinden"
+---
+
+## Überblick
+
+OpenClaw ist ein Open-Source-AI-Agent-Gateway, das als Brücke zwischen Chat-Anwendungen und AI-Agenten fungiert. Über einen zentralisierten Gateway-Prozess verbindet es Chat-Plattformen wie Telegram, WhatsApp, Discord und Feishu (Lark) mit AI-Coding-Agenten und ermöglicht direkte AI-Programmierinteraktionen innerhalb von Chat-Fenstern.
+
+Durch die Konfiguration der **EvoLink API** als benutzerdefiniertem Modellanbieter in OpenClaw und die Anbindung eines **Feishu Bot** können Sie die Claude-Modelle von EvoLink (wie **Claude 4.6 Opus**, **Claude 4.5 Sonnet**, **Claude 4.5 Haiku**) für KI-gestützte Coding-Gespräche direkt in Feishu nutzen.
+
+Der Feishu-Kanal verwendet den **WebSocket-Langverbindungsmodus** zum Empfangen von Nachrichten — keine öffentliche URL erforderlich.
+
+**Diese Anleitung behandelt:**
+- Installation und Konfiguration des OpenClaw Gateway
+- Erstellung einer Feishu-Unternehmensanwendung mit Bot-Funktionalität
+- Einrichtung der EvoLink API als benutzerdefiniertem Modellanbieter
+- Überprüfung der Verbindung und erste Schritte
+
+## Voraussetzungen
+
+Stellen Sie vor der Konfiguration sicher, dass Sie Folgendes haben:
+
+### 1. Node.js installieren
+
+OpenClaw wird über npm installiert. Sie müssen zuerst [Node.js](https://nodejs.org/de/download) installieren.
+
+### 2. EvoLink API-Schlüssel erhalten
+
+- Melden Sie sich im [EvoLink Dashboard](https://evolink.ai/dashboard) an
+- Suchen Sie im Dashboard nach API Keys, klicken Sie auf die Schaltfläche 'Neuen Schlüssel erstellen' und kopieren Sie den generierten Schlüssel
+- Der API-Schlüssel beginnt normalerweise mit `sk-`
+
+### 3. Feishu-Konto vorbereiten
+
+Sie benötigen ein Feishu-Unternehmenskonto, um Anwendungen auf der Feishu Open Platform zu erstellen.
+
+## Schritt 1: OpenClaw installieren
+
+Führen Sie den folgenden Befehl in Ihrem Terminal aus:
+
+```bash
+npm install -g openclaw@latest
+```
+
+Installieren Sie das Feishu-Plugin:
+
+```bash
+openclaw plugins install @openclaw/feishu
+```
+
+## Schritt 2: Ersteinrichtung
+
+Führen Sie den Onboarding-Befehl aus. OpenClaw führt Sie durch die Ersteinrichtung und installiert den Hintergrunddienst:
+
+```bash
+openclaw onboard --install-daemon
+```
+
+### 1. Installation bestätigen
+
+Das System zeigt einen Risikohinweis an. Bestätigen Sie, um fortzufahren:
+
+![Confirm Installation](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011629_241.png)
+
+### 2. Installationsmodus auswählen
+
+Wenn Sie aufgefordert werden, einen Installationsmodus zu wählen, wählen Sie **Quickstart**:
+
+![Select Quickstart](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011705_241.png)
+
+### 3. Anbieter auswählen
+
+Wenn Sie aufgefordert werden, einen Modellanbieter zu wählen, wählen Sie **Skip**. Wir werden EvoLink später manuell als benutzerdefinierten Anbieter konfigurieren:
+
+![Skip Provider Selection](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011742_033.png)
+
+### 4. Modelle auswählen
+
+Wenn Sie aufgefordert werden, die zu aktivierenden Modelle auszuwählen, wählen Sie **All**:
+
+![Select All Models](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011808_857.png)
+
+### 5. Standardmodell auswählen
+
+Wenn Sie aufgefordert werden, ein Standardmodell zu wählen, wählen Sie **Keep current**:
+
+![Keep Current Model](/images/OpenClaw-Telegram/ScreenShot_2026-02-08_011825_375.png)
+
+## Schritt 3: Feishu-Anwendung erstellen
+
+### 1. Bei der Feishu Open Platform anmelden
+
+Besuchen Sie die [Feishu Open Platform](https://open.feishu.cn/app) und melden Sie sich mit Ihrem Feishu-Konto an.
+
+<Note>
+Für Lark (internationale Version) verwenden Sie [https://open.larksuite.com/app](https://open.larksuite.com/app) und setzen Sie `domain: "lark"` in der Konfiguration.
+</Note>
+
+### 2. Anwendung erstellen
+
+Klicken Sie auf **Unternehmenseigene Anwendung erstellen**, geben Sie den Anwendungsnamen und die Beschreibung ein und wählen Sie ein Symbol.
+
+![Create Application](/images/OpenClaw-Feishu/create-app.avif)
+
+### 3. Zugangsdaten abrufen
+
+Auf der Seite **Zugangsdaten & Basisinformationen** kopieren Sie:
+
+- **App ID** (Format: `cli_xxx`)
+- **App Secret**
+
+<Warning>
+Bewahren Sie Ihr App Secret sicher auf. Teilen Sie es nicht mit anderen.
+</Warning>
+
+![Get Credentials](/images/OpenClaw-Feishu/get-credentials.avif)
+
+### 4. Berechtigungen konfigurieren
+
+Klicken Sie auf der Seite **Berechtigungsverwaltung** auf **Stapelimport** und fügen Sie das folgende JSON ein, um alle erforderlichen Berechtigungen zu importieren:
+
+```json
+{
+  "scopes": {
+    "tenant": [
+      "aily:file:read",
+      "aily:file:write",
+      "application:application.app_message_stats.overview:readonly",
+      "application:application:self_manage",
+      "application:bot.menu:write",
+      "cardkit:card:write",
+      "contact:contact.base:readonly",
+      "contact:user.employee_id:readonly",
+      "corehr:file:download",
+      "docs:document.content:read",
+      "event:ip_list",
+      "im:chat",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "im:chat.members:bot_access",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.group_msg",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource",
+      "sheets:spreadsheet",
+      "wiki:wiki:readonly"
+    ],
+    "user": [
+      "aily:file:read",
+      "aily:file:write",
+      "im:chat.access_event.bot_p2p_chat:read"
+    ]
+  }
+}
+```
+
+![Configure Permissions](/images/OpenClaw-Feishu/configure-permissions.avif)
+
+### 5. Bot-Funktionalität aktivieren
+
+Klicken Sie in der linken Seitenleiste auf **App-Funktionen**, suchen Sie die **Bot**-Karte und schalten Sie den **Menüstatus** auf aktiviert. Nach der Aktivierung geben Sie den Bot-Namen und die Beschreibung ein — Benutzer sehen diese beim Suchen oder Chatten mit dem Bot in Feishu.
+
+![Enable Bot Capability](/images/OpenClaw-Feishu/enable-bot.png)
+
+### 6. Ereignisabonnements konfigurieren
+
+<Warning>
+Stellen Sie vor der Konfiguration der Ereignisabonnements sicher, dass Sie:
+- Die Feishu-Kanalkonfiguration abgeschlossen haben (siehe Schritt 4)
+- Das Gateway läuft (prüfen Sie mit `openclaw gateway status`)
+</Warning>
+
+Auf der Seite **Ereignisabonnements**:
+
+1. Wählen Sie **Langverbindung zum Empfangen von Ereignissen verwenden** (WebSocket-Modus)
+2. Fügen Sie das Ereignis hinzu: `im.message.receive_v1` (Nachricht empfangen)
+
+<Warning>
+Wenn das Gateway nicht läuft oder der Kanal nicht hinzugefügt wurde, kann die Langverbindungseinrichtung nicht gespeichert werden.
+</Warning>
+
+![Configure Event Subscriptions](/images/OpenClaw-Feishu/event-subscription.avif)
+
+### 7. Anwendung veröffentlichen
+
+Gehen Sie zu **Versionsverwaltung & Veröffentlichung**, erstellen Sie eine Version, reichen Sie sie zur Überprüfung ein und veröffentlichen Sie sie. Unternehmenseigene Anwendungen werden in der Regel automatisch genehmigt.
+
+## Schritt 4: OpenClaw konfigurieren
+
+Die Konfiguration von OpenClaw ist zentralisiert in `~/.openclaw/openclaw.json`. Es gibt drei wichtige Konfigurationsbereiche:
+
+- `plugins.entries.*` — Steuert, welche Plugins geladen werden
+- `channels.*` — Steuert Kanalverbindungen und Kontozugangsdaten
+- `models.providers.*` — Steuert Modellanbieter
+
+### 1. Feishu-Kanal hinzufügen
+
+<Tabs>
+  <Tab title="Manuelle Konfiguration">
+    Öffnen Sie `~/.openclaw/openclaw.json`:
+
+    Aktivieren Sie das Feishu-Plugin (`plugins.entries`):
+
+    ```json
+    "plugins": {
+      "entries": {
+        "feishu": {
+          "enabled": true
+        }
+      }
+    }
+    ```
+
+    Konfigurieren Sie die Feishu-Kanal-Zugangsdaten (`channels.feishu`):
+
+    ```json
+    "channels": {
+      "feishu": {
+        "enabled": true,
+        "dmPolicy": "pairing",
+        "accounts": {
+          "main": {
+            "appId": "cli_xxx",
+            "appSecret": "your-app-secret",
+            "botName": "My AI Assistant"
+          }
+        }
+      }
+    }
+    ```
+
+    <Warning>
+    Feishu-Zugangsdaten müssen unter `channels.feishu.accounts` platziert werden, NICHT unter `plugins.entries.feishu`. Eine falsche Platzierung führt zu einem `Unrecognized key`-Fehler.
+    </Warning>
+
+    Sie können auch über Umgebungsvariablen konfigurieren:
+
+    ```bash
+    export FEISHU_APP_ID="cli_xxx"
+    export FEISHU_APP_SECRET="xxx"
+    ```
+  </Tab>
+  <Tab title="CLI-Befehl">
+    Führen Sie den folgenden Befehl aus, wählen Sie Feishu und geben Sie Ihre App ID und Ihr App Secret ein, wenn Sie dazu aufgefordert werden:
+
+    ```bash
+    openclaw channels add
+    ```
+
+    <Warning>
+    Neuere Versionen von OpenClaw können Konfigurationskonflikte mit diesem Befehl haben. Eine manuelle Konfiguration wird empfohlen.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### 2. EvoLink API konfigurieren
+
+Suchen Sie in derselben `openclaw.json` das Feld `models` und fügen Sie EvoLink als benutzerdefinierten Modellanbieter hinzu:
+
+```json
+"models": {
+  "providers": {
+    "anthropic": {
+      "api": "anthropic-messages",
+      "baseUrl": "https://code.evolink.ai",
+      "apiKey": "your-evolink-api-key",
+      "models": [
+        {
+          "id": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
+```
+
+<Warning>
+Ersetzen Sie `"your-evolink-api-key"` durch den tatsächlichen API-Schlüssel aus Ihrem [EvoLink Dashboard](https://evolink.ai/dashboard).
+</Warning>
+
+### 3. Standardmodell konfigurieren
+
+Setzen Sie im Feld `agents` das Standardmodell:
+
+```json
+"model": {
+  "primary": "anthropic/claude-opus-4-6"
+}
+```
+
+### 4. Gateway neu starten
+
+Starten Sie das OpenClaw Gateway neu, um die Konfiguration zu übernehmen:
+
+```bash
+openclaw gateway restart
+```
+
+<Warning>
+Verwenden Sie immer `openclaw gateway restart` anstatt manuell einen weiteren Prozess zu starten, da Sie sonst einen Portkonflikt-Fehler erhalten.
+</Warning>
+
+Überprüfen Sie, ob die Konfiguration korrekt geladen wurde:
+
+```bash
+openclaw gateway status
+```
+
+## Schritt 5: Verbindung überprüfen
+
+### 1. Bot in Feishu finden
+
+Öffnen Sie Feishu, suchen Sie nach dem von Ihnen erstellten Bot-Namen und starten Sie eine Unterhaltung.
+
+### 2. Pairing-Code erhalten
+
+Senden Sie eine beliebige Nachricht an den Bot. Er wird einen Pairing-Code zurückgeben.
+
+### 3. Pairing abschließen
+
+Öffnen Sie ein neues Terminalfenster und führen Sie aus:
+
+```bash
+openclaw pairing approve feishu <pairing-code>
+```
+
+<Warning>
+Ersetzen Sie `<pairing-code>` durch den tatsächlichen Code, den der Bot zurückgegeben hat. Achten Sie darauf, die spitzen Klammern `<>` zu entfernen.
+</Warning>
+
+### 4. Verbindung testen
+
+Senden Sie nach Abschluss des Pairings eine Nachricht an den Bot in Feishu:
+
+```
+Hallo, bitte stell dich vor
+```
+
+Wenn Sie eine KI-Antwort erhalten, ist die Integration abgeschlossen.
+
+## Zugriffskontrolle
+
+### Direktnachrichten-Zugriff
+
+Standard `dmPolicy: "pairing"` — unbekannte Benutzer erhalten einen Pairing-Code, der von einem Administrator genehmigt werden muss:
+
+```bash
+openclaw pairing list feishu        # Ausstehende Genehmigungen anzeigen
+openclaw pairing approve feishu <CODE>  # Genehmigen
+```
+
+Sie können auch eine Erlaubnisliste von Benutzer-Open-IDs über `channels.feishu.allowFrom` konfigurieren.
+
+### Gruppenzugriff
+
+Die Gruppenrichtlinie wird über `channels.feishu.groupPolicy` gesteuert:
+
+- `"open"` — Alle Benutzer in der Gruppe zulassen (Standard)
+- `"allowlist"` — Nur Benutzer in `groupAllowFrom` zulassen
+- `"disabled"` — Gruppennachrichten deaktivieren
+
+Standardmäßig antwortet der Bot nur, wenn er @erwähnt wird (`requireMention: true`).
+
+## Häufige Befehle
+
+| Befehl | Beschreibung |
+|--------|--------------|
+| `openclaw gateway status` | Gateway-Status prüfen |
+| `openclaw gateway restart` | Gateway-Dienst neu starten |
+| `openclaw logs --follow` | Echtzeit-Logs anzeigen |
+| `openclaw pairing list feishu` | Ausstehende Pairing-Anfragen anzeigen |
+| `openclaw plugins list` | Installierte Plugins anzeigen |
+
+## Fehlerbehebung
+
+| Problem | Lösung |
+|---------|--------|
+| Bot antwortet nicht in Gruppen | Prüfen Sie, ob Sie den Bot @erwähnt haben; prüfen Sie, ob `groupPolicy` auf `"disabled"` gesetzt ist |
+| Bot empfängt keine Nachrichten | Prüfen Sie, ob die App veröffentlicht und genehmigt ist; stellen Sie sicher, dass das Ereignisabonnement `im.message.receive_v1` konfiguriert ist; bestätigen Sie, dass der WebSocket-Langverbindungsmodus ausgewählt ist |
+| App Secret kompromittiert | Setzen Sie das App Secret auf der Feishu Open Platform zurück, aktualisieren Sie die Konfiguration, starten Sie das Gateway neu |
+| Nachrichten können nicht gesendet werden | Prüfen Sie, ob die Berechtigung `im:message:send_as_bot` erteilt ist; prüfen Sie die Logs mit `openclaw logs --follow` |
