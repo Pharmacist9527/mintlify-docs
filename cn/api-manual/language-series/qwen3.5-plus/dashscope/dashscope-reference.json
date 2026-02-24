@@ -1,0 +1,99 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Qwen3.5-Plus DashScope 完整参考", "description": "Qwen3.5-Plus DashScope 原生协议完整参数参考", "license": { "name": "MIT" }, "version": "1.0.0" },
+  "servers": [{ "url": "https://api.evolink.ai", "description": "Production" }],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/v1/services/aigc/multimodal-generation/generation": {
+      "post": {
+        "summary": "Qwen3.5-Plus DashScope 原生协议",
+        "description": "- 阿里云 DashScope 原生协议\n- qwen3.5-plus 为多模态模型，使用 `multimodal-generation` 端点\n- 参数结构与 OpenAI 格式不同：请求参数放在 `parameters` 字段\n- 支持模型：`qwen3.5-plus`, `qwen3.5-plus-2026-02-15`",
+        "operationId": "createDashScopeQwen35PlusCn",
+        "tags": ["对话生成"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DashScopeRequest" }, "examples": {
+          "simple_text": { "summary": "简单文本对话", "value": { "model": "qwen3.5-plus", "input": { "messages": [{ "role": "user", "content": [{ "text": "你好，请介绍一下你自己" }] }] }, "parameters": { "result_format": "message" } } },
+          "system_prompt": { "summary": "系统提示词", "value": { "model": "qwen3.5-plus", "input": { "messages": [{ "role": "system", "content": [{ "text": "你是一位专业助手" }] }, { "role": "user", "content": [{ "text": "你好" }] }] }, "parameters": { "result_format": "message", "temperature": 0.7 } } },
+          "thinking_mode": { "summary": "思考模式", "value": { "model": "qwen3.5-plus", "input": { "messages": [{ "role": "user", "content": [{ "text": "求1到100之间所有素数" }] }] }, "parameters": { "result_format": "message", "enable_thinking": true, "thinking_budget": 8192 } } },
+          "vision": { "summary": "图像理解", "value": { "model": "qwen3.5-plus", "input": { "messages": [{ "role": "user", "content": [{ "image": "https://example.com/image.jpg" }, { "text": "请描述这张图片" }] }] }, "parameters": { "result_format": "message" } } },
+          "streaming": { "summary": "流式输出", "value": { "model": "qwen3.5-plus", "input": { "messages": [{ "role": "user", "content": [{ "text": "写一首关于春天的诗" }] }] }, "parameters": { "result_format": "message", "stream": true, "incremental_output": true } } }
+        } } } },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DashScopeResponse" } } } },
+          "400": { "description": "请求参数错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 400, "message": "Invalid request parameters", "type": "invalid_request_error" } } } } },
+          "401": { "description": "未授权", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 401, "message": "Invalid or expired token", "type": "authentication_error" } } } } },
+          "402": { "description": "额度不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 402, "message": "Insufficient quota", "type": "insufficient_quota_error", "fallback_suggestion": "https://evolink.ai/dashboard/billing" } } } } },
+          "429": { "description": "请求频率超限", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 429, "message": "Rate limit exceeded", "type": "rate_limit_error" } } } } },
+          "500": { "description": "服务器内部错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 500, "message": "Internal server error", "type": "internal_server_error" } } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DashScopeRequest": {
+        "type": "object", "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "description": "模型名称", "enum": ["qwen3.5-plus", "qwen3.5-plus-2026-02-15"], "default": "qwen3.5-plus", "example": "qwen3.5-plus" },
+          "input": { "type": "object", "required": ["messages"], "description": "输入内容", "properties": { "messages": { "type": "array", "description": "消息列表，content 为对象数组格式", "items": { "$ref": "#/components/schemas/DashScopeMessage" } } } },
+          "parameters": { "$ref": "#/components/schemas/DashScopeParameters" }
+        }
+      },
+      "DashScopeMessage": {
+        "type": "object", "required": ["role", "content"],
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant", "system", "tool"] },
+          "content": { "type": "array", "description": "内容数组，支持文本、图像、视频", "items": { "$ref": "#/components/schemas/DashScopeContentPart" } }
+        }
+      },
+      "DashScopeContentPart": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "description": "文本内容" },
+          "image": { "type": "string", "description": "图片 URL 或 base64 数据" },
+          "video": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "视频 URL 或图片帧列表" }
+        }
+      },
+      "DashScopeParameters": {
+        "type": "object",
+        "properties": {
+          "result_format": { "type": "string", "enum": ["message", "text"], "description": "返回格式，推荐设置为 message。message：返回结构化消息对象，包含 role 和 content 字段；text：返回纯文本字符串", "default": "message" },
+          "stream": { "type": "boolean", "description": "是否以流式输出方式回复，默认 false。需配合请求头 X-DashScope-SSE: enable 使用", "default": false },
+          "incremental_output": { "type": "boolean", "description": "流式模式下是否增量输出，默认 false。true：每次只输出新增内容；false：每次输出完整内容（包含之前所有内容）", "default": false },
+          "temperature": { "type": "number", "description": "采样温度，控制模型生成文本的多样性。temperature 越高，生成的文本更多样，反之，生成的文本更确定。取值范围：[0, 2)。qwen3.5-plus 非思考模式默认 0.7，思考模式默认 0.6。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 2, "example": 0.7 },
+          "top_p": { "type": "number", "description": "核采样的概率阈值，控制模型生成文本的多样性。top_p 越高，生成的文本更多样。取值范围：(0, 1.0]。qwen3.5-plus 非思考模式默认 0.8，思考模式默认 0.95。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 1, "example": 0.9 },
+          "top_k": { "type": "integer", "description": "指定生成过程中用于采样的候选 Token 数量。值越大，输出越随机；值越小，输出越确定。若设为 null 或大于 100，则禁用 top_k 策略，仅 top_p 策略生效。取值必须为大于或等于 0 的整数", "minimum": 0, "example": 50 },
+          "max_tokens": { "type": "integer", "description": "用于限制模型输出的最大 Token 数。若生成内容超过此值，生成将提前停止，finish_reason 为 length。不限制思考模型思维链的长度", "minimum": 1, "example": 2048 },
+          "seed": { "type": "integer", "description": "随机数种子，用于确保在相同输入和参数下生成结果可复现。传入相同的 seed 且其他参数不变时，模型将尽可能返回相同结果。取值范围：[0, 2^31-1]" },
+          "stop": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "停止词，当模型生成的文本中出现指定字符串时立即停止生成。支持字符串或字符串数组。可传入敏感词以控制模型输出" },
+          "repetition_penalty": { "type": "number", "description": "重复惩罚系数，取值范围 (0, 2]，默认 1.0。大于 1 时抑制重复内容，与 presence_penalty 不可同时使用", "minimum": 0, "maximum": 2, "default": 1 },
+          "presence_penalty": { "type": "number", "description": "控制模型生成文本时的内容重复度。取值范围：[-2.0, 2.0]。正值降低重复度，负值增加重复度。qwen3.5-plus 非思考模式默认 0.0，思考模式默认 0.5", "minimum": -2, "maximum": 2, "default": 0 },
+          "response_format": { "type": "object", "description": "输出格式，如 {\"type\": \"json_object\"} 可让模型输出标准格式的 JSON 字符串（需在提示词中明确指示模型输出 JSON）" },
+          "enable_thinking": { "type": "boolean", "description": "是否开启思考模式。qwen3.5-plus 默认 true。开启后，思考内容将通过响应的 reasoning_content 字段返回，推理 Token 按推理 Token 计费", "default": true },
+          "thinking_budget": { "type": "integer", "description": "思考过程的最大 Token 数，取值范围 [0, 81920]。设为 0 可关闭思考模式", "minimum": 0, "maximum": 81920 },
+          "enable_search": { "type": "boolean", "description": "是否开启联网搜索，默认 false。开启后模型可搜索互联网最新信息。若开启后未联网搜索，可设置 search_options.forced_search 开启强制搜索", "default": false },
+          "search_options": { "$ref": "#/components/schemas/SearchOptions" },
+          "tools": { "type": "array", "description": "工具定义数组，供模型在 Function Calling 中调用", "items": { "$ref": "#/components/schemas/Tool" } },
+          "tool_choice": { "oneOf": [{ "type": "string", "enum": ["none", "auto", "required"] }, { "type": "object" }], "description": "工具选择策略，默认 auto。auto：模型自主选择；none：禁用工具；required：强制调用工具", "default": "auto" },
+          "parallel_tool_calls": { "type": "boolean", "description": "是否开启并行工具调用，允许模型在一次响应中同时调用多个工具，默认 false", "default": false },
+          "enable_code_interpreter": { "type": "boolean", "description": "是否开启代码解释器功能，允许模型执行代码并返回结果，支持数据分析，默认 false", "default": false },
+          "vl_high_resolution_images": { "type": "boolean", "description": "是否将输入图像的像素上限提升至 16384 Token 对应的像素值，默认 false。开启后使用固定分辨率策略，忽略 max_pixels 设置", "default": false }
+        }
+      },
+      "SearchOptions": { "type": "object", "description": "联网搜索的配置项，仅在 enable_search 为 true 时生效", "properties": { "forced_search": { "type": "boolean", "description": "是否强制联网搜索，默认 false。开启后即使模型判断无需搜索也会执行搜索", "default": false }, "search_strategy": { "type": "string", "enum": ["turbo", "max", "agent", "agent_max"], "description": "搜索策略。turbo：快速搜索；max：深度搜索；agent：智能体搜索；agent_max：智能体深度搜索", "default": "turbo" }, "enable_source": { "type": "boolean", "description": "是否在回复中附带搜索来源链接，默认 true", "default": true }, "enable_citation": { "type": "boolean", "description": "是否在回复中添加引用标注，默认 false", "default": false } } },
+      "Tool": { "type": "object", "required": ["type", "function"], "properties": { "type": { "type": "string", "enum": ["function"] }, "function": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "parameters": { "type": "object" } } } } },
+      "DashScopeResponse": {
+        "type": "object",
+        "properties": {
+          "request_id": { "type": "string", "description": "本次请求的唯一标识符，可用于问题排查", "example": "req_abc123" },
+          "output": { "type": "object", "description": "模型输出内容", "properties": { "choices": { "type": "array", "description": "模型生成的候选回复列表，数量由请求参数 n 决定，默认为 1", "items": { "$ref": "#/components/schemas/DashScopeChoice" } } } },
+          "usage": { "$ref": "#/components/schemas/DashScopeUsage", "description": "本次请求的 Token 消耗统计" }
+        }
+      },
+      "DashScopeChoice": { "type": "object", "properties": { "finish_reason": { "type": "string", "enum": ["stop", "length", "tool_calls"], "description": "模型停止生成的原因。stop：自然停止或触发 stop 参数；length：达到 max_tokens 限制；tool_calls：模型需要调用工具", "example": "stop" }, "message": { "type": "object", "description": "模型生成的消息对象", "properties": { "role": { "type": "string", "enum": ["assistant"], "description": "消息角色，固定为 assistant" }, "content": { "type": "string", "description": "模型的回复内容。当 finish_reason 为 tool_calls 时，content 为空字符串", "example": "你好！我是 Qwen3.5-Plus..." }, "reasoning_content": { "type": "string", "description": "模型的思维链内容，仅在思考模式启用（enable_thinking: true）时返回。思维链 Token 计入 output_tokens" }, "tool_calls": { "type": "array", "description": "Function Calling 后模型生成的工具调用列表，仅在 finish_reason 为 tool_calls 时返回", "items": { "type": "object", "properties": { "id": { "type": "string", "description": "工具调用的唯一标识符，在提交工具结果时需通过 tool_call_id 引用" }, "type": { "type": "string", "enum": ["function"], "description": "工具类型，固定为 function" }, "function": { "type": "object", "description": "函数调用信息", "properties": { "name": { "type": "string", "description": "模型选择调用的函数名称" }, "arguments": { "type": "string", "description": "模型生成的函数调用参数，JSON 字符串格式" } } } } } } } } } },
+      "DashScopeUsage": { "type": "object", "properties": { "input_tokens": { "type": "integer", "description": "输入 Token 数，包含系统提示词、历史消息和当前用户输入", "example": 13 }, "output_tokens": { "type": "integer", "description": "输出 Token 数，包含思维链 Token（思考模式启用时）和正文 Token", "example": 256 }, "total_tokens": { "type": "integer", "description": "本次请求消耗的总 Token 数（input_tokens + output_tokens）", "example": 269 } } },
+      "ErrorResponse": { "type": "object", "properties": { "error": { "type": "object", "properties": { "code": { "type": "integer" }, "message": { "type": "string" }, "type": { "type": "string" }, "param": { "type": "string" }, "fallback_suggestion": { "type": "string" } } } } }
+    },
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "description": "##所有接口均需 Bearer Token 认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理](https://evolink.ai/dashboard/keys)\n\n**添加到请求头：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```" } }
+  },
+  "tags": [{ "name": "对话生成", "description": "AI 对话生成接口" }]
+}

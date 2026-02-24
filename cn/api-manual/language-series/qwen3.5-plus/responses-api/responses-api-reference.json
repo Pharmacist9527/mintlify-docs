@@ -1,0 +1,86 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Qwen3.5-Plus Responses API 完整参考", "description": "Qwen3.5-Plus OpenAI Responses API 完整参数参考", "license": { "name": "MIT" }, "version": "1.0.0" },
+  "servers": [{ "url": "https://api.evolink.ai", "description": "Production" }],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Qwen3.5-Plus Responses API",
+        "description": "- OpenAI Responses API 兼容接口\n- 内置工具支持（联网搜索、网页抓取、代码解释器等）\n- 通过 `previous_response_id` 简化多轮对话上下文管理\n- 支持模型：`qwen3.5-plus`, `qwen3.5-plus-2026-02-15`",
+        "operationId": "createResponsesQwen35PlusCn",
+        "tags": ["对话生成"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResponsesRequest" }, "examples": {
+          "simple": { "summary": "简单调用", "value": { "model": "qwen3.5-plus", "input": "你好，请介绍一下你自己" } },
+          "messages_array": { "summary": "消息数组格式", "value": { "model": "qwen3.5-plus", "input": [{ "role": "user", "content": "Python 是什么？" }] } },
+          "multi_turn": { "summary": "多轮对话（使用 previous_response_id）", "value": { "model": "qwen3.5-plus", "input": "它的主要特点是什么？", "previous_response_id": "resp_abc123" } },
+          "web_search": { "summary": "内置联网搜索", "value": { "model": "qwen3.5-plus", "input": "最新的 AI 技术趋势是什么？", "tools": [{ "type": "web_search" }] } },
+          "thinking_mode": { "summary": "思考模式", "value": { "model": "qwen3.5-plus", "input": "求1到100之间所有素数", "enable_thinking": true } }
+        } } } },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResponsesResponse" } } } },
+          "400": { "description": "请求参数错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 400, "message": "Invalid request parameters", "type": "invalid_request_error" } } } } },
+          "401": { "description": "未授权", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 401, "message": "Invalid or expired token", "type": "authentication_error" } } } } },
+          "402": { "description": "额度不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 402, "message": "Insufficient quota", "type": "insufficient_quota_error", "fallback_suggestion": "https://evolink.ai/dashboard/billing" } } } } },
+          "429": { "description": "请求频率超限", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 429, "message": "Rate limit exceeded", "type": "rate_limit_error" } } } } },
+          "500": { "description": "服务器内部错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 500, "message": "Internal server error", "type": "internal_server_error" } } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object", "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "description": "模型名称", "enum": ["qwen3.5-plus", "qwen3.5-plus-2026-02-15"], "default": "qwen3.5-plus", "example": "qwen3.5-plus" },
+          "input": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "$ref": "#/components/schemas/MessageSimple" } }], "description": "输入内容，支持字符串或消息数组", "example": "你好，请介绍一下你自己" },
+          "stream": { "type": "boolean", "description": "是否开启流式输出，默认 false。设置为 true 时，模型响应数据将实时流式返回给客户端", "default": false },
+          "temperature": { "type": "number", "description": "采样温度，控制模型生成文本的多样性。temperature 越高，生成的文本更多样，反之，生成的文本更确定。取值范围：[0, 2)。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 2, "example": 0.7 },
+          "top_p": { "type": "number", "description": "核采样的概率阈值，控制模型生成文本的多样性。top_p 越高，生成的文本更多样。取值范围：(0, 1.0]。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 1, "example": 0.9 },
+          "tools": { "type": "array", "description": "模型在生成响应时可调用的工具数组，支持内置工具（web_search、web_extractor、code_interpreter、web_search_image、image_search、file_search、mcp）和自定义 function 工具，可混合使用。建议同时开启 code_interpreter、web_search 和 web_extractor 以获得最佳效果", "items": { "$ref": "#/components/schemas/ResponsesTool" } },
+          "tool_choice": { "oneOf": [{ "type": "string", "enum": ["none", "auto", "required"] }, { "type": "object" }], "description": "控制模型如何选择和调用工具，默认 auto。auto：模型自动决定是否调用工具；none：禁止模型调用任何工具；required：强制模型调用工具（仅当 tools 列表中只有一个工具时可用）", "default": "auto" },
+          "enable_thinking": { "type": "boolean", "description": "是否开启思考模式。开启后，模型会在回复前进行思考，思考内容将通过 reasoning 类型的输出项返回。开启思考模式时建议同时开启内置工具以获得最佳效果。非 OpenAI 标准参数", "default": true },
+          "previous_response_id": { "type": "string", "description": "上一个响应的唯一 ID，有效期 7 天。使用此参数可创建多轮对话，服务端会自动检索并组合该轮次的输入与输出作为上下文，无需手动构建完整消息历史数组。当同时提供 input 消息数组和 previous_response_id 时，input 中的新消息会追加到历史上下文之后", "example": "resp_abc123" }
+        }
+      },
+      "MessageSimple": { "type": "object", "required": ["role", "content"], "properties": { "role": { "type": "string", "enum": ["user", "assistant", "system"] }, "content": { "type": "string" } } },
+      "ResponsesTool": {
+        "type": "object", "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["function", "web_search", "web_extractor", "code_interpreter", "web_search_image", "image_search", "file_search", "mcp"], "description": "工具类型。web_search：联网搜索，允许模型搜索互联网最新信息；web_extractor：网页抽取，允许模型访问并提取网页内容，必须配合 web_search 使用；code_interpreter：代码解释器，允许模型执行代码并返回结果；web_search_image：文搜图，根据文本描述搜索图片；image_search：图搜图，根据图片搜索相似图片；file_search：知识库搜索，在已上传的知识库中搜索；mcp：通过 MCP 协议调用外部服务；function：自定义函数工具" },
+          "name": { "type": "string", "description": "type 为 function 时必填，函数名称", "example": "get_weather" },
+          "description": { "type": "string", "description": "type 为 function 时的函数描述，帮助模型理解何时及如何调用此函数", "example": "获取指定城市的天气信息" },
+          "parameters": { "type": "object", "description": "type 为 function 时的函数参数定义，JSON Schema 格式" }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "本次响应的唯一标识符，UUID 格式，有效期 7 天，可作为下一轮对话的 previous_response_id 使用", "example": "resp_abc123" },
+          "model": { "type": "string", "description": "本次调用实际使用的模型名称", "example": "qwen3.5-plus" },
+          "status": { "type": "string", "enum": ["completed", "in_progress", "failed", "cancelled", "queued", "incomplete"], "description": "响应状态。completed：已完成；in_progress：生成中；failed：生成失败；cancelled：已取消；queued：排队中；incomplete：未完成", "example": "completed" },
+          "created_at": { "type": "integer", "description": "本次请求的 Unix 时间戳（秒）", "example": 1760032810 },
+          "output": { "type": "array", "description": "输出项数组，按生成顺序排列。可能包含 reasoning（思维链）、web_search_call（搜索调用）、web_extractor_call（网页抓取）、code_interpreter_call（代码执行）、function_call（函数调用）、message（最终回复）等类型", "items": { "$ref": "#/components/schemas/OutputItem" } },
+          "output_text": { "type": "string", "description": "便捷字段，直接返回 output 数组中 message 类型的文本内容，等同于手动遍历 output 数组提取文本", "example": "你好！我是 Qwen3.5-Plus..." },
+          "usage": { "$ref": "#/components/schemas/ResponsesUsage", "description": "本次请求的 Token 消耗统计" }
+        }
+      },
+      "OutputItem": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["message", "reasoning", "function_call", "web_search_call", "web_extractor_call", "code_interpreter_call"], "description": "输出项类型。message：最终文本回复；reasoning：模型思维链过程（思考模式启用时）；function_call：函数调用请求；web_search_call：联网搜索调用；web_extractor_call：网页内容抓取调用；code_interpreter_call：代码解释器执行调用", "example": "message" },
+          "content": { "type": "array", "description": "type 为 message 时的内容数组，每个元素包含 type（固定为 output_text）和 text（文本内容）字段", "items": { "type": "object", "properties": { "type": { "type": "string", "enum": ["output_text"], "description": "内容类型，固定为 output_text" }, "text": { "type": "string", "description": "模型生成的文本内容", "example": "你好！我是 Qwen3.5-Plus..." } } } },
+          "summary": { "type": "array", "description": "type 为 reasoning 时的思维链摘要数组，包含模型推理过程的文本摘要", "items": { "type": "object", "properties": { "text": { "type": "string", "description": "思维链摘要文本" } } } },
+          "name": { "type": "string", "description": "type 为 function_call 时模型选择调用的函数名称" },
+          "arguments": { "type": "string", "description": "type 为 function_call 时模型生成的函数调用参数，JSON 字符串格式" },
+          "call_id": { "type": "string", "description": "工具调用的唯一标识符，在提交工具结果时需通过此 ID 引用" }
+        }
+      },
+      "ResponsesUsage": { "type": "object", "properties": { "input_tokens": { "type": "integer", "description": "输入 Token 数，包含历史上下文（通过 previous_response_id 引入）和当前输入", "example": 13 }, "output_tokens": { "type": "integer", "description": "输出 Token 数，包含思维链 Token 和正文 Token", "example": 256 }, "total_tokens": { "type": "integer", "description": "本次请求消耗的总 Token 数（input_tokens + output_tokens）", "example": 269 } } },
+      "ErrorResponse": { "type": "object", "properties": { "error": { "type": "object", "properties": { "code": { "type": "integer" }, "message": { "type": "string" }, "type": { "type": "string" }, "param": { "type": "string" }, "fallback_suggestion": { "type": "string" } } } } }
+    },
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "description": "##所有接口均需 Bearer Token 认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理](https://evolink.ai/dashboard/keys)\n\n**添加到请求头：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```" } }
+  },
+  "tags": [{ "name": "对话生成", "description": "AI 对话生成接口" }]
+}
