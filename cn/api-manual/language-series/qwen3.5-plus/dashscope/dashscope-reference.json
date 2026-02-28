@@ -50,7 +50,14 @@
         "properties": {
           "text": { "type": "string", "description": "文本内容" },
           "image": { "type": "string", "description": "图片 URL 或 base64 数据" },
-          "video": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "视频 URL 或图片帧列表" }
+          "video": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "视频 URL 或图片帧列表" },
+          "audio": { "type": "string", "description": "音频 URL（仅 Qwen-Omni/Qwen-Audio 支持，qwen3.5-plus 不支持）" },
+          "fps": { "type": "number", "description": "视频抽帧频率，范围 [0.1, 10]" },
+          "max_frames": { "type": "integer", "description": "视频最大抽帧数上限" },
+          "min_pixels": { "type": "integer", "description": "最小像素阈值" },
+          "max_pixels": { "type": "integer", "description": "最大像素阈值" },
+          "total_pixels": { "type": "integer", "description": "视频总像素限制" },
+          "cache_control": { "$ref": "#/components/schemas/CacheControl" }
         }
       },
       "DashScopeParameters": {
@@ -63,6 +70,7 @@
           "top_p": { "type": "number", "description": "核采样的概率阈值，控制模型生成文本的多样性。top_p 越高，生成的文本更多样。取值范围：(0, 1.0]。qwen3.5-plus 非思考模式默认 0.8，思考模式默认 0.95。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 1, "example": 0.9 },
           "top_k": { "type": "integer", "description": "指定生成过程中用于采样的候选 Token 数量。值越大，输出越随机；值越小，输出越确定。若设为 null 或大于 100，则禁用 top_k 策略，仅 top_p 策略生效。取值必须为大于或等于 0 的整数", "minimum": 0, "example": 50 },
           "max_tokens": { "type": "integer", "description": "用于限制模型输出的最大 Token 数。若生成内容超过此值，生成将提前停止，finish_reason 为 length。不限制思考模型思维链的长度", "minimum": 1, "example": 2048 },
+          "n": { "type": "integer", "description": "生成响应的数量，取值范围 1-4。qwen3.5-plus 当前不支持该参数（仅 Qwen3 非思考模式支持）", "minimum": 1, "maximum": 4 },
           "seed": { "type": "integer", "description": "随机数种子，用于确保在相同输入和参数下生成结果可复现。传入相同的 seed 且其他参数不变时，模型将尽可能返回相同结果。取值范围：[0, 2^31-1]" },
           "stop": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "停止词，当模型生成的文本中出现指定字符串时立即停止生成。支持字符串或字符串数组。可传入敏感词以控制模型输出" },
           "repetition_penalty": { "type": "number", "description": "重复惩罚系数，取值范围 (0, 2]，默认 1.0。大于 1 时抑制重复内容，与 presence_penalty 不可同时使用", "minimum": 0, "maximum": 2, "default": 1 },
@@ -76,10 +84,14 @@
           "tool_choice": { "oneOf": [{ "type": "string", "enum": ["none", "auto", "required"] }, { "type": "object" }], "description": "工具选择策略，默认 auto。auto：模型自主选择；none：禁用工具；required：强制调用工具", "default": "auto" },
           "parallel_tool_calls": { "type": "boolean", "description": "是否开启并行工具调用，允许模型在一次响应中同时调用多个工具，默认 false", "default": false },
           "enable_code_interpreter": { "type": "boolean", "description": "是否开启代码解释器功能，允许模型执行代码并返回结果，支持数据分析，默认 false", "default": false },
-          "vl_high_resolution_images": { "type": "boolean", "description": "是否将输入图像的像素上限提升至 16384 Token 对应的像素值，默认 false。开启后使用固定分辨率策略，忽略 max_pixels 设置", "default": false }
+          "vl_high_resolution_images": { "type": "boolean", "description": "是否将输入图像的像素上限提升至 16384 Token 对应的像素值，默认 false。开启后使用固定分辨率策略，忽略 max_pixels 设置", "default": false },
+          "vl_enable_image_hw_output": { "type": "boolean", "description": "是否在响应中返回图像原始宽高信息，默认 false。该能力仅 Qwen-VL 系列支持，qwen3.5-plus 不支持", "default": false },
+          "logprobs": { "type": "boolean", "description": "是否返回输出 Token 的对数概率。qwen3.5-plus 当前不支持该能力", "default": false },
+          "top_logprobs": { "type": "integer", "description": "指定返回每一步概率最高的候选 Token 数量，取值范围 [0, 5]。qwen3.5-plus 当前不支持该能力", "minimum": 0, "maximum": 5, "default": 0 }
         }
       },
-      "SearchOptions": { "type": "object", "description": "联网搜索的配置项，仅在 enable_search 为 true 时生效", "properties": { "forced_search": { "type": "boolean", "description": "是否强制联网搜索，默认 false。开启后即使模型判断无需搜索也会执行搜索", "default": false }, "search_strategy": { "type": "string", "enum": ["turbo", "max", "agent", "agent_max"], "description": "搜索策略。turbo：快速搜索；max：深度搜索；agent：智能体搜索；agent_max：智能体深度搜索", "default": "turbo" }, "enable_source": { "type": "boolean", "description": "是否在回复中附带搜索来源链接，默认 true", "default": true }, "enable_citation": { "type": "boolean", "description": "是否在回复中添加引用标注，默认 false", "default": false } } },
+      "CacheControl": { "type": "object", "description": "显式缓存标记。qwen3.5-plus 支持 ephemeral 显式缓存（快照版不支持）", "required": ["type"], "properties": { "type": { "type": "string", "enum": ["ephemeral"], "default": "ephemeral" } } },
+      "SearchOptions": { "type": "object", "description": "联网搜索的配置项，仅在 enable_search 为 true 时生效", "properties": { "enable_source": { "type": "boolean", "description": "是否在回复中展示搜索来源，默认 false", "default": false }, "enable_citation": { "type": "boolean", "description": "是否在回复中添加角标引用，默认 false", "default": false }, "citation_format": { "type": "string", "enum": ["[<number>]", "[ref_<number>]"], "description": "引用格式，默认 [<number>]", "default": "[<number>]" }, "forced_search": { "type": "boolean", "description": "是否强制联网搜索，默认 false。开启后即使模型判断无需搜索也会执行搜索", "default": false }, "search_strategy": { "type": "string", "enum": ["turbo", "max", "agent", "agent_max"], "description": "搜索策略：turbo（默认）/ max / agent / agent_max", "default": "turbo" }, "enable_search_extension": { "type": "boolean", "description": "是否开启垂域增强搜索，默认 false", "default": false }, "prepend_search_result": { "type": "boolean", "description": "是否在流式首包仅返回搜索来源，默认 false", "default": false } } },
       "Tool": { "type": "object", "required": ["type", "function"], "properties": { "type": { "type": "string", "enum": ["function"] }, "function": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "parameters": { "type": "object" } } } } },
       "DashScopeResponse": {
         "type": "object",
@@ -89,7 +101,7 @@
           "usage": { "$ref": "#/components/schemas/DashScopeUsage", "description": "本次请求的 Token 消耗统计" }
         }
       },
-      "DashScopeChoice": { "type": "object", "properties": { "finish_reason": { "type": "string", "enum": ["stop", "length", "tool_calls"], "description": "模型停止生成的原因。stop：自然停止或触发 stop 参数；length：达到 max_tokens 限制；tool_calls：模型需要调用工具", "example": "stop" }, "message": { "type": "object", "description": "模型生成的消息对象", "properties": { "role": { "type": "string", "enum": ["assistant"], "description": "消息角色，固定为 assistant" }, "content": { "type": "string", "description": "模型的回复内容。当 finish_reason 为 tool_calls 时，content 为空字符串", "example": "你好！我是 Qwen3.5-Plus..." }, "reasoning_content": { "type": "string", "description": "模型的思维链内容，仅在思考模式启用（enable_thinking: true）时返回。思维链 Token 计入 output_tokens" }, "tool_calls": { "type": "array", "description": "Function Calling 后模型生成的工具调用列表，仅在 finish_reason 为 tool_calls 时返回", "items": { "type": "object", "properties": { "id": { "type": "string", "description": "工具调用的唯一标识符，在提交工具结果时需通过 tool_call_id 引用" }, "type": { "type": "string", "enum": ["function"], "description": "工具类型，固定为 function" }, "function": { "type": "object", "description": "函数调用信息", "properties": { "name": { "type": "string", "description": "模型选择调用的函数名称" }, "arguments": { "type": "string", "description": "模型生成的函数调用参数，JSON 字符串格式" } } } } } } } } } },
+      "DashScopeChoice": { "type": "object", "properties": { "finish_reason": { "type": "string", "enum": ["stop", "length", "tool_calls"], "description": "模型停止生成的原因。stop：自然停止或触发 stop 参数；length：达到 max_tokens 限制；tool_calls：模型需要调用工具", "example": "stop" }, "message": { "type": "object", "description": "模型生成的消息对象", "properties": { "role": { "type": "string", "enum": ["assistant"], "description": "消息角色，固定为 assistant" }, "content": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "$ref": "#/components/schemas/DashScopeContentPart" } }], "description": "模型的回复内容。当 finish_reason 为 tool_calls 时，content 可能为空字符串", "example": "你好！我是 Qwen3.5-Plus..." }, "reasoning_content": { "type": "string", "description": "模型的思维链内容，仅在思考模式启用（enable_thinking: true）时返回。思维链 Token 计入 output_tokens" }, "tool_calls": { "type": "array", "description": "Function Calling 后模型生成的工具调用列表，仅在 finish_reason 为 tool_calls 时返回", "items": { "type": "object", "properties": { "id": { "type": "string", "description": "工具调用的唯一标识符，在提交工具结果时需通过 tool_call_id 引用" }, "type": { "type": "string", "enum": ["function"], "description": "工具类型，固定为 function" }, "function": { "type": "object", "description": "函数调用信息", "properties": { "name": { "type": "string", "description": "模型选择调用的函数名称" }, "arguments": { "type": "string", "description": "模型生成的函数调用参数，JSON 字符串格式" } } } } } } } } } },
       "DashScopeUsage": { "type": "object", "properties": { "input_tokens": { "type": "integer", "description": "输入 Token 数，包含系统提示词、历史消息和当前用户输入", "example": 13 }, "output_tokens": { "type": "integer", "description": "输出 Token 数，包含思维链 Token（思考模式启用时）和正文 Token", "example": 256 }, "total_tokens": { "type": "integer", "description": "本次请求消耗的总 Token 数（input_tokens + output_tokens）", "example": 269 } } },
       "ErrorResponse": { "type": "object", "properties": { "error": { "type": "object", "properties": { "code": { "type": "integer" }, "message": { "type": "string" }, "type": { "type": "string" }, "param": { "type": "string" }, "fallback_suggestion": { "type": "string" } } } } }
     },

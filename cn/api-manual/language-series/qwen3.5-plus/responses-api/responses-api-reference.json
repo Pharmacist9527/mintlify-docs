@@ -34,26 +34,36 @@
         "type": "object", "required": ["model", "input"],
         "properties": {
           "model": { "type": "string", "description": "模型名称", "enum": ["qwen3.5-plus", "qwen3.5-plus-2026-02-15"], "default": "qwen3.5-plus", "example": "qwen3.5-plus" },
-          "input": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "$ref": "#/components/schemas/MessageSimple" } }], "description": "输入内容，支持字符串或消息数组", "example": "你好，请介绍一下你自己" },
+          "input": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "$ref": "#/components/schemas/ResponsesMessage" } }], "description": "输入内容，支持字符串或消息数组。消息数组中 user.content 支持字符串，或由 input_text/input_image 组成的内容数组", "example": "你好，请介绍一下你自己" },
           "stream": { "type": "boolean", "description": "是否开启流式输出，默认 false。设置为 true 时，模型响应数据将实时流式返回给客户端", "default": false },
           "temperature": { "type": "number", "description": "采样温度，控制模型生成文本的多样性。temperature 越高，生成的文本更多样，反之，生成的文本更确定。取值范围：[0, 2)。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 2, "example": 0.7 },
           "top_p": { "type": "number", "description": "核采样的概率阈值，控制模型生成文本的多样性。top_p 越高，生成的文本更多样。取值范围：(0, 1.0]。建议只设置 temperature 或 top_p 其中一个", "minimum": 0, "maximum": 1, "example": 0.9 },
           "tools": { "type": "array", "description": "模型在生成响应时可调用的工具数组，支持内置工具（web_search、web_extractor、code_interpreter、web_search_image、image_search、file_search、mcp）和自定义 function 工具，可混合使用。建议同时开启 code_interpreter、web_search 和 web_extractor 以获得最佳效果", "items": { "$ref": "#/components/schemas/ResponsesTool" } },
-          "tool_choice": { "oneOf": [{ "type": "string", "enum": ["none", "auto", "required"] }, { "type": "object" }], "description": "控制模型如何选择和调用工具，默认 auto。auto：模型自动决定是否调用工具；none：禁止模型调用任何工具；required：强制模型调用工具（仅当 tools 列表中只有一个工具时可用）", "default": "auto" },
+          "tool_choice": { "oneOf": [{ "type": "string", "enum": ["none", "auto", "required"] }, { "$ref": "#/components/schemas/AllowedToolsChoice" }], "description": "控制模型如何选择和调用工具，默认 auto。auto：模型自动决定是否调用工具；none：禁止模型调用任何工具；required：强制模型调用工具（仅当 tools 列表中只有一个工具时可用）；allowed_tools：限制模型只能调用白名单工具", "default": "auto" },
           "enable_thinking": { "type": "boolean", "description": "是否开启思考模式。开启后，模型会在回复前进行思考，思考内容将通过 reasoning 类型的输出项返回。开启思考模式时建议同时开启内置工具以获得最佳效果。非 OpenAI 标准参数", "default": true },
           "previous_response_id": { "type": "string", "description": "上一个响应的唯一 ID，有效期 7 天。使用此参数可创建多轮对话，服务端会自动检索并组合该轮次的输入与输出作为上下文，无需手动构建完整消息历史数组。当同时提供 input 消息数组和 previous_response_id 时，input 中的新消息会追加到历史上下文之后", "example": "resp_abc123" }
         }
       },
-      "MessageSimple": { "type": "object", "required": ["role", "content"], "properties": { "role": { "type": "string", "enum": ["user", "assistant", "system"] }, "content": { "type": "string" } } },
+      "ResponsesMessage": { "type": "object", "required": ["role", "content"], "properties": { "role": { "type": "string", "enum": ["user", "assistant", "system"] }, "content": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "$ref": "#/components/schemas/InputContentPart" } }], "description": "消息内容。字符串用于纯文本；数组用于结构化多模态输入" } } },
+      "InputContentPart": { "oneOf": [{ "$ref": "#/components/schemas/InputTextPart" }, { "$ref": "#/components/schemas/InputImagePart" }], "discriminator": { "propertyName": "type" } },
+      "InputTextPart": { "type": "object", "required": ["type", "text"], "properties": { "type": { "type": "string", "enum": ["input_text"] }, "text": { "type": "string" } } },
+      "InputImagePart": { "type": "object", "required": ["type", "image_url"], "properties": { "type": { "type": "string", "enum": ["input_image"] }, "image_url": { "type": "string", "description": "图片 URL 或 base64 数据" } } },
       "ResponsesTool": {
         "type": "object", "required": ["type"],
         "properties": {
           "type": { "type": "string", "enum": ["function", "web_search", "web_extractor", "code_interpreter", "web_search_image", "image_search", "file_search", "mcp"], "description": "工具类型。web_search：联网搜索，允许模型搜索互联网最新信息；web_extractor：网页抽取，允许模型访问并提取网页内容，必须配合 web_search 使用；code_interpreter：代码解释器，允许模型执行代码并返回结果；web_search_image：文搜图，根据文本描述搜索图片；image_search：图搜图，根据图片搜索相似图片；file_search：知识库搜索，在已上传的知识库中搜索；mcp：通过 MCP 协议调用外部服务；function：自定义函数工具" },
           "name": { "type": "string", "description": "type 为 function 时必填，函数名称", "example": "get_weather" },
           "description": { "type": "string", "description": "type 为 function 时的函数描述，帮助模型理解何时及如何调用此函数", "example": "获取指定城市的天气信息" },
-          "parameters": { "type": "object", "description": "type 为 function 时的函数参数定义，JSON Schema 格式" }
+          "parameters": { "type": "object", "description": "type 为 function 时的函数参数定义，JSON Schema 格式" },
+          "vector_store_ids": { "type": "array", "description": "type 为 file_search 时可选，知识库 ID 列表", "items": { "type": "string" } },
+          "server_protocol": { "type": "string", "description": "type 为 mcp 时可选，MCP 服务协议（如 streamable_http）" },
+          "server_label": { "type": "string", "description": "type 为 mcp 时可选，MCP 服务名称" },
+          "server_description": { "type": "string", "description": "type 为 mcp 时可选，MCP 服务描述" },
+          "server_url": { "type": "string", "description": "type 为 mcp 时可选，MCP 服务地址" },
+          "headers": { "type": "object", "description": "type 为 mcp 时可选，请求头键值对" }
         }
       },
+      "AllowedToolsChoice": { "type": "object", "required": ["type", "mode", "tools"], "properties": { "type": { "type": "string", "enum": ["allowed_tools"] }, "mode": { "type": "string", "enum": ["auto", "required"], "description": "auto：在白名单中自动选择；required：必须调用白名单内至少一个工具" }, "tools": { "type": "array", "description": "允许调用的工具名称列表", "items": { "type": "string" } } } },
       "ResponsesResponse": {
         "type": "object",
         "properties": {
@@ -77,7 +87,7 @@
           "call_id": { "type": "string", "description": "工具调用的唯一标识符，在提交工具结果时需通过此 ID 引用" }
         }
       },
-      "ResponsesUsage": { "type": "object", "properties": { "input_tokens": { "type": "integer", "description": "输入 Token 数，包含历史上下文（通过 previous_response_id 引入）和当前输入", "example": 13 }, "output_tokens": { "type": "integer", "description": "输出 Token 数，包含思维链 Token 和正文 Token", "example": 256 }, "total_tokens": { "type": "integer", "description": "本次请求消耗的总 Token 数（input_tokens + output_tokens）", "example": 269 } } },
+      "ResponsesUsage": { "type": "object", "properties": { "input_tokens": { "type": "integer", "description": "输入 Token 数，包含历史上下文（通过 previous_response_id 引入）和当前输入", "example": 13 }, "output_tokens": { "type": "integer", "description": "输出 Token 数，包含思维链 Token 和正文 Token", "example": 256 }, "total_tokens": { "type": "integer", "description": "本次请求消耗的总 Token 数（input_tokens + output_tokens）", "example": 269 }, "output_tokens_details": { "type": "object", "description": "输出 Token 的细分统计", "properties": { "reasoning_tokens": { "type": "integer", "description": "思考过程消耗的 Token 数，仅在开启思考模式时出现", "example": 128 } } } } },
       "ErrorResponse": { "type": "object", "properties": { "error": { "type": "object", "properties": { "code": { "type": "integer" }, "message": { "type": "string" }, "type": { "type": "string" }, "param": { "type": "string" }, "fallback_suggestion": { "type": "string" } } } } }
     },
     "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "description": "##所有接口均需 Bearer Token 认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理](https://evolink.ai/dashboard/keys)\n\n**添加到请求头：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```" } }
