@@ -1,0 +1,420 @@
+---
+title: "Referencia de Codigos de Error"
+description: "Lista completa de codigos de error de tareas y guia de solucion de problemas"
+icon: "triangle-exclamation"
+---
+
+## Formato de Respuesta de Error
+
+Cuando una tarea falla (`status: "failed"`), la respuesta incluye un objeto `error`:
+
+```json
+{
+  "id": "task-unified-1772618027-cmeisy8h",
+  "object": "image.generation.task",
+  "status": "failed",
+  "model": "gemini-3.1-flash-image-preview",
+  "progress": 0,
+  "error": {
+    "code": "content_policy_violation",
+    "message": "Content policy violation.\nYour request was blocked by safety filters..."
+  }
+}
+```
+
+| Campo | Tipo | Descripcion |
+|-------|------|-------------|
+| `error.code` | `string` | Identificador del codigo de error. Ver la lista completa a continuacion |
+| `error.message` | `string` | Descripcion del error con consejos de solucion de problemas |
+
+---
+
+## Resumen de Codigos de Error
+
+<AccordionGroup>
+
+<Accordion title="Errores del Cliente (Corregibles por el Usuario)" icon="user" defaultOpen>
+
+| Codigo de Error | Descripcion | Reintentable |
+|----------------|-------------|-------------|
+| `content_policy_violation` | El contenido viola las politicas de seguridad | Corregir contenido, luego reintentar |
+| `invalid_parameters` | Parametros de solicitud invalidos | Corregir parametros, luego reintentar |
+| `image_processing_error` | Error en el procesamiento de imagen | Usar otra imagen |
+| `image_dimension_mismatch` | Las dimensiones de la imagen no coinciden con la solicitud | Redimensionar imagen, luego reintentar |
+| `request_cancelled` | La solicitud fue cancelada | Reenviar |
+
+</Accordion>
+
+<Accordion title="Errores del Servidor (Reintentar mas tarde)" icon="server">
+
+| Codigo de Error | Descripcion | Reintentable |
+|----------------|-------------|-------------|
+| `generation_failed_no_content` | El modelo no pudo generar contenido | Intentar con otro prompt |
+| `service_error` | Error interno del servicio | Se recupera automaticamente, reintentar mas tarde |
+| `generation_timeout` | El procesamiento de la tarea expiro | Reintentar mas tarde |
+| `resource_exhausted` | Recursos upstream temporalmente agotados | Se recupera automaticamente, reintentar mas tarde |
+| `quota_exceeded` | Limite de frecuencia o cuota excedida | Reducir frecuencia, reintentar mas tarde |
+| `service_unavailable` | Servicio temporalmente no disponible | Se recupera automaticamente, reintentar mas tarde |
+| `resource_not_found` | ID de tarea invalido o expirado | Verificar ID de tarea |
+| `unknown_error` | Error no clasificado | Contactar soporte |
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Detalles de Codigos de Error
+
+### content_policy_violation
+
+<Card title="Violacion de Politica de Contenido" icon="shield-halved" color="#e74c3c">
+
+Su solicitud fue bloqueada por los filtros de seguridad. Este es el **tipo de error mas comun**, que cubre los siguientes escenarios:
+
+</Card>
+
+**Desencadenantes comunes:**
+
+| Subtipo | Descripcion | Mensaje de ejemplo |
+|---------|-------------|-------------------|
+| Personas fotorrealistas | La imagen subida contiene rostros humanos reales | `photorealistic people detected` |
+| Semejanza con celebridades | Involucra celebridades o figuras publicas | `celebrity detected in image` |
+| Derechos de autor/Marcas | Involucra logotipos de marcas, marcas registradas o PI con derechos de autor | `third-party content violation` |
+| Adulto/NSFW | Contiene desnudez o contenido sexualmente sugerente | `nudity detected` |
+| Violencia/Autolesion | Contiene contenido violento, grafico o de autolesion | `violence content blocked` |
+| Proteccion de menores | Involucra contenido sensible relacionado con menores | `minor content not allowed` |
+| Politica general | Otras violaciones de politica de contenido | `content policy violation` |
+
+<Tip>
+**Como evitarlo:**
+- Evite subir fotos reales de personas — use estilos de ilustracion o dibujos animados
+- Elimine logotipos de marcas, marcas registradas y personajes de PI con derechos de autor
+- Evite temas de adultos, violencia o autolesion
+- Use descripciones genericas de personajes (por ejemplo, "a person") en lugar de referirse a celebridades especificas
+</Tip>
+
+---
+
+### generation_failed_no_content
+
+<Card title="Generacion Fallida" icon="image-slash" color="#e67e22">
+
+El modelo no pudo producir contenido para su solicitud. Aunque el formato de la solicitud era valido, el modelo no pudo generar un resultado durante el procesamiento.
+
+</Card>
+
+**Causas comunes:**
+
+- **Calidad deficiente del prompt**: La descripcion es demasiado vaga o contradictoria para que el modelo la entienda
+- **Limites de capacidad del modelo**: El prompt excede las capacidades de generacion del modelo
+- **Problemas del servicio upstream**: El servicio del modelo subyacente devolvio un resultado vacio
+- **Deteccion de contenido protegido**: El prompt o la imagen de referencia puede involucrar eliminacion de marcas de agua o contenido protegido (logotipos, marcas registradas, etc.)
+
+<Tip>
+**Como solucionarlo:**
+- Ajuste su prompt para que sea mas claro y especifico
+- Use diferentes imagenes de referencia — evite imagenes con marcas de agua o logotipos
+- Simplifique la solicitud (menor resolucion o complejidad)
+- Simplemente reintente — algunos casos tienen exito al reintentar
+</Tip>
+
+---
+
+### invalid_parameters
+
+<Card title="Parametros Invalidos" icon="sliders" color="#f39c12">
+
+Los parametros de la solicitud no cumplen con los requisitos del modelo.
+
+</Card>
+
+**Subtipos comunes:**
+
+| Subtipo | Descripcion | Ejemplo |
+|---------|-------------|---------|
+| Prompt demasiado largo | El prompt excede la longitud maxima del modelo | `Prompt is too long` |
+| Dimension de imagen | El ancho/alto o la relacion de aspecto de la imagen esta fuera de rango | `image dimensions must be between 240 and 7680` |
+| Archivo demasiado grande | El archivo subido excede el limite de tamano | `file size exceeds 10MB` |
+| Formato no soportado | El formato del archivo subido no es compatible | `unsupported file type` |
+| Duracion de video | La duracion del video esta fuera del rango soportado por el modelo | `Video duration must be between 1-30 seconds` |
+
+<Tip>
+**Como solucionarlo:**
+- Consulte la documentacion de la API especifica del modelo para los requisitos de parametros
+- Formatos de imagen soportados: JPG, PNG, WebP, GIF (HEIC, AVIF, TIFF **no** son soportados)
+- Limites de tamano de imagen: tipicamente &lt; 10MB, algunos modelos &lt; 30MB
+- Acorte su prompt o divida prompts largos en descripciones esenciales
+</Tip>
+
+---
+
+### image_processing_error
+
+<Card title="Error de Procesamiento de Imagen" icon="file-image" color="#9b59b6">
+
+El sistema no pudo procesar la imagen de entrada.
+
+</Card>
+
+**Causas comunes:**
+
+- La URL de la imagen no es accesible (requiere autenticacion, restricciones de CDN, enlace expirado)
+- El formato de imagen no es compatible (por ejemplo, HEIC, AVIF)
+- El archivo de imagen esta danado
+- Problemas de red impidieron la descarga de la imagen
+
+<Tip>
+**Como solucionarlo:**
+- Asegurese de que la URL de la imagen sea accesible publicamente sin autenticacion ni restricciones de region
+- Use formatos estandar: JPG, PNG, WebP
+- Intente usar la [API de carga de archivos](/es/api-manual/file-series/upload-base64) en lugar de URLs
+- Verifique que la imagen se abra correctamente en un navegador
+</Tip>
+
+---
+
+### image_dimension_mismatch
+
+<Card title="Desajuste de Dimensiones de Imagen" icon="ruler-combined" color="#e74c3c">
+
+Las dimensiones de la imagen de entrada no coinciden con las dimensiones especificadas en la solicitud. Comun en escenarios de imagen a video.
+
+</Card>
+
+**Ejemplo:**
+
+- `aspect_ratio=1280x720` (16:9) requiere una imagen horizontal de 1280x720
+- `aspect_ratio=720x1280` (9:16) requiere una imagen vertical de 720x1280
+
+<Tip>
+**Como solucionarlo:**
+Redimensione su imagen para que coincida con el parametro `aspect_ratio` solicitado, o cambie el `aspect_ratio` para que coincida con su imagen.
+</Tip>
+
+---
+
+### service_error
+
+<Card title="Error de Servicio" icon="server" color="#34495e">
+
+Ocurrio un problema interno en el servicio upstream. Esto suele ser temporal — el sistema cambia automaticamente a otras rutas disponibles.
+
+</Card>
+
+**Causas comunes:**
+
+- Servicio del modelo upstream temporalmente no disponible
+- Sobrecarga del servidor / alto trafico
+- Mantenimiento en curso
+- Conexion de red interrumpida
+
+<Tip>
+**Como solucionarlo:**
+- Espere 30-60 segundos y reintente — el sistema generalmente se recupera automaticamente
+- Si persiste, contacte al soporte tecnico
+- No necesita modificar su solicitud — reintente la misma solicitud
+</Tip>
+
+---
+
+### generation_timeout
+
+<Card title="Tiempo de Generacion Agotado" icon="clock" color="#e67e22">
+
+La tarea no se completo dentro del tiempo permitido.
+
+</Card>
+
+**Causas comunes:**
+
+- Alta carga del sistema causando retrasos en la cola
+- Alta complejidad de la tarea (alta resolucion, video largo, etc.)
+- Respuesta lenta del servicio upstream
+
+<Tip>
+**Como solucionarlo:**
+- Reintente mas tarde, preferiblemente durante horas de menor demanda
+- Reduzca la complejidad de la tarea: menor resolucion, menor duracion del video
+- Simplifique las descripciones del prompt
+</Tip>
+
+---
+
+### quota_exceeded
+
+<Card title="Cuota / Limite de Frecuencia Excedida" icon="gauge-high" color="#e74c3c">
+
+Se han excedido los limites de frecuencia de solicitud o concurrencia.
+
+</Card>
+
+**Causas comunes:**
+
+- Demasiadas solicitudes enviadas en un corto periodo (limitacion de frecuencia)
+- Multiples tareas procesandose simultaneamente (limite de concurrencia)
+- Cuota de la cuenta agotada
+
+<Tip>
+**Como solucionarlo:**
+- Reduzca la frecuencia de solicitudes — intervalo recomendado de 1-2 segundos entre solicitudes
+- Espere a que las tareas en curso se completen antes de enviar nuevas
+- Si la cuota esta agotada, visite la [pagina de facturacion](https://evolink.ai/dashboard/billing) para recargar
+</Tip>
+
+---
+
+### resource_exhausted
+
+<Card title="Recursos Agotados" icon="battery-empty" color="#c0392b">
+
+Los recursos de computo del servicio upstream estan temporalmente agotados. Generalmente ocurre durante periodos de uso pico del modelo.
+
+</Card>
+
+<Tip>
+**Como solucionarlo:**
+- Espere 1-5 minutos para la recuperacion automatica
+- El sistema cambia automaticamente entre multiples rutas — reintentar mas tarde generalmente tiene exito
+</Tip>
+
+---
+
+### resource_not_found
+
+<Card title="Recurso No Encontrado" icon="magnifying-glass" color="#7f8c8d">
+
+El ID de tarea solicitado no existe o ha expirado.
+
+</Card>
+
+<Tip>
+**Como solucionarlo:**
+- Verifique que el ID de tarea este escrito correctamente
+- Los resultados de tareas tienen un periodo de expiracion — las tareas expiradas no se pueden consultar
+- Si el ID es correcto, reintente despues de una breve espera
+</Tip>
+
+---
+
+### request_cancelled
+
+<Card title="Solicitud Cancelada" icon="ban" color="#95a5a6">
+
+La tarea fue cancelada o interrumpida durante el procesamiento.
+
+</Card>
+
+<Tip>
+Si no cancelo intencionalmente, simplemente reenvie la misma solicitud.
+</Tip>
+
+---
+
+### service_unavailable
+
+<Card title="Servicio No Disponible" icon="plug-circle-xmark" color="#e74c3c">
+
+Ocurrio un problema interno de autenticacion o conexion. Este error ha sido registrado automaticamente y tipicamente se resolvera rapidamente.
+
+</Card>
+
+<Tip>
+**Como solucionarlo:**
+- Espere unos minutos y reintente
+- Si persiste, contacte al soporte tecnico con su ID de tarea
+</Tip>
+
+---
+
+### unknown_error
+
+<Card title="Error Desconocido" icon="question" color="#7f8c8d">
+
+Un error no clasificado. El sistema no pudo identificar el tipo de error especifico.
+
+</Card>
+
+<Tip>
+**Como solucionarlo:**
+- Reintente despues de una breve espera
+- Si el problema persiste, contacte al soporte tecnico con el ID de tarea completo
+</Tip>
+
+---
+
+## Mejores Practicas
+
+### Ejemplo de Manejo de Errores
+
+```python
+import requests
+import time
+
+def poll_task_with_retry(task_id, api_key, max_retries=3):
+    """Poll task status with automatic retry for server errors"""
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    for attempt in range(max_retries):
+        resp = requests.get(
+            f"https://api.evolink.ai/v1/tasks/{task_id}",
+            headers=headers
+        )
+        data = resp.json()
+
+        if data["status"] == "completed":
+            return data["results"]
+
+        if data["status"] == "failed":
+            error = data.get("error", {})
+            code = error.get("code", "unknown_error")
+            message = error.get("message", "")
+
+            # Client errors — not retryable, fix the request
+            if code in [
+                "content_policy_violation",
+                "invalid_parameters",
+                "image_processing_error",
+                "image_dimension_mismatch",
+            ]:
+                raise Exception(f"Client error [{code}]: {message}")
+
+            # Server errors — retryable
+            if code in [
+                "generation_failed_no_content",
+                "service_error",
+                "generation_timeout",
+                "resource_exhausted",
+                "quota_exceeded",
+            ]:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                    time.sleep(wait)
+                    continue
+                raise Exception(f"Server error [{code}]: {message}")
+
+            raise Exception(f"Error [{code}]: {message}")
+
+        # Task still processing
+        time.sleep(3)
+
+    raise Exception("Max polling attempts exceeded")
+```
+
+### Reintentable vs No Reintentable
+
+<CardGroup cols={2}>
+  <Card title="Corregir Solicitud Antes de Reintentar" icon="pen">
+    - `content_policy_violation` — Modificar contenido
+    - `invalid_parameters` — Corregir parametros
+    - `image_processing_error` — Usar otra imagen
+    - `image_dimension_mismatch` — Redimensionar imagen
+  </Card>
+  <Card title="Seguro para Reintentar Directamente" icon="rotate">
+    - `generation_failed_no_content` — Intentar con otro prompt
+    - `service_error` — Esperar, luego reintentar
+    - `generation_timeout` — Esperar, luego reintentar
+    - `resource_exhausted` — Se recupera automaticamente
+    - `quota_exceeded` — Reducir frecuencia, luego reintentar
+  </Card>
+</CardGroup>

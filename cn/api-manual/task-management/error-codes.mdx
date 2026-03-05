@@ -1,0 +1,420 @@
+---
+title: "错误码参考"
+description: "任务执行失败时返回的错误码完整列表与排错指南"
+icon: "triangle-exclamation"
+---
+
+## 错误响应格式
+
+当任务执行失败（`status: "failed"`）时，响应中会包含一个 `error` 对象：
+
+```json
+{
+  "id": "task-unified-1772618027-cmeisy8h",
+  "object": "image.generation.task",
+  "status": "failed",
+  "model": "gemini-3.1-flash-image-preview",
+  "progress": 0,
+  "error": {
+    "code": "content_policy_violation",
+    "message": "Content policy violation.\nYour request was blocked by safety filters..."
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `error.code` | `string` | 错误码标识符，详见下方完整列表 |
+| `error.message` | `string` | 用户友好的错误说明与排错建议 |
+
+---
+
+## 错误码总览
+
+<AccordionGroup>
+
+<Accordion title="客户端错误（可自行修复）" icon="user" defaultOpen>
+
+| 错误码 | 含义 | 可重试 |
+|--------|------|--------|
+| `content_policy_violation` | 内容违反安全策略 | 修改内容后重试 |
+| `invalid_parameters` | 请求参数不合法 | 修正参数后重试 |
+| `image_processing_error` | 图片处理失败 | 更换图片后重试 |
+| `image_dimension_mismatch` | 图片尺寸与请求不匹配 | 调整尺寸后重试 |
+| `request_cancelled` | 请求被取消 | 重新提交 |
+
+</Accordion>
+
+<Accordion title="服务端错误（建议稍后重试）" icon="server">
+
+| 错误码 | 含义 | 可重试 |
+|--------|------|--------|
+| `generation_failed_no_content` | 模型未能生成内容 | 换 prompt 重试 |
+| `service_error` | 服务内部错误 | 稍后自动恢复 |
+| `generation_timeout` | 任务处理超时 | 稍后重试 |
+| `resource_exhausted` | 上游资源暂时耗尽 | 稍后自动恢复 |
+| `quota_exceeded` | 请求频率/配额超限 | 降低频率后重试 |
+| `service_unavailable` | 服务暂时不可用 | 稍后自动恢复 |
+| `resource_not_found` | 任务ID无效或已过期 | 检查 ID 后重试 |
+| `unknown_error` | 未分类的错误 | 联系技术支持 |
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## 错误码详解
+
+### content_policy_violation
+
+<Card title="内容政策违规" icon="shield-halved" color="#e74c3c">
+
+请求内容触发了安全审核机制，被系统拦截。这是**最常见的错误类型**，覆盖以下场景：
+
+</Card>
+
+**常见触发场景：**
+
+| 子类型 | 说明 | 典型错误消息 |
+|--------|------|-------------|
+| 写实人物 | 上传了包含真实人脸的照片 | `photorealistic people detected` |
+| 名人肖像 | 涉及名人或公众人物 | `celebrity detected in image` |
+| 版权/商标 | 涉及品牌 Logo、商标、受版权保护的角色 | `third-party content violation` |
+| 成人/NSFW | 包含裸露、性暗示内容 | `nudity detected` |
+| 暴力/自残 | 包含暴力、血腥、自残内容 | `violence content blocked` |
+| 未成年保护 | 涉及未成年人的敏感内容 | `minor content not allowed` |
+| 通用策略 | 其他违反内容政策的情况 | `content policy violation` |
+
+<Tip>
+**如何避免：**
+- 避免上传真人照片，改用插画风格或卡通风格
+- 移除品牌 Logo、商标、受版权保护的 IP 角色
+- 避免成人、暴力、自残等敏感主题
+- 使用通用的人物描述（如 "a person"），不要引用具体名人
+</Tip>
+
+---
+
+### generation_failed_no_content
+
+<Card title="生成失败" icon="image-slash" color="#e67e22">
+
+模型无法根据当前请求生成内容。虽然请求本身格式正确，但模型在处理过程中未能产出有效结果。
+
+</Card>
+
+**常见原因：**
+
+- **Prompt 质量不足**：描述过于模糊或矛盾，模型无法理解意图
+- **模型能力限制**：当前 prompt 超出了模型的生成能力范围
+- **上游服务异常**：底层模型服务返回了空结果
+- **受保护内容检测**：提示词或参考图可能涉及水印去除或受保护内容（Logo、商标等）
+
+<Tip>
+**如何处理：**
+- 调整 prompt，使描述更清晰具体
+- 更换参考图片，避免带有水印或 Logo 的图片
+- 简化请求（减少分辨率或复杂度），降低模型处理难度
+- 直接重试，部分情况下重试即可成功
+</Tip>
+
+---
+
+### invalid_parameters
+
+<Card title="参数错误" icon="sliders" color="#f39c12">
+
+请求参数不符合模型要求。
+
+</Card>
+
+**常见子类型：**
+
+| 子类型 | 说明 | 示例 |
+|--------|------|------|
+| Prompt 过长 | 提示词超出模型允许的最大长度 | `Prompt is too long` |
+| 图片尺寸超范围 | 图片宽高或宽高比不在支持范围内 | `image dimensions must be between 240 and 7680` |
+| 文件过大 | 上传的文件超出大小限制 | `file size exceeds 10MB` |
+| 文件格式不支持 | 上传了不支持的文件格式 | `unsupported file type` |
+| 视频时长超范围 | 视频时长超出模型支持范围 | `Video duration must be between 1-30 seconds` |
+
+<Tip>
+**如何处理：**
+- 检查各模型文档中的参数说明，确保参数值在允许范围内
+- 图片支持格式：JPG、PNG、WebP、GIF（不支持 HEIC、AVIF、TIFF）
+- 图片大小限制：通常 < 10MB，部分模型 < 30MB
+- 缩短 prompt 长度，或将长 prompt 拆分为核心描述
+</Tip>
+
+---
+
+### image_processing_error
+
+<Card title="图片处理失败" icon="file-image" color="#9b59b6">
+
+系统无法正常处理输入的图片。
+
+</Card>
+
+**常见原因：**
+
+- 图片 URL 无法访问（权限不足、CDN 限制、链接过期）
+- 图片格式不被支持（如 HEIC、AVIF）
+- 图片文件已损坏
+- 网络连接问题导致图片下载失败
+
+<Tip>
+**如何处理：**
+- 确保图片 URL 可公开访问，没有认证或地域限制
+- 使用标准格式：JPG、PNG、WebP
+- 尝试使用 [文件上传接口](/cn/api-manual/file-series/upload-base64) 替代 URL 方式
+- 检查图片是否完整可打开
+</Tip>
+
+---
+
+### image_dimension_mismatch
+
+<Card title="图片尺寸不匹配" icon="ruler-combined" color="#e74c3c">
+
+输入图片的尺寸与请求参数中指定的尺寸不一致。常见于图生视频场景。
+
+</Card>
+
+**示例：**
+
+- `aspect_ratio=1280x720`（16:9）时需要上传 1280×720 的横版图片
+- `aspect_ratio=720x1280`（9:16）时需要上传 720×1280 的竖版图片
+
+<Tip>
+**如何处理：**
+调整图片尺寸使其与请求的 `aspect_ratio` 参数匹配，或更改 `aspect_ratio` 参数以适应图片尺寸。
+</Tip>
+
+---
+
+### service_error
+
+<Card title="服务错误" icon="server" color="#34495e">
+
+上游服务内部出现问题。这通常是暂时性的，系统会自动切换到其他可用线路。
+
+</Card>
+
+**常见原因：**
+
+- 上游模型服务暂时不可用
+- 服务器过载、高流量
+- 升级维护中
+- 网络连接中断
+
+<Tip>
+**如何处理：**
+- 等待 30-60 秒后重试，系统通常会自动恢复
+- 如果持续出现，联系技术支持
+- 不需要修改请求内容，重试相同请求即可
+</Tip>
+
+---
+
+### generation_timeout
+
+<Card title="生成超时" icon="clock" color="#e67e22">
+
+任务在规定时间内未能完成处理。
+
+</Card>
+
+**常见原因：**
+
+- 当前系统负载较高，排队时间过长
+- 任务复杂度过高（高分辨率、长视频等）
+- 上游服务响应缓慢
+
+<Tip>
+**如何处理：**
+- 稍后重试，选择低峰时段
+- 降低任务复杂度：减少分辨率、缩短视频时长
+- 简化 prompt 描述
+</Tip>
+
+---
+
+### quota_exceeded
+
+<Card title="配额/频率超限" icon="gauge-high" color="#e74c3c">
+
+请求频率或并发数超出限制。
+
+</Card>
+
+**常见原因：**
+
+- 短时间内发送了过多请求（触发限流）
+- 同时有多个任务在处理中（并发限制）
+- 账户配额已用尽
+
+<Tip>
+**如何处理：**
+- 降低请求发送频率，建议每次请求间隔 1-2 秒
+- 等待进行中的任务完成后再提交新任务
+- 如果是配额用尽，请到 [账户充值页面](https://evolink.ai/dashboard/billing) 充值
+</Tip>
+
+---
+
+### resource_exhausted
+
+<Card title="资源耗尽" icon="battery-empty" color="#c0392b">
+
+上游服务的计算资源暂时被耗尽。通常发生在模型使用高峰期。
+
+</Card>
+
+<Tip>
+**如何处理：**
+- 等待 1-5 分钟后自动恢复
+- 系统会自动在多条线路间切换，稍后重试通常即可成功
+</Tip>
+
+---
+
+### resource_not_found
+
+<Card title="资源未找到" icon="magnifying-glass" color="#7f8c8d">
+
+请求的任务 ID 不存在或已过期。
+
+</Card>
+
+<Tip>
+**如何处理：**
+- 检查任务 ID 是否正确拼写
+- 任务结果有有效期，过期后将无法查询
+- 如确认 ID 正确，稍后重试
+</Tip>
+
+---
+
+### request_cancelled
+
+<Card title="请求被取消" icon="ban" color="#95a5a6">
+
+任务在处理过程中被取消或中断。
+
+</Card>
+
+<Tip>
+如非主动取消，直接重新提交相同请求即可。
+</Tip>
+
+---
+
+### service_unavailable
+
+<Card title="服务暂时不可用" icon="plug-circle-xmark" color="#e74c3c">
+
+服务内部出现认证或连接问题。此错误已被系统自动记录，通常会快速修复。
+
+</Card>
+
+<Tip>
+**如何处理：**
+- 等待几分钟后重试
+- 如果持续出现，请联系技术支持并提供任务 ID
+</Tip>
+
+---
+
+### unknown_error
+
+<Card title="未知错误" icon="question" color="#7f8c8d">
+
+无法归类的错误。系统未能识别该错误的具体类型。
+
+</Card>
+
+<Tip>
+**如何处理：**
+- 稍后直接重试
+- 如果问题持续，请联系技术支持并提供完整的任务 ID
+</Tip>
+
+---
+
+## 最佳实践
+
+### 错误处理建议
+
+```python
+import requests
+import time
+
+def poll_task_with_retry(task_id, api_key, max_retries=3):
+    """带自动重试的任务轮询"""
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    for attempt in range(max_retries):
+        resp = requests.get(
+            f"https://api.evolink.ai/v1/tasks/{task_id}",
+            headers=headers
+        )
+        data = resp.json()
+
+        if data["status"] == "completed":
+            return data["results"]
+
+        if data["status"] == "failed":
+            error = data.get("error", {})
+            code = error.get("code", "unknown_error")
+            message = error.get("message", "")
+
+            # 客户端错误 — 不可重试，需要修改请求
+            if code in [
+                "content_policy_violation",
+                "invalid_parameters",
+                "image_processing_error",
+                "image_dimension_mismatch",
+            ]:
+                raise Exception(f"Client error [{code}]: {message}")
+
+            # 服务端错误 — 可以重试
+            if code in [
+                "generation_failed_no_content",
+                "service_error",
+                "generation_timeout",
+                "resource_exhausted",
+                "quota_exceeded",
+            ]:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                    time.sleep(wait)
+                    continue
+                raise Exception(f"Server error [{code}]: {message}")
+
+            raise Exception(f"Error [{code}]: {message}")
+
+        # 任务仍在处理中
+        time.sleep(3)
+
+    raise Exception("Max polling attempts exceeded")
+```
+
+### 可重试 vs 不可重试
+
+<CardGroup cols={2}>
+  <Card title="需要修改请求后重试" icon="pen">
+    - `content_policy_violation` — 修改内容
+    - `invalid_parameters` — 修正参数
+    - `image_processing_error` — 更换图片
+    - `image_dimension_mismatch` — 调整尺寸
+  </Card>
+  <Card title="可直接重试" icon="rotate">
+    - `generation_failed_no_content` — 可换 prompt 重试
+    - `service_error` — 等待后重试
+    - `generation_timeout` — 等待后重试
+    - `resource_exhausted` — 等待后自动恢复
+    - `quota_exceeded` — 降低频率后重试
+  </Card>
+</CardGroup>

@@ -1,0 +1,420 @@
+---
+title: "오류 코드 참조"
+description: "작업 오류 코드 전체 목록 및 문제 해결 가이드"
+icon: "triangle-exclamation"
+---
+
+## 오류 응답 형식
+
+작업이 실패한 경우 (`status: "failed"`), 응답에는 `error` 객체가 포함됩니다:
+
+```json
+{
+  "id": "task-unified-1772618027-cmeisy8h",
+  "object": "image.generation.task",
+  "status": "failed",
+  "model": "gemini-3.1-flash-image-preview",
+  "progress": 0,
+  "error": {
+    "code": "content_policy_violation",
+    "message": "Content policy violation.\nYour request was blocked by safety filters..."
+  }
+}
+```
+
+| 필드 | 유형 | 설명 |
+|------|------|------|
+| `error.code` | `string` | 오류 코드 식별자. 아래 전체 목록 참조 |
+| `error.message` | `string` | 사용자 친화적인 오류 설명 및 문제 해결 팁 |
+
+---
+
+## 오류 코드 개요
+
+<AccordionGroup>
+
+<Accordion title="클라이언트 오류 (사용자가 수정 가능)" icon="user" defaultOpen>
+
+| 오류 코드 | 설명 | 재시도 |
+|-----------|------|--------|
+| `content_policy_violation` | 콘텐츠가 안전 정책 위반 | 콘텐츠 수정 후 재시도 |
+| `invalid_parameters` | 잘못된 요청 매개변수 | 매개변수 수정 후 재시도 |
+| `image_processing_error` | 이미지 처리 실패 | 다른 이미지 사용 |
+| `image_dimension_mismatch` | 이미지 크기가 요청과 불일치 | 이미지 크기 조정 후 재시도 |
+| `request_cancelled` | 요청이 취소됨 | 재제출 |
+
+</Accordion>
+
+<Accordion title="서버 오류 (나중에 재시도)" icon="server">
+
+| 오류 코드 | 설명 | 재시도 |
+|-----------|------|--------|
+| `generation_failed_no_content` | 모델이 출력 생성 실패 | 다른 프롬프트로 재시도 |
+| `service_error` | 내부 서비스 오류 | 자동 복구, 나중에 재시도 |
+| `generation_timeout` | 작업 처리 시간 초과 | 나중에 재시도 |
+| `resource_exhausted` | 업스트림 리소스 일시적 고갈 | 자동 복구, 나중에 재시도 |
+| `quota_exceeded` | 속도 제한 또는 할당량 초과 | 빈도 줄이고 나중에 재시도 |
+| `service_unavailable` | 서비스 일시적 사용 불가 | 자동 복구, 나중에 재시도 |
+| `resource_not_found` | 작업 ID 유효하지 않거나 만료됨 | 작업 ID 확인 |
+| `unknown_error` | 분류되지 않은 오류 | 지원팀 문의 |
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## 오류 코드 세부 사항
+
+### content_policy_violation
+
+<Card title="콘텐츠 정책 위반" icon="shield-halved" color="#e74c3c">
+
+요청이 안전 필터에 의해 차단되었습니다. 이것은 **가장 일반적인 오류 유형**으로 다음 시나리오를 포함합니다:
+
+</Card>
+
+**일반적인 트리거:**
+
+| 하위 유형 | 설명 | 메시지 예시 |
+|-----------|------|------------|
+| 사실적 인물 | 업로드된 이미지에 실제 사람 얼굴 포함 | `photorealistic people detected` |
+| 유명인 초상 | 유명인 또는 공인 관련 | `celebrity detected in image` |
+| 저작권/상표 | 브랜드 로고, 상표 또는 저작권 보호 IP 관련 | `third-party content violation` |
+| 성인/NSFW | 누드 또는 성적 암시 콘텐츠 포함 | `nudity detected` |
+| 폭력/자해 | 폭력적, 노골적 또는 자해 콘텐츠 포함 | `violence content blocked` |
+| 미성년자 보호 | 미성년자 관련 민감한 콘텐츠 | `minor content not allowed` |
+| 일반 정책 | 기타 콘텐츠 정책 위반 | `content policy violation` |
+
+<Tip>
+**피하는 방법:**
+- 실제 인물 사진 업로드 피하기 — 일러스트 또는 만화 스타일 사용
+- 브랜드 로고, 상표 및 저작권 보호 IP 캐릭터 제거
+- 성인, 폭력 또는 자해 테마 피하기
+- 특정 유명인 대신 일반적인 캐릭터 설명 사용 (예: "a person")
+</Tip>
+
+---
+
+### generation_failed_no_content
+
+<Card title="생성 실패" icon="image-slash" color="#e67e22">
+
+모델이 요청에 대한 출력을 생성할 수 없었습니다. 요청 형식은 유효했지만 처리 중에 모델이 결과를 생성하지 못했습니다.
+
+</Card>
+
+**일반적인 원인:**
+
+- **프롬프트 품질 부족**: 설명이 너무 모호하거나 모순되어 모델이 이해할 수 없음
+- **모델 능력 한계**: 프롬프트가 모델의 생성 능력을 초과
+- **업스트림 서비스 문제**: 기본 모델 서비스가 빈 결과를 반환
+- **보호된 콘텐츠 감지**: 프롬프트 또는 참조 이미지에 워터마크 제거 또는 보호된 콘텐츠(로고, 상표 등)가 포함될 수 있음
+
+<Tip>
+**수정 방법:**
+- 프롬프트를 더 명확하고 구체적으로 조정
+- 다른 참조 이미지 사용 — 워터마크나 로고가 있는 이미지 피하기
+- 요청 단순화 (해상도 또는 복잡성 낮추기)
+- 단순히 재시도 — 일부 경우 재시도 시 성공
+</Tip>
+
+---
+
+### invalid_parameters
+
+<Card title="잘못된 매개변수" icon="sliders" color="#f39c12">
+
+요청 매개변수가 모델 요구사항을 충족하지 않습니다.
+
+</Card>
+
+**일반적인 하위 유형:**
+
+| 하위 유형 | 설명 | 예시 |
+|-----------|------|------|
+| 프롬프트가 너무 긺 | 프롬프트가 모델의 최대 길이 초과 | `Prompt is too long` |
+| 이미지 크기 | 이미지 너비/높이 또는 화면 비율이 범위 밖 | `image dimensions must be between 240 and 7680` |
+| 파일이 너무 큼 | 업로드 파일이 크기 제한 초과 | `file size exceeds 10MB` |
+| 지원되지 않는 형식 | 업로드 파일 형식이 지원되지 않음 | `unsupported file type` |
+| 비디오 길이 | 비디오 길이가 모델의 지원 범위 밖 | `Video duration must be between 1-30 seconds` |
+
+<Tip>
+**수정 방법:**
+- 모델별 API 문서에서 매개변수 요구사항 확인
+- 지원 이미지 형식: JPG, PNG, WebP, GIF (HEIC, AVIF, TIFF는 **미지원**)
+- 이미지 크기 제한: 일반적으로 < 10MB, 일부 모델 < 30MB
+- 프롬프트를 줄이거나 긴 프롬프트를 핵심 설명으로 분할
+</Tip>
+
+---
+
+### image_processing_error
+
+<Card title="이미지 처리 실패" icon="file-image" color="#9b59b6">
+
+시스템이 입력 이미지를 처리할 수 없었습니다.
+
+</Card>
+
+**일반적인 원인:**
+
+- 이미지 URL에 접근할 수 없음 (인증 필요, CDN 제한, 만료된 링크)
+- 이미지 형식이 지원되지 않음 (예: HEIC, AVIF)
+- 이미지 파일 손상
+- 네트워크 문제로 이미지 다운로드 실패
+
+<Tip>
+**수정 방법:**
+- 이미지 URL이 인증이나 지역 제한 없이 공개적으로 접근 가능한지 확인
+- 표준 형식 사용: JPG, PNG, WebP
+- URL 대신 [파일 업로드 API](/ko/api-manual/file-series/upload-base64) 사용 시도
+- 이미지가 브라우저에서 올바르게 열리는지 확인
+</Tip>
+
+---
+
+### image_dimension_mismatch
+
+<Card title="이미지 크기 불일치" icon="ruler-combined" color="#e74c3c">
+
+입력 이미지의 크기가 요청에 지정된 크기와 일치하지 않습니다. 이미지에서 비디오로 변환하는 시나리오에서 흔히 발생합니다.
+
+</Card>
+
+**예시:**
+
+- `aspect_ratio=1280x720` (16:9) 시 1280x720 가로 이미지 필요
+- `aspect_ratio=720x1280` (9:16) 시 720x1280 세로 이미지 필요
+
+<Tip>
+**수정 방법:**
+요청한 `aspect_ratio` 매개변수에 맞게 이미지 크기를 조정하거나, 이미지에 맞게 `aspect_ratio`를 변경하세요.
+</Tip>
+
+---
+
+### service_error
+
+<Card title="서비스 오류" icon="server" color="#34495e">
+
+업스트림 서비스에서 내부 문제가 발생했습니다. 일반적으로 일시적이며 시스템이 자동으로 다른 사용 가능한 경로로 전환합니다.
+
+</Card>
+
+**일반적인 원인:**
+
+- 업스트림 모델 서비스 일시적 사용 불가
+- 서버 과부하 / 높은 트래픽
+- 유지보수 진행 중
+- 네트워크 연결 중단
+
+<Tip>
+**수정 방법:**
+- 30-60초 기다린 후 재시도 — 시스템은 보통 자동으로 복구됩니다
+- 지속될 경우 기술 지원에 문의
+- 요청을 수정할 필요 없음 — 동일한 요청을 재시도
+</Tip>
+
+---
+
+### generation_timeout
+
+<Card title="생성 시간 초과" icon="clock" color="#e67e22">
+
+작업이 허용된 시간 내에 완료되지 않았습니다.
+
+</Card>
+
+**일반적인 원인:**
+
+- 시스템 부하가 높아 대기열 지연 발생
+- 작업 복잡성이 높음 (고해상도, 긴 비디오 등)
+- 업스트림 서비스 응답이 느림
+
+<Tip>
+**수정 방법:**
+- 나중에 재시도, 가급적 비수기 시간에
+- 작업 복잡성 줄이기: 해상도 낮추기, 비디오 길이 줄이기
+- 프롬프트 설명 단순화
+</Tip>
+
+---
+
+### quota_exceeded
+
+<Card title="할당량 / 속도 제한 초과" icon="gauge-high" color="#e74c3c">
+
+요청 빈도 또는 동시성 제한을 초과했습니다.
+
+</Card>
+
+**일반적인 원인:**
+
+- 짧은 시간에 너무 많은 요청 전송 (속도 제한)
+- 여러 작업이 동시에 처리 중 (동시성 제한)
+- 계정 할당량 고갈
+
+<Tip>
+**수정 방법:**
+- 요청 빈도 줄이기 — 요청 간 1-2초 간격 권장
+- 진행 중인 작업이 완료될 때까지 새 작업 제출 대기
+- 할당량이 고갈된 경우 [결제 페이지](https://evolink.ai/dashboard/billing)에서 충전
+</Tip>
+
+---
+
+### resource_exhausted
+
+<Card title="리소스 고갈" icon="battery-empty" color="#c0392b">
+
+업스트림 서비스의 컴퓨팅 리소스가 일시적으로 고갈되었습니다. 일반적으로 모델 사용 피크 기간에 발생합니다.
+
+</Card>
+
+<Tip>
+**수정 방법:**
+- 1-5분 기다리면 자동 복구
+- 시스템이 여러 경로 간 자동 전환 — 나중에 재시도하면 보통 성공
+</Tip>
+
+---
+
+### resource_not_found
+
+<Card title="리소스를 찾을 수 없음" icon="magnifying-glass" color="#7f8c8d">
+
+요청한 작업 ID가 존재하지 않거나 만료되었습니다.
+
+</Card>
+
+<Tip>
+**수정 방법:**
+- 작업 ID 철자가 올바른지 확인
+- 작업 결과에는 만료 기간이 있음 — 만료된 작업은 조회 불가
+- ID가 정확하면 잠시 기다린 후 재시도
+</Tip>
+
+---
+
+### request_cancelled
+
+<Card title="요청 취소됨" icon="ban" color="#95a5a6">
+
+작업이 처리 중에 취소되거나 중단되었습니다.
+
+</Card>
+
+<Tip>
+의도적으로 취소하지 않았다면 동일한 요청을 다시 제출하면 됩니다.
+</Tip>
+
+---
+
+### service_unavailable
+
+<Card title="서비스 사용 불가" icon="plug-circle-xmark" color="#e74c3c">
+
+내부 인증 또는 연결 문제가 발생했습니다. 이 오류는 자동으로 기록되며 일반적으로 빠르게 해결됩니다.
+
+</Card>
+
+<Tip>
+**수정 방법:**
+- 몇 분 기다린 후 재시도
+- 지속될 경우 작업 ID와 함께 기술 지원에 문의
+</Tip>
+
+---
+
+### unknown_error
+
+<Card title="알 수 없는 오류" icon="question" color="#7f8c8d">
+
+분류되지 않은 오류. 시스템이 특정 오류 유형을 식별할 수 없었습니다.
+
+</Card>
+
+<Tip>
+**수정 방법:**
+- 잠시 후 재시도
+- 문제가 지속되면 전체 작업 ID와 함께 기술 지원에 문의
+</Tip>
+
+---
+
+## 모범 사례
+
+### 오류 처리 예시
+
+```python
+import requests
+import time
+
+def poll_task_with_retry(task_id, api_key, max_retries=3):
+    """Poll task status with automatic retry for server errors"""
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    for attempt in range(max_retries):
+        resp = requests.get(
+            f"https://api.evolink.ai/v1/tasks/{task_id}",
+            headers=headers
+        )
+        data = resp.json()
+
+        if data["status"] == "completed":
+            return data["results"]
+
+        if data["status"] == "failed":
+            error = data.get("error", {})
+            code = error.get("code", "unknown_error")
+            message = error.get("message", "")
+
+            # Client errors — not retryable, fix the request
+            if code in [
+                "content_policy_violation",
+                "invalid_parameters",
+                "image_processing_error",
+                "image_dimension_mismatch",
+            ]:
+                raise Exception(f"Client error [{code}]: {message}")
+
+            # Server errors — retryable
+            if code in [
+                "generation_failed_no_content",
+                "service_error",
+                "generation_timeout",
+                "resource_exhausted",
+                "quota_exceeded",
+            ]:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                    time.sleep(wait)
+                    continue
+                raise Exception(f"Server error [{code}]: {message}")
+
+            raise Exception(f"Error [{code}]: {message}")
+
+        # Task still processing
+        time.sleep(3)
+
+    raise Exception("Max polling attempts exceeded")
+```
+
+### 재시도 가능 vs 재시도 불가
+
+<CardGroup cols={2}>
+  <Card title="요청 수정 후 재시도" icon="pen">
+    - `content_policy_violation` — 콘텐츠 수정
+    - `invalid_parameters` — 매개변수 수정
+    - `image_processing_error` — 다른 이미지 사용
+    - `image_dimension_mismatch` — 이미지 크기 조정
+  </Card>
+  <Card title="직접 재시도 가능" icon="rotate">
+    - `generation_failed_no_content` — 다른 프롬프트로 재시도
+    - `service_error` — 대기 후 재시도
+    - `generation_timeout` — 대기 후 재시도
+    - `resource_exhausted` — 자동 복구
+    - `quota_exceeded` — 빈도 줄이고 재시도
+  </Card>
+</CardGroup>

@@ -1,0 +1,420 @@
+---
+title: "エラーコードリファレンス"
+description: "タスクエラーコードの完全リストとトラブルシューティングガイド"
+icon: "triangle-exclamation"
+---
+
+## エラーレスポンス形式
+
+タスクが失敗した場合（`status: "failed"`）、レスポンスには `error` オブジェクトが含まれます：
+
+```json
+{
+  "id": "task-unified-1772618027-cmeisy8h",
+  "object": "image.generation.task",
+  "status": "failed",
+  "model": "gemini-3.1-flash-image-preview",
+  "progress": 0,
+  "error": {
+    "code": "content_policy_violation",
+    "message": "Content policy violation.\nYour request was blocked by safety filters..."
+  }
+}
+```
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| `error.code` | `string` | エラーコード識別子。以下の完全リストを参照 |
+| `error.message` | `string` | ユーザーフレンドリーなエラー説明とトラブルシューティングのヒント |
+
+---
+
+## エラーコード一覧
+
+<AccordionGroup>
+
+<Accordion title="クライアントエラー（ユーザーが修正可能）" icon="user" defaultOpen>
+
+| エラーコード | 説明 | 再試行 |
+|------------|------|--------|
+| `content_policy_violation` | コンテンツがセーフティポリシーに違反 | コンテンツを修正してから再試行 |
+| `invalid_parameters` | 無効なリクエストパラメータ | パラメータを修正してから再試行 |
+| `image_processing_error` | 画像処理に失敗 | 別の画像を使用 |
+| `image_dimension_mismatch` | 画像の寸法がリクエストと不一致 | 画像をリサイズしてから再試行 |
+| `request_cancelled` | リクエストがキャンセルされた | 再送信 |
+
+</Accordion>
+
+<Accordion title="サーバーエラー（後で再試行）" icon="server">
+
+| エラーコード | 説明 | 再試行 |
+|------------|------|--------|
+| `generation_failed_no_content` | モデルが出力を生成できなかった | 別のプロンプトで再試行 |
+| `service_error` | 内部サービスエラー | 自動回復、後で再試行 |
+| `generation_timeout` | タスク処理がタイムアウト | 後で再試行 |
+| `resource_exhausted` | 上流リソースが一時的に枯渇 | 自動回復、後で再試行 |
+| `quota_exceeded` | レート制限またはクォータ超過 | 頻度を下げて後で再試行 |
+| `service_unavailable` | サービスが一時的に利用不可 | 自動回復、後で再試行 |
+| `resource_not_found` | タスクIDが無効または期限切れ | タスクIDを確認 |
+| `unknown_error` | 未分類のエラー | サポートに連絡 |
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## エラーコード詳細
+
+### content_policy_violation
+
+<Card title="コンテンツポリシー違反" icon="shield-halved" color="#e74c3c">
+
+リクエストがセーフティフィルターによりブロックされました。これは**最も一般的なエラータイプ**で、以下のシナリオをカバーします：
+
+</Card>
+
+**一般的なトリガー：**
+
+| サブタイプ | 説明 | メッセージ例 |
+|-----------|------|-------------|
+| フォトリアルな人物 | アップロード画像に実際の人間の顔が含まれている | `photorealistic people detected` |
+| 有名人の肖像 | 有名人や著名人に関連 | `celebrity detected in image` |
+| 著作権/商標 | ブランドロゴ、商標、著作権保護IPに関連 | `third-party content violation` |
+| アダルト/NSFW | ヌードや性的示唆のあるコンテンツ | `nudity detected` |
+| 暴力/自傷 | 暴力的、グラフィック、自傷的なコンテンツ | `violence content blocked` |
+| 未成年者保護 | 未成年者に関する機密コンテンツ | `minor content not allowed` |
+| 一般ポリシー | その他のコンテンツポリシー違反 | `content policy violation` |
+
+<Tip>
+**回避方法：**
+- 実際の人物写真のアップロードを避け、イラストやカートーンスタイルを使用
+- ブランドロゴ、商標、著作権保護IPキャラクターを削除
+- アダルト、暴力、自傷的なテーマを避ける
+- 特定の有名人を参照せず、一般的な人物描写を使用（例：「a person」）
+</Tip>
+
+---
+
+### generation_failed_no_content
+
+<Card title="生成失敗" icon="image-slash" color="#e67e22">
+
+モデルがリクエストに対する出力を生成できませんでした。リクエスト形式は有効でしたが、処理中にモデルが結果を生成できませんでした。
+
+</Card>
+
+**一般的な原因：**
+
+- **プロンプト品質の低さ**：説明が曖昧すぎるか矛盾しており、モデルが理解できない
+- **モデル能力の限界**：プロンプトがモデルの生成能力を超えている
+- **上流サービスの問題**：基盤モデルサービスが空の結果を返した
+- **保護コンテンツの検出**：プロンプトまたは参照画像にウォーターマーク除去や保護コンテンツ（ロゴ、商標等）が含まれている可能性
+
+<Tip>
+**修正方法：**
+- プロンプトをより明確で具体的に調整
+- 別の参照画像を使用 — ウォーターマークやロゴのある画像を避ける
+- リクエストを簡素化（低解像度や複雑さを軽減）
+- 単純に再試行 — 一部のケースでは再試行で成功
+</Tip>
+
+---
+
+### invalid_parameters
+
+<Card title="無効なパラメータ" icon="sliders" color="#f39c12">
+
+リクエストパラメータがモデルの要件を満たしていません。
+
+</Card>
+
+**一般的なサブタイプ：**
+
+| サブタイプ | 説明 | 例 |
+|-----------|------|------|
+| プロンプトが長すぎる | プロンプトがモデルの最大長を超過 | `Prompt is too long` |
+| 画像寸法 | 画像の幅/高さやアスペクト比が範囲外 | `image dimensions must be between 240 and 7680` |
+| ファイルが大きすぎる | アップロードファイルがサイズ制限を超過 | `file size exceeds 10MB` |
+| 非対応フォーマット | アップロードファイルのフォーマットが非対応 | `unsupported file type` |
+| 動画時間 | 動画時間がモデルのサポート範囲外 | `Video duration must be between 1-30 seconds` |
+
+<Tip>
+**修正方法：**
+- モデル固有のAPIドキュメントでパラメータ要件を確認
+- 対応画像形式：JPG、PNG、WebP、GIF（HEIC、AVIF、TIFFは**非対応**）
+- 画像サイズ制限：通常 < 10MB、一部モデル < 30MB
+- プロンプトを短くするか、長いプロンプトをコア説明に分割
+</Tip>
+
+---
+
+### image_processing_error
+
+<Card title="画像処理失敗" icon="file-image" color="#9b59b6">
+
+システムが入力画像を処理できませんでした。
+
+</Card>
+
+**一般的な原因：**
+
+- 画像URLにアクセスできない（認証が必要、CDN制限、リンク期限切れ）
+- 画像形式が非対応（例：HEIC、AVIF）
+- 画像ファイルが破損
+- ネットワークの問題により画像のダウンロードに失敗
+
+<Tip>
+**修正方法：**
+- 画像URLが認証やリージョン制限なしで公開アクセス可能であることを確認
+- 標準形式を使用：JPG、PNG、WebP
+- URLの代わりに[ファイルアップロードAPI](/ja/api-manual/file-series/upload-base64)を使用してみる
+- 画像がブラウザで正しく開けることを確認
+</Tip>
+
+---
+
+### image_dimension_mismatch
+
+<Card title="画像寸法不一致" icon="ruler-combined" color="#e74c3c">
+
+入力画像の寸法がリクエストで指定された寸法と一致しません。画像から動画への変換シナリオでよく発生します。
+
+</Card>
+
+**例：**
+
+- `aspect_ratio=1280x720`（16:9）の場合、1280x720の横長画像が必要
+- `aspect_ratio=720x1280`（9:16）の場合、720x1280の縦長画像が必要
+
+<Tip>
+**修正方法：**
+リクエストの `aspect_ratio` パラメータに合わせて画像をリサイズするか、画像に合わせて `aspect_ratio` を変更してください。
+</Tip>
+
+---
+
+### service_error
+
+<Card title="サービスエラー" icon="server" color="#34495e">
+
+上流サービスで内部的な問題が発生しました。通常は一時的で、システムが自動的に他の利用可能なルートに切り替えます。
+
+</Card>
+
+**一般的な原因：**
+
+- 上流モデルサービスが一時的に利用不可
+- サーバー過負荷/高トラフィック
+- メンテナンス中
+- ネットワーク接続の中断
+
+<Tip>
+**修正方法：**
+- 30-60秒待ってから再試行 — システムは通常自動回復します
+- 継続する場合はテクニカルサポートに連絡
+- リクエストを変更する必要はありません — 同じリクエストを再試行
+</Tip>
+
+---
+
+### generation_timeout
+
+<Card title="生成タイムアウト" icon="clock" color="#e67e22">
+
+タスクが許可された時間内に完了しませんでした。
+
+</Card>
+
+**一般的な原因：**
+
+- システム負荷が高く、キュー遅延が発生
+- タスクの複雑さが高い（高解像度、長い動画等）
+- 上流サービスの応答が遅い
+
+<Tip>
+**修正方法：**
+- 後で再試行、できればオフピーク時に
+- タスクの複雑さを軽減：解像度を下げる、動画時間を短くする
+- プロンプトの説明を簡素化
+</Tip>
+
+---
+
+### quota_exceeded
+
+<Card title="クォータ/レート制限超過" icon="gauge-high" color="#e74c3c">
+
+リクエスト頻度または同時実行制限を超過しました。
+
+</Card>
+
+**一般的な原因：**
+
+- 短時間に多すぎるリクエストを送信（レート制限）
+- 複数のタスクが同時に処理中（同時実行制限）
+- アカウントクォータが枯渇
+
+<Tip>
+**修正方法：**
+- リクエスト頻度を下げる — リクエスト間隔は1-2秒を推奨
+- 進行中のタスクが完了してから新しいタスクを送信
+- クォータが枯渇した場合は[課金ページ](https://evolink.ai/dashboard/billing)でチャージ
+</Tip>
+
+---
+
+### resource_exhausted
+
+<Card title="リソース枯渇" icon="battery-empty" color="#c0392b">
+
+上流サービスのコンピューティングリソースが一時的に枯渇。通常、モデル使用のピーク期間に発生します。
+
+</Card>
+
+<Tip>
+**修正方法：**
+- 1-5分待てば自動回復
+- システムは複数のルート間で自動切り替え — 後で再試行すれば通常成功
+</Tip>
+
+---
+
+### resource_not_found
+
+<Card title="リソースが見つからない" icon="magnifying-glass" color="#7f8c8d">
+
+リクエストされたタスクIDが存在しないか、期限切れです。
+
+</Card>
+
+<Tip>
+**修正方法：**
+- タスクIDのスペルが正しいか確認
+- タスク結果には有効期限があり、期限切れのタスクは照会できません
+- IDが正しい場合、少し待ってから再試行
+</Tip>
+
+---
+
+### request_cancelled
+
+<Card title="リクエストがキャンセルされた" icon="ban" color="#95a5a6">
+
+タスクが処理中にキャンセルまたは中断されました。
+
+</Card>
+
+<Tip>
+意図的にキャンセルしていない場合は、同じリクエストを再送信するだけです。
+</Tip>
+
+---
+
+### service_unavailable
+
+<Card title="サービス利用不可" icon="plug-circle-xmark" color="#e74c3c">
+
+内部認証または接続の問題が発生しました。このエラーは自動的に記録され、通常すぐに解決されます。
+
+</Card>
+
+<Tip>
+**修正方法：**
+- 数分待ってから再試行
+- 継続する場合はタスクIDを添えてテクニカルサポートに連絡
+</Tip>
+
+---
+
+### unknown_error
+
+<Card title="不明なエラー" icon="question" color="#7f8c8d">
+
+未分類のエラー。システムが特定のエラータイプを識別できませんでした。
+
+</Card>
+
+<Tip>
+**修正方法：**
+- 少し待ってから再試行
+- 問題が続く場合は、完全なタスクIDを添えてテクニカルサポートに連絡
+</Tip>
+
+---
+
+## ベストプラクティス
+
+### エラー処理の例
+
+```python
+import requests
+import time
+
+def poll_task_with_retry(task_id, api_key, max_retries=3):
+    """Poll task status with automatic retry for server errors"""
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    for attempt in range(max_retries):
+        resp = requests.get(
+            f"https://api.evolink.ai/v1/tasks/{task_id}",
+            headers=headers
+        )
+        data = resp.json()
+
+        if data["status"] == "completed":
+            return data["results"]
+
+        if data["status"] == "failed":
+            error = data.get("error", {})
+            code = error.get("code", "unknown_error")
+            message = error.get("message", "")
+
+            # Client errors — not retryable, fix the request
+            if code in [
+                "content_policy_violation",
+                "invalid_parameters",
+                "image_processing_error",
+                "image_dimension_mismatch",
+            ]:
+                raise Exception(f"Client error [{code}]: {message}")
+
+            # Server errors — retryable
+            if code in [
+                "generation_failed_no_content",
+                "service_error",
+                "generation_timeout",
+                "resource_exhausted",
+                "quota_exceeded",
+            ]:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                    time.sleep(wait)
+                    continue
+                raise Exception(f"Server error [{code}]: {message}")
+
+            raise Exception(f"Error [{code}]: {message}")
+
+        # Task still processing
+        time.sleep(3)
+
+    raise Exception("Max polling attempts exceeded")
+```
+
+### 再試行可能 vs 再試行不可
+
+<CardGroup cols={2}>
+  <Card title="リクエスト修正後に再試行" icon="pen">
+    - `content_policy_violation` — コンテンツを修正
+    - `invalid_parameters` — パラメータを修正
+    - `image_processing_error` — 別の画像を使用
+    - `image_dimension_mismatch` — 画像をリサイズ
+  </Card>
+  <Card title="直接再試行可能" icon="rotate">
+    - `generation_failed_no_content` — 別のプロンプトで再試行
+    - `service_error` — 待ってから再試行
+    - `generation_timeout` — 待ってから再試行
+    - `resource_exhausted` — 自動回復
+    - `quota_exceeded` — 頻度を下げてから再試行
+  </Card>
+</CardGroup>
