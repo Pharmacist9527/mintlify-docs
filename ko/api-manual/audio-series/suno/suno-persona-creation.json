@@ -1,0 +1,402 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Suno Persona 생성 API",
+    "description": "완료된 Suno 음악 생성 작업에서 재사용 가능한 음악 스타일(Persona)을 추출하여, 후속 음악 생성에서 일관된 보컬 및 스타일 특성을 유지할 수 있습니다",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "프로덕션 환경"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Suno Persona 생성 API",
+        "description": "- 완료된 Suno 음악 생성 작업에서 재사용 가능한 Persona(보컬/스타일 특성)를 추출합니다\n- 생성 성공 후 `persona_id`가 반환되며, 후속 [Suno 음악 생성](/ko/api-manual/audio-series/suno/suno-music-generation)에서 `persona_id` 및 `persona_model` 매개변수를 통해 적용할 수 있습니다\n- 소스 작업 모델 버전은 **suno-v4 이상**이어야 합니다 (v3.5 미지원)\n- 각 곡(result_id)당 **하나의 Persona만** 생성할 수 있습니다\n- 비동기 처리 모드, 반환된 작업 ID로 [상태 조회](/ko/api-manual/task-management/get-task-detail)\n- Persona 작업에서 새로운 Persona를 생성할 수 없습니다",
+        "operationId": "createSunoPersona",
+        "tags": [
+          "Audio Generation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SunoPersonaCreationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "기본 생성 (필수 매개변수)",
+                  "value": {
+                    "model": "suno-persona",
+                    "model_params": {
+                      "source_task_id": "task-unified-1774169216-ocqaqde7",
+                      "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                      "name": "Electronic Pop Singer",
+                      "description": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+                    }
+                  }
+                },
+                "with_vocal_range": {
+                  "summary": "보컬 추출 구간 지정",
+                  "value": {
+                    "model": "suno-persona",
+                    "model_params": {
+                      "source_task_id": "task-unified-1774169216-ocqaqde7",
+                      "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                      "name": "Jazz Vocalist",
+                      "description": "Smooth jazz vocal style with warm tones and improvisational flair suitable for lounge music",
+                      "vocal_start": 15,
+                      "vocal_end": 35,
+                      "style": "jazz"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Persona 생성 작업 제출 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "요청 매개변수가 잘못되었습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_params": {
+                    "summary": "필수 매개변수 누락",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "model_params.source_task_id is required",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source": {
+                    "summary": "소스 작업이 유효하지 않음",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "소스 작업이 존재하지 않거나 현재 사용자에 속하지 않습니다: task-unified-xxx",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "vocal_window": {
+                    "summary": "보컬 구간이 유효하지 않음",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "vocal_end - vocal_start must be between 10 and 30 seconds",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않았거나 토큰이 유효하지 않거나 만료되었습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량이 부족합니다. 충전이 필요합니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 한도를 초과했습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "서버 내부 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SunoPersonaCreationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "model_params"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "모델 이름, `suno-persona`로 고정",
+            "enum": [
+              "suno-persona"
+            ],
+            "example": "suno-persona"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Persona 생성 매개변수",
+            "required": [
+              "source_task_id",
+              "result_id",
+              "name",
+              "description"
+            ],
+            "properties": {
+              "source_task_id": {
+                "type": "string",
+                "description": "완료된 Suno 음악 생성 작업의 Task ID\n\n**획득 방법:** 음악 생성 요청에서 반환된 `id` 필드\n\n**요구 사항:**\n1. 작업이 현재 요청 사용자에게 속해야 합니다\n2. 작업 상태가 `completed`여야 합니다\n3. 작업 모델이 Suno 시리즈(suno-v4 이상)여야 합니다\n4. `suno-persona` 유형의 작업이 아니어야 합니다",
+                "example": "task-unified-1774169216-ocqaqde7"
+              },
+              "result_id": {
+                "type": "string",
+                "description": "소스 작업 결과에서 지정된 곡의 고유 식별자\n\n**획득 방법:** [작업 상세 조회](/ko/api-manual/task-management/get-task-detail) API를 통해 `result_data.songs[]` 배열에서 대상 곡의 `result_id`를 찾습니다\n\n**제한:** 각 `result_id`당 하나의 Persona만 생성할 수 있으며, 중복 생성 시 오류가 반환됩니다",
+                "format": "uuid",
+                "example": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb"
+              },
+              "name": {
+                "type": "string",
+                "description": "Persona 이름, 식별 및 후속 참조용",
+                "example": "Electronic Pop Singer"
+              },
+              "description": {
+                "type": "string",
+                "description": "Persona의 음악 스타일 설명",
+                "example": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+              },
+              "vocal_start": {
+                "type": "integer",
+                "description": "보컬 추출 시작 시점 (초)\n\n`vocal_end`와 반드시 함께 제공해야 하며, 하나만 제공할 수 없습니다. 값은 0 이상이어야 합니다. 추출 구간(`vocal_end - vocal_start`)은 **10 - 30초** 사이여야 합니다",
+                "minimum": 0,
+                "example": 10
+              },
+              "vocal_end": {
+                "type": "integer",
+                "description": "보컬 추출 종료 시점 (초)\n\n`vocal_start`와 반드시 함께 제공해야 하며, 값은 `vocal_start`보다 커야 합니다. 추출 구간(`vocal_end - vocal_start`)은 **10 - 30초** 사이여야 합니다",
+                "minimum": 0,
+                "example": 30
+              },
+              "style": {
+                "type": "string",
+                "description": "스타일 태그, Persona의 음악 스타일을 표시합니다. 자유 텍스트이며 강제 형식 요구 사항이 없습니다. 빈 문자열은 무시됩니다",
+                "example": "electronic pop"
+              }
+            }
+          }
+        }
+      },
+      "AudioGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "작업 생성 타임스탬프",
+            "example": 1774170584
+          },
+          "id": {
+            "type": "string",
+            "description": "작업 ID, 작업 상태 및 결과를 조회하는 데 사용됩니다",
+            "example": "task-unified-1774170584-su75smg7"
+          },
+          "model": {
+            "type": "string",
+            "description": "실제 사용된 모델 이름",
+            "example": "suno-persona"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "작업 유형"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "작업 진행률 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "작업 상태",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "작업 상세 정보"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "작업 출력 유형",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "사용량 및 과금 정보"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "작업 취소 가능 여부",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "예상 완료 시간 (초)",
+            "example": 15
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "사용량 및 과금 정보",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "과금 규칙",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "예상 소비 크레딧",
+            "minimum": 0,
+            "example": 1
+          },
+          "user_group": {
+            "type": "string",
+            "description": "사용자 그룹 카테고리",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "오류 코드 식별자"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명"
+              },
+              "type": {
+                "type": "string",
+                "description": "오류 유형"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 API는 Bearer Token 인증이 필요합니다##\n\n**API Key 받기:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)를 방문하여 API Key를 받으세요\n\n**요청 헤더에 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}

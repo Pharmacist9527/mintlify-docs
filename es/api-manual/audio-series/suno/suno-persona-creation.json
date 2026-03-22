@@ -1,0 +1,402 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Suno Persona Creation API",
+    "description": "Extrae un estilo musical reutilizable (Persona) de una tarea completada de generación de música Suno, para mantener características vocales y de estilo consistentes en generaciones posteriores",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Entorno de producción"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Suno Persona Creation API",
+        "description": "- Extrae un Persona reutilizable (características vocales/de estilo) de una tarea completada de generación de música Suno\n- Una vez creado exitosamente, devuelve `persona_id`, que puede aplicarse en la [generación de música Suno](/es/api-manual/audio-series/suno/suno-music-generation) posterior mediante los parámetros `persona_id` y `persona_model`\n- La versión del modelo de la tarea fuente debe ser **suno-v4 o superior** (no compatible con v3.5)\n- Cada canción (result_id) **solo puede crear un Persona**\n- Modo de procesamiento asíncrono, usa el ID de tarea devuelto para [consultar el estado](/es/api-manual/task-management/get-task-detail)\n- No se puede crear un nuevo Persona a partir de una tarea Persona",
+        "operationId": "createSunoPersona",
+        "tags": [
+          "Audio Generation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SunoPersonaCreationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Creación básica (parámetros requeridos)",
+                  "value": {
+                    "model": "suno-persona",
+                    "model_params": {
+                      "source_task_id": "task-unified-1774169216-ocqaqde7",
+                      "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                      "name": "Electronic Pop Singer",
+                      "description": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+                    }
+                  }
+                },
+                "with_vocal_range": {
+                  "summary": "Especificar ventana de extracción vocal",
+                  "value": {
+                    "model": "suno-persona",
+                    "model_params": {
+                      "source_task_id": "task-unified-1774169216-ocqaqde7",
+                      "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                      "name": "Jazz Vocalist",
+                      "description": "Smooth jazz vocal style with warm tones and improvisational flair suitable for lounge music",
+                      "vocal_start": 15,
+                      "vocal_end": 35,
+                      "style": "jazz"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tarea de creación de Persona enviada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_params": {
+                    "summary": "Faltan parámetros requeridos",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "model_params.source_task_id is required",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source": {
+                    "summary": "Tarea fuente no válida",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "La tarea fuente no existe o no pertenece al usuario actual: task-unified-xxx",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "vocal_window": {
+                    "summary": "Ventana vocal no válida",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "vocal_end - vocal_start must be between 10 and 30 seconds",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autenticado, token inválido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente, se requiere recarga",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de velocidad excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SunoPersonaCreationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "model_params"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo, fijo como `suno-persona`",
+            "enum": [
+              "suno-persona"
+            ],
+            "example": "suno-persona"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Parámetros de creación de Persona",
+            "required": [
+              "source_task_id",
+              "result_id",
+              "name",
+              "description"
+            ],
+            "properties": {
+              "source_task_id": {
+                "type": "string",
+                "description": "Task ID de una tarea completada de generación de música Suno\n\n**Cómo obtenerlo:** Campo `id` devuelto por la solicitud de generación de música\n\n**Requisitos:**\n1. La tarea debe pertenecer al usuario de la solicitud actual\n2. El estado de la tarea debe ser `completed`\n3. El modelo de la tarea debe ser de la serie Suno (suno-v4 o superior)\n4. No puede ser una tarea de tipo `suno-persona`",
+                "example": "task-unified-1774169216-ocqaqde7"
+              },
+              "result_id": {
+                "type": "string",
+                "description": "Identificador único de la canción específica en los resultados de la tarea fuente\n\n**Cómo obtenerlo:** A través de la interfaz [consultar detalles de la tarea](/es/api-manual/task-management/get-task-detail), encontrar el `result_id` de la canción objetivo en el array `result_data.songs[]`\n\n**Restricción:** Cada `result_id` solo puede crear un Persona, la creación duplicada devolverá un error",
+                "format": "uuid",
+                "example": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb"
+              },
+              "name": {
+                "type": "string",
+                "description": "Nombre del Persona, utilizado para identificación y referencia posterior",
+                "example": "Electronic Pop Singer"
+              },
+              "description": {
+                "type": "string",
+                "description": "Descripción del estilo musical del Persona",
+                "example": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+              },
+              "vocal_start": {
+                "type": "integer",
+                "description": "Punto de inicio de la extracción vocal (segundos)\n\nDebe proporcionarse junto con `vocal_end`, no se puede proporcionar solo uno. El valor debe ser >= 0. La ventana de extracción (`vocal_end - vocal_start`) debe estar entre **10 - 30 segundos**",
+                "minimum": 0,
+                "example": 10
+              },
+              "vocal_end": {
+                "type": "integer",
+                "description": "Punto final de la extracción vocal (segundos)\n\nDebe proporcionarse junto con `vocal_start`, el valor debe ser estrictamente mayor que `vocal_start`. La ventana de extracción (`vocal_end - vocal_start`) debe estar entre **10 - 30 segundos**",
+                "minimum": 0,
+                "example": 30
+              },
+              "style": {
+                "type": "string",
+                "description": "Etiqueta de estilo, utilizada para anotar el estilo musical del Persona. Texto libre, sin formato obligatorio, las cadenas vacías se ignoran",
+                "example": "electronic pop"
+              }
+            }
+          }
+        }
+      },
+      "AudioGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Marca de tiempo de creación de la tarea",
+            "example": 1774170584
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tarea, utilizado para consultar el estado y los resultados de la tarea",
+            "example": "task-unified-1774170584-su75smg7"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo real utilizado",
+            "example": "suno-persona"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "Tipo de tarea"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Porcentaje de progreso de la tarea (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la tarea",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "Detalles de la tarea de audio"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "Tipo de salida de la tarea",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "Información de uso y facturación"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Si la tarea puede ser cancelada",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Tiempo estimado de finalización (segundos)",
+            "example": 15
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Información de uso y facturación",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Regla de facturación",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Créditos estimados consumidos",
+            "minimum": 0,
+            "example": 1
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Categoría de grupo de usuario",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Identificador del código de error"
+              },
+              "message": {
+                "type": "string",
+                "description": "Descripción del error"
+              },
+              "type": {
+                "type": "string",
+                "description": "Tipo de error"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las APIs requieren autenticación Bearer Token##\n\n**Obtener API Key:**\n\nVisita la [Página de gestión de API Key](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Agregar al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}

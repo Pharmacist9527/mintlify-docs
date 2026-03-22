@@ -1,0 +1,402 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Suno Persona 创建接口",
+        "description": "从已完成的 Suno 音乐生成任务中提取可复用的音乐风格（Persona），用于后续音乐生成中保持一致的声乐和风格特征",
+        "license": {
+            "name": "MIT"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "https://api.evolink.ai",
+            "description": "生产环境"
+        }
+    ],
+    "security": [
+        {
+            "bearerAuth": []
+        }
+    ],
+    "paths": {
+        "/v1/audios/generations": {
+            "post": {
+                "summary": "Suno Persona 创建接口",
+                "description": "- 从已完成的 Suno 音乐生成任务中提取可复用的 Persona（声乐/风格特征）\n- 创建成功后返回 `persona_id`，可在后续 [Suno 音乐生成](/cn/api-manual/audio-series/suno/suno-music-generation) 中通过 `persona_id` 和 `persona_model` 参数应用\n- 源任务模型版本必须为 **suno-v4 及以上**（不支持 v3.5）\n- 每首歌曲（result_id）**只能创建一个 Persona**\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 不能从 Persona 任务创建新的 Persona",
+                "operationId": "createSunoPersona",
+                "tags": [
+                    "音频生成"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SunoPersonaCreationRequest"
+                            },
+                            "examples": {
+                                "basic": {
+                                    "summary": "基础创建（必填参数）",
+                                    "value": {
+                                        "model": "suno-persona",
+                                        "model_params": {
+                                            "source_task_id": "task-unified-1774169216-ocqaqde7",
+                                            "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                                            "name": "Electronic Pop Singer",
+                                            "description": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+                                        }
+                                    }
+                                },
+                                "with_vocal_range": {
+                                    "summary": "指定声乐提取窗口",
+                                    "value": {
+                                        "model": "suno-persona",
+                                        "model_params": {
+                                            "source_task_id": "task-unified-1774169216-ocqaqde7",
+                                            "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                                            "name": "Jazz Vocalist",
+                                            "description": "Smooth jazz vocal style with warm tones and improvisational flair suitable for lounge music",
+                                            "vocal_start": 15,
+                                            "vocal_end": 35,
+                                            "style": "jazz"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Persona 创建任务提交成功",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AudioGenerationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "examples": {
+                                    "missing_params": {
+                                        "summary": "缺少必填参数",
+                                        "value": {
+                                            "error": {
+                                                "code": "invalid_request",
+                                                "message": "model_params.source_task_id is required",
+                                                "type": "invalid_request_error"
+                                            }
+                                        }
+                                    },
+                                    "invalid_source": {
+                                        "summary": "源任务不合法",
+                                        "value": {
+                                            "error": {
+                                                "code": "invalid_request",
+                                                "message": "源任务不存在或不属于当前用户: task-unified-xxx",
+                                                "type": "invalid_request_error"
+                                            }
+                                        }
+                                    },
+                                    "vocal_window": {
+                                        "summary": "声乐窗口不合法",
+                                        "value": {
+                                            "error": {
+                                                "code": "invalid_request",
+                                                "message": "vocal_end - vocal_start must be between 10 and 30 seconds",
+                                                "type": "invalid_request_error"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "未认证、Token无效或过期",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "unauthorized",
+                                        "message": "Invalid or expired token",
+                                        "type": "authentication_error"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "402": {
+                        "description": "配额不足、需要充值",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "insufficient_quota",
+                                        "message": "Insufficient quota. Please top up your account.",
+                                        "type": "insufficient_quota"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "请求频率超限",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "rate_limit_exceeded",
+                                        "message": "Too many requests, please try again later",
+                                        "type": "rate_limit_error"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "internal_error",
+                                        "message": "Internal server error",
+                                        "type": "api_error"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "SunoPersonaCreationRequest": {
+                "type": "object",
+                "required": [
+                    "model",
+                    "model_params"
+                ],
+                "properties": {
+                    "model": {
+                        "type": "string",
+                        "description": "模型名称，固定为 `suno-persona`",
+                        "enum": [
+                            "suno-persona"
+                        ],
+                        "example": "suno-persona"
+                    },
+                    "model_params": {
+                        "type": "object",
+                        "description": "Persona 创建参数",
+                        "required": [
+                            "source_task_id",
+                            "result_id",
+                            "name",
+                            "description"
+                        ],
+                        "properties": {
+                            "source_task_id": {
+                                "type": "string",
+                                "description": "已完成的 Suno 音乐生成任务的 Task ID\n\n**获取方式：** 音乐生成请求返回的 `id` 字段\n\n**要求：**\n1. 任务必须属于当前请求用户\n2. 任务状态必须为 `completed`\n3. 任务模型必须为 Suno 系列（suno-v4 及以上）\n4. 不能是 `suno-persona` 类型的任务",
+                                "example": "task-unified-1774169216-ocqaqde7"
+                            },
+                            "result_id": {
+                                "type": "string",
+                                "description": "源任务结果中指定歌曲的唯一标识\n\n**获取方式：** 通过 [查询任务详情](/cn/api-manual/task-management/get-task-detail) 接口，在 `result_data.songs[]` 数组中找到目标歌曲的 `result_id`\n\n**限制：** 每个 `result_id` 只能创建一个 Persona，重复创建将返回错误",
+                                "format": "uuid",
+                                "example": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Persona 名称，用于标识和后续引用",
+                                "example": "Electronic Pop Singer"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Persona 的音乐风格描述",
+                                "example": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+                            },
+                            "vocal_start": {
+                                "type": "number",
+                                "description": "声乐提取的起始时间点（秒）\n\n必须与 `vocal_end` 成对提供，不能只提供其中之一。值必须 ≥ 0。提取窗口（`vocal_end - vocal_start`）必须在 **10 - 30 秒** 之间",
+                                "minimum": 0,
+                                "example": 10
+                            },
+                            "vocal_end": {
+                                "type": "number",
+                                "description": "声乐提取的结束时间点（秒）\n\n必须与 `vocal_start` 成对提供，值必须严格大于 `vocal_start`。提取窗口（`vocal_end - vocal_start`）必须在 **10 - 30 秒** 之间",
+                                "minimum": 0,
+                                "example": 30
+                            },
+                            "style": {
+                                "type": "string",
+                                "description": "风格标签，用于标注 Persona 的音乐风格。自由文本，无强制格式要求，空字符串会被忽略",
+                                "example": "electronic pop"
+                            }
+                        }
+                    }
+                }
+            },
+            "AudioGenerationResponse": {
+                "type": "object",
+                "properties": {
+                    "created": {
+                        "type": "integer",
+                        "description": "任务创建时间戳",
+                        "example": 1774170584
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "任务ID，用于查询任务状态和结果",
+                        "example": "task-unified-1774170584-su75smg7"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "实际使用的模型名称",
+                        "example": "suno-persona"
+                    },
+                    "object": {
+                        "type": "string",
+                        "enum": [
+                            "audio.generation.task"
+                        ],
+                        "description": "任务的具体类型"
+                    },
+                    "progress": {
+                        "type": "integer",
+                        "description": "任务进度百分比 (0-100)",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "example": 0
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "任务状态",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "completed",
+                            "failed"
+                        ],
+                        "example": "pending"
+                    },
+                    "task_info": {
+                        "$ref": "#/components/schemas/AudioTaskInfo",
+                        "description": "任务详细信息"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "audio"
+                        ],
+                        "description": "任务的输出类型",
+                        "example": "audio"
+                    },
+                    "usage": {
+                        "$ref": "#/components/schemas/Usage",
+                        "description": "使用量和计费信息"
+                    }
+                }
+            },
+            "AudioTaskInfo": {
+                "type": "object",
+                "properties": {
+                    "can_cancel": {
+                        "type": "boolean",
+                        "description": "任务是否可以取消",
+                        "example": false
+                    },
+                    "estimated_time": {
+                        "type": "integer",
+                        "description": "预估完成时间（秒）",
+                        "example": 15
+                    }
+                }
+            },
+            "Usage": {
+                "type": "object",
+                "description": "使用量和计费信息",
+                "properties": {
+                    "billing_rule": {
+                        "type": "string",
+                        "description": "计费规则",
+                        "enum": [
+                            "per_call",
+                            "per_token",
+                            "per_second"
+                        ],
+                        "example": "per_call"
+                    },
+                    "credits_reserved": {
+                        "type": "number",
+                        "description": "预估消耗积分数",
+                        "minimum": 0,
+                        "example": 1
+                    },
+                    "user_group": {
+                        "type": "string",
+                        "description": "用户组类别",
+                        "enum": [
+                            "default",
+                            "vip"
+                        ],
+                        "example": "default"
+                    }
+                }
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "错误代码标识符"
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "错误描述信息"
+                            },
+                            "type": {
+                                "type": "string",
+                                "description": "错误类型"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key ：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+            }
+        }
+    }
+}

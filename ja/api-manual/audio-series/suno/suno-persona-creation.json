@@ -1,0 +1,402 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Suno Persona 作成 API",
+    "description": "完了済みのSuno音楽生成タスクから再利用可能な音楽スタイル（Persona）を抽出し、後続の音楽生成で一貫したボーカルとスタイル特性を維持",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Suno Persona 作成 API",
+        "description": "- 完了済みのSuno音楽生成タスクから再利用可能なPersona（ボーカル/スタイル特性）を抽出\n- 作成成功後に `persona_id` が返され、後続の [Suno 音楽生成](/ja/api-manual/audio-series/suno/suno-music-generation) で `persona_id` と `persona_model` パラメータを通じて適用可能\n- ソースタスクのモデルバージョンは **suno-v4 以上** が必要（v3.5は非対応）\n- 各楽曲（result_id）から **Personaは1つのみ** 作成可能\n- 非同期処理モード、返却されたタスクIDで[ステータスを照会](/ja/api-manual/task-management/get-task-detail)\n- Personaタスクから新しいPersonaを作成することはできません",
+        "operationId": "createSunoPersona",
+        "tags": [
+          "Audio Generation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SunoPersonaCreationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "基本作成（必須パラメータのみ）",
+                  "value": {
+                    "model": "suno-persona",
+                    "model_params": {
+                      "source_task_id": "task-unified-1774169216-ocqaqde7",
+                      "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                      "name": "Electronic Pop Singer",
+                      "description": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+                    }
+                  }
+                },
+                "with_vocal_range": {
+                  "summary": "ボーカル抽出ウィンドウ指定",
+                  "value": {
+                    "model": "suno-persona",
+                    "model_params": {
+                      "source_task_id": "task-unified-1774169216-ocqaqde7",
+                      "result_id": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb",
+                      "name": "Jazz Vocalist",
+                      "description": "Smooth jazz vocal style with warm tones and improvisational flair suitable for lounge music",
+                      "vocal_start": 15,
+                      "vocal_end": 35,
+                      "style": "jazz"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Persona作成タスクの送信に成功しました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_params": {
+                    "summary": "必須パラメータが不足しています",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "model_params.source_task_id is required",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source": {
+                    "summary": "ソースタスクが不正です",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "源任務が存在しないか、現在のユーザーに属していません: task-unified-xxx",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "vocal_window": {
+                    "summary": "ボーカルウィンドウが不正です",
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "vocal_end - vocal_start must be between 10 and 30 seconds",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足のため、チャージが必要です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限を超えました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SunoPersonaCreationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "model_params"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "モデル名、`suno-persona` 固定",
+            "enum": [
+              "suno-persona"
+            ],
+            "example": "suno-persona"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Persona 作成パラメータ",
+            "required": [
+              "source_task_id",
+              "result_id",
+              "name",
+              "description"
+            ],
+            "properties": {
+              "source_task_id": {
+                "type": "string",
+                "description": "完了済みのSuno音楽生成タスクのTask ID\n\n**取得方法：** 音楽生成リクエストで返された `id` フィールド\n\n**要件：**\n1. タスクは現在のリクエストユーザーに属している必要があります\n2. タスクステータスが `completed` である必要があります\n3. タスクモデルがSunoシリーズ（suno-v4以上）である必要があります\n4. `suno-persona` タイプのタスクは使用できません",
+                "example": "task-unified-1774169216-ocqaqde7"
+              },
+              "result_id": {
+                "type": "string",
+                "description": "ソースタスク結果の指定楽曲の一意識別子\n\n**取得方法：** [タスク詳細照会](/ja/api-manual/task-management/get-task-detail) APIで `result_data.songs[]` 配列内の対象楽曲の `result_id` を取得\n\n**制限：** 各 `result_id` からPersonaは1つのみ作成可能、重複作成はエラーが返されます",
+                "format": "uuid",
+                "example": "4fcc4507-a7ae-4441-ad8a-465c2f61d5bb"
+              },
+              "name": {
+                "type": "string",
+                "description": "Persona名、識別および後続参照用",
+                "example": "Electronic Pop Singer"
+              },
+              "description": {
+                "type": "string",
+                "description": "Personaの音楽スタイル説明",
+                "example": "Modern electronic style with energetic beats and synthesizer tones for dance music"
+              },
+              "vocal_start": {
+                "type": "integer",
+                "description": "ボーカル抽出の開始時点（秒）\n\n`vocal_end` とペアで提供する必要があり、片方のみの提供は不可。値は 0 以上。抽出ウィンドウ（`vocal_end - vocal_start`）は **10 - 30 秒** の間である必要があります",
+                "minimum": 0,
+                "example": 10
+              },
+              "vocal_end": {
+                "type": "integer",
+                "description": "ボーカル抽出の終了時点（秒）\n\n`vocal_start` とペアで提供する必要があり、値は `vocal_start` より厳密に大きい必要があります。抽出ウィンドウ（`vocal_end - vocal_start`）は **10 - 30 秒** の間である必要があります",
+                "minimum": 0,
+                "example": 30
+              },
+              "style": {
+                "type": "string",
+                "description": "スタイルタグ、Personaの音楽スタイルを標注。自由テキスト、フォーマット制限なし、空文字列は無視されます",
+                "example": "electronic pop"
+              }
+            }
+          }
+        }
+      },
+      "AudioGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1774170584
+          },
+          "id": {
+            "type": "string",
+            "description": "タスク ID、タスクのステータスと結果を照会するために使用",
+            "example": "task-unified-1774170584-su75smg7"
+          },
+          "model": {
+            "type": "string",
+            "description": "使用された実際のモデル名",
+            "example": "suno-persona"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "タスクタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗率（0-100）",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクステータス",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "音声タスクの詳細"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "タスク出力タイプ",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクをキャンセルできるかどうか",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "推定完了時間（秒）",
+            "example": 15
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "使用量と課金情報",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "課金ルール",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "推定消費クレジット",
+            "minimum": 0,
+            "example": 1
+          },
+          "user_group": {
+            "type": "string",
+            "description": "ユーザーグループカテゴリ",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIにBearer Token認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}
