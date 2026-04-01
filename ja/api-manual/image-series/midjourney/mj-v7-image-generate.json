@@ -1,0 +1,365 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Midjourney V7 画像生成インターフェース",
+    "description": "Midjourney V7モデルで画像生成タスクを作成",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/images/generations": {
+      "post": {
+        "summary": "Midjourney V7 画像生成インターフェース",
+        "description": "- Midjourney V7モデルは自然言語プロンプトによる高品質画像生成をサポートし、毎回4枚生成します\n- テキストから画像、画像から画像（プロンプト内で画像URLを参照）をサポート\n- V7ネイティブパラメータ構文を全てサポート（--ar、--s、--cなど）、詳細は[プロンプトパラメータガイド](/ja/api-manual/image-series/midjourney/midjourney-v7-prompt-guide)を参照\n- 非同期処理モード、返されたタスクIDで[照会を実行](/ja/api-manual/task-management/get-task-detail)\n- 生成された画像リンクの有効期限は30日間です、お早めに保存してください\n- タイムアウト：約20分\n- システム保護：`--v`/`--version` はV7に固定、`--niji` 非対応、`--fast`/`--turbo`/`--draft` は `model_params.speed` で制御（プロンプト内のこれらのパラメータは自動的に削除されます）",
+        "operationId": "createMjV7ImageGeneration",
+        "tags": [
+          "画像生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageGenerationRequest"
+              },
+              "examples": {
+                "text_to_image": {
+                  "summary": "テキストから画像生成",
+                  "value": {
+                    "model": "mj-v7",
+                    "prompt": "A cinematic shot of a Maine Coon cat on a neon-lit balcony --ar 16:9 --s 500",
+                    "model_params": {
+                      "speed": "fast"
+                    }
+                  }
+                },
+                "image_to_image": {
+                  "summary": "画像から画像生成",
+                  "value": {
+                    "model": "mj-v7",
+                    "prompt": "https://example.com/ref.jpg A sunset landscape in watercolor style --iw 1.5 --ar 16:9",
+                    "model_params": {
+                      "speed": "fast"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "タスク作成成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "無効なリクエストパラメータ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_request",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークン無効または期限切れ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージしてください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アクセス拒否",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: mj-v7",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部サーバーエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##全てのインターフェースはBearer Token認証が必要です##\n\n**API Keyの取得：**\n\n[API Key管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPI Keyを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ImageGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "mj-v7"
+            ],
+            "default": "mj-v7",
+            "description": "モデル名"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "プロンプト、Midjourney V7の全てのネイティブパラメータ構文をサポート（例：--ar 16:9 --s 500）。\n\n**画像から画像：** プロンプトの先頭に画像URLを配置してください。対応形式：.png, .gif, .webp, .jpg, .jpeg\n\n**画像から画像のルール：**\n- 画像1枚 + テキストなし = **無効**（エラーが返されます）\n- 画像1枚 + テキスト説明 = 有効\n- 画像2枚以上 + テキストなし = 有効\n- 画像2枚以上 + テキスト説明 = 有効",
+            "maxLength": 8192,
+            "example": "A cinematic shot of a Maine Coon cat on a neon-lit balcony --ar 16:9 --s 500"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "モデルパラメータ",
+            "properties": {
+              "speed": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "fast",
+                  "turbo"
+                ],
+                "default": "fast",
+                "description": "速度モード\n\n- `draft`：スケッチモード、10倍高速、コスト低、後からmj-v7-enhanceで強化可能\n- `fast`：標準モード（デフォルト）\n- `turbo`：超高速モード、コストが高い\n\n**コスト説明：** draftが最安、turboが最高（fastの約2倍）"
+              }
+            }
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "タスク完了後のHTTPSコールバックアドレス\n\n**コールバックタイミング：**\n- タスクが完了（completed）、失敗（failed）、またはキャンセル（cancelled）されたときにトリガー\n- 課金確認完了後に送信\n\n**セキュリティ制限：**\n- HTTPSプロトコルのみ対応\n- プライベートIPアドレスへのコールバックは禁止（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.xなど）\n- URLの長さは`2048`文字以下\n\n**コールバックメカニズム：**\n- タイムアウト：`10`秒\n- 失敗後最大`3`回リトライ（それぞれ失敗の`1`秒/`2`秒/`4`秒後にリトライ）\n- コールバックレスポンスのフォーマットはタスク照会インターフェースの戻り値と同一\n- コールバックアドレスが2xxステータスコードを返した場合は成功、その他のステータスコードはリトライをトリガー",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/image-task-completed"
+          }
+        }
+      },
+      "ImageGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1757165031
+          },
+          "id": {
+            "type": "string",
+            "description": "タスクID",
+            "example": "task-unified-1757165031-mjv7"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "mj-v7"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "image.generation.task"
+            ],
+            "description": "タスクタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗率 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクステータス",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/TaskInfo",
+            "description": "非同期タスク情報"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "タスク出力タイプ",
+            "example": "image"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "TaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクがキャンセル可能かどうか",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "推定完了時間（秒）",
+            "minimum": 0,
+            "example": 45
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "使用量と課金情報",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "課金ルール",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "推定消費クレジット",
+            "minimum": 0,
+            "example": 1.8
+          },
+          "user_group": {
+            "type": "string",
+            "description": "ユーザーグループ",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーメッセージ"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
