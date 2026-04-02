@@ -1,0 +1,391 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VideoRetalk 音声駆動ポートレートインターフェース",
+    "description": "音声駆動による動画の口パク生成。人物が話す動画とターゲット音声を入力として、動画内の人物の口の動きをターゲット音声と一致した口パクに置き換えます。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "VideoRetalk 音声駆動ポートレート動画生成",
+        "description": "- 音声駆動による動画の口パク生成：動画内の人物の口の動きをターゲット音声に合わせた口パクに置き換えます\n- 非同期処理モード：返却されたタスクIDを使って[結果を照会](/ja/api-manual/task-management/get-task-detail)してください\n- 生成された動画リンクの有効期間は24時間です。速やかに保存してください\n\n**典型的なユースケース：**\n- 多言語吹き替え：元の動画の口パクを他の言語の吹き替えに置き換える\n- バーチャルアナウンサー：TTS で生成した音声で人物動画を駆動する\n- 広告制作：同じ動画素材から異なる言語の広告バージョンを素早く生成する\n- 教育・研修：講師の動画を異なる言語の解説に置き換える\n\n**注意事項：**\n- 入力 URL はインターネットからアクセス可能である必要があります\n- 動画に人物の顔が含まれている必要があります。含まれていない場合、タスクは失敗します\n- 複数の顔がある場合は必ず `ref_image_url` を指定してください",
+        "operationId": "createVideoRetalkGeneration",
+        "tags": [
+          "音声駆動ポートレート"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoRetalkRequest"
+              },
+              "examples": {
+                "minimal": {
+                  "summary": "最小限の呼び出し",
+                  "value": {
+                    "model": "videoretalk",
+                    "video_url": "https://example.com/speaker.mp4",
+                    "audio_url": "https://example.com/target-speech.wav"
+                  }
+                },
+                "multi_face": {
+                  "summary": "複数顔シーン + 動画延長",
+                  "value": {
+                    "model": "videoretalk",
+                    "video_url": "https://example.com/two-people-talking.mp4",
+                    "audio_url": "https://example.com/long-speech.wav",
+                    "ref_image_url": "https://example.com/target-person-face.jpg",
+                    "video_extension": true,
+                    "query_face_threshold": 150
+                  }
+                },
+                "adjust_threshold": {
+                  "summary": "顔マッチングの感度を調整",
+                  "value": {
+                    "model": "videoretalk",
+                    "video_url": "https://example.com/speaker.mp4",
+                    "audio_url": "https://example.com/speech.wav",
+                    "query_face_threshold": 140
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "音声駆動ポートレート動画生成タスクの作成に成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoRetalkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "missing_required_params",
+                    "message": "Missing required parameter: video_url or audio_url",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、無効または期限切れのトークン",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アクセス権限なし",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: videoretalk",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエスト頻度制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoRetalkRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "video_url",
+          "audio_url"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "モデル名",
+            "enum": [
+              "videoretalk"
+            ],
+            "default": "videoretalk",
+            "example": "videoretalk"
+          },
+          "video_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "口パクを置き換える人物を含む入力動画 URL\n\n**要件：**\n- インターネットからアクセス可能な動画 URL\n- 形式：MP4、MOV などの一般的な形式\n- 動画内に明確に見える顔が必要\n- 推奨時間：`2` ～ `300` 秒",
+            "example": "https://example.com/speaker.mp4"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "ターゲット音声 URL（動画内の人物がこの音声に合わせて話します）\n\n**要件：**\n- インターネットからアクセス可能な音声 URL\n- 形式：WAV、MP3、M4A などの一般的な形式\n- 人声による発話内容を推奨",
+            "example": "https://example.com/target-speech.wav"
+          },
+          "ref_image_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "顔参照画像 URL\n\n動画に**複数の顔**がある場合、この画像で口パクを置き換えるターゲットの顔を指定します\n\n**要件：**\n- 画像にターゲット人物の正面顔が含まれていること\n- 動画に複数の顔がある場合にのみ必要",
+            "example": "https://example.com/target-person-face.jpg"
+          },
+          "video_extension": {
+            "type": "boolean",
+            "description": "音声の長さが動画の長さより長い場合、動画を自動的に音声の長さまで延長するかどうか\n\n- `true`：出力時間 = 音声時間（動画が自動延長される）\n- `false`：出力時間 = min(動画時間, 音声時間)",
+            "default": false,
+            "example": false
+          },
+          "query_face_threshold": {
+            "type": "integer",
+            "description": "顔マッチングの信頼度しきい値\n\n- 範囲：`120` ～ `200`\n- 値が低いほどマッチングしやすい（誤マッチングの可能性あり）\n- 値が高いほど厳格（マッチングできない可能性あり）\n- 「一致する顔が見つからない」エラーが出た場合は少し下げてください（例：`140`）\n- 間違った顔にマッチングした場合は少し上げてください（例：`190`）",
+            "default": 170,
+            "minimum": 120,
+            "maximum": 200,
+            "example": 170
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "タスク完了後の HTTPS コールバック URL\n\n**コールバックのタイミング：**\n- タスクが完了（completed）、失敗（failed）、またはキャンセル（cancelled）した際にトリガー\n- 課金確認後に送信\n\n**セキュリティ制限：**\n- HTTPS プロトコルのみサポート\n- 内部 IP アドレスへのコールバックは禁止（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x など）\n- URL の長さは `2048` 文字以内\n\n**コールバックの仕組み：**\n- タイムアウト：`10` 秒\n- 失敗時は最大 `3` 回リトライ（失敗後それぞれ `1` 秒 / `2` 秒 / `4` 秒後にリトライ）\n- コールバックのレスポンスボディ形式はタスク照会インターフェースの返却形式と同一\n- コールバック URL が 2xx ステータスコードを返した場合は成功とみなし、それ以外はリトライをトリガー",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoRetalkResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1775200000
+          },
+          "id": {
+            "type": "string",
+            "description": "タスク ID",
+            "example": "task-unified-1775200000-xyz12345"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "videoretalk"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "タスクの具体的なタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスクの進捗率 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクのステータス\n\n| ステータス | progress | 説明 |\n|------|----------|------|\n| `pending` | 0~10 | 処理待ち |\n| `processing` | 10~80 | 処理中 |\n| `completed` | 100 | 完了 |\n| `failed` | 0 | 失敗 |",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "動画タスクの詳細情報"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "video"
+            ],
+            "description": "タスクの出力タイプ",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクをキャンセルできるかどうか",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "完了予定時間（秒）",
+            "minimum": 0,
+            "example": 90
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "推定動画時間（秒）",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "使用量情報",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "課金ルール",
+            "enum": [
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "推定消費クレジット数（動画と音声の長さに基づく）",
+            "minimum": 0,
+            "example": 480.0
+          },
+          "user_group": {
+            "type": "string",
+            "description": "ユーザーグループのカテゴリ",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのインターフェースは Bearer Token による認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys) にアクセスして API キーを取得してください\n\n**リクエストヘッダーに以下を追加してください：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "音声駆動ポートレート",
+      "description": "VideoRetalk 音声駆動ポートレート動画生成関連インターフェース"
+    }
+  ]
+}
