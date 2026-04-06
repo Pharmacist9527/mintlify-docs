@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-video-edit接口",
-        "description": "- WAN2.7 (wan2.7-video-edit) 模型支持视频编辑模式\n- 必须上传1个视频，可选上传最多3张参考图片\n- 支持保留原视频声音或自动处理音频\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
+        "description": "- WAN2.7 (wan2.7-video-edit) 模型支持视频编辑模式\n- 必须上传1个视频，可选上传最多3张参考图片\n- 支持保留原视频声音或自动处理音频\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存\n- **计费说明**：采用「输入视频时长 + 输出视频时长」联合计费，仅成功生成视频后计费，失败不收费",
         "operationId": "createWan27VideoEditGeneration",
         "tags": [
           "视频生成"
@@ -95,8 +95,42 @@
               }
             }
           },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: wan2.7-video-edit",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
           "429": {
-            "description": "请求过于频繁",
+            "description": "请求频率超限",
             "content": {
               "application/json": {
                 "schema": {
@@ -105,8 +139,25 @@
                 "example": {
                   "error": {
                     "code": "rate_limit_exceeded",
-                    "message": "Too many requests",
+                    "message": "Too many requests, please try again later",
                     "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
                   }
                 }
               }
@@ -121,7 +172,6 @@
       "Wan27VideoEditRequest": {
         "required": [
           "model",
-          "prompt",
           "video_urls"
         ],
         "type": "object",
@@ -148,9 +198,10 @@
           "video_urls": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "format": "uri"
             },
-            "description": "源视频URL数组，必须传入1个视频",
+            "description": "源视频URL数组，必须传入1个视频\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`2~10`秒\n- 分辨率：宽和高的范围为`[240, 4096]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`100MB`",
             "minItems": 1,
             "maxItems": 1,
             "example": ["https://example.com/source.mp4"]
@@ -158,9 +209,10 @@
           "image_urls": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "format": "uri"
             },
-            "description": "参考图片URL数组，最多3张",
+            "description": "参考图片URL数组，最多3张。注意：如果传了 image 字段，也会计入这3张的限制\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为`[240, 8000]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`20MB`",
             "maxItems": 3,
             "example": ["https://example.com/ref.jpg"]
           },
@@ -172,7 +224,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "视频分辨率质量，支持 `720p` 和 `1080p`",
+            "description": "视频清晰度，默认为`720p`\n\n**说明：**\n- `720p`: 标准清晰度，标准价格，此为默认值\n- `1080p`: 高清晰度，价格会提升",
             "enum": [
               "720p",
               "1080p"
@@ -182,7 +234,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "视频宽高比（可选，不传则沿用原视频比例）",
+            "description": "视频宽高比（可选，不传则沿用原视频比例）\n\n**说明：**\n- `720p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`\n- `1080p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`",
             "enum": [
               "16:9",
               "9:16",
@@ -194,7 +246,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "视频时长（秒），设为 0 则沿用原视频时长，范围 0-10",
+            "description": "视频时长（秒）。设为 `0` 表示沿用原视频时长；显式指定时范围为 2-10",
             "minimum": 0,
             "maximum": 10,
             "example": 0
@@ -206,48 +258,126 @@
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "是否启用提示词扩展优化",
+            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。默认值为`true`",
             "default": true,
             "example": true
           },
-          "priority": {
+          "callback_url": {
             "type": "string",
-            "description": "任务优先级\n- `default`：普通优先级\n- `vip`：高优先级，优先处理",
-            "enum": [
-              "default",
-              "vip"
-            ],
-            "example": "default"
+            "description": "任务完成后的HTTPS回调地址\n\n**回调时机：**\n- 任务完成（completed）、失败（failed）或取消（cancelled）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持HTTPS协议\n- 禁止回调到内网IP地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x等）\n- URL长度不超过`2048`字符\n\n**回调机制：**\n- 超时时间：`10`秒\n- 失败后最多重试`3`次（会分别在失败的`1`秒/`2`秒/`4`秒后进行重试）\n- 回调响应体格式与任务查询接口返回的格式一致\n- 回调地址若返回2xx状态码视为成功，其他状态码会触发重试",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
           }
         }
       },
       "VideoGenerationResponse": {
         "type": "object",
         "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1757169743
+          },
           "id": {
             "type": "string",
-            "description": "任务唯一标识符",
-            "example": "wan27-edit-abc123"
+            "description": "任务ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
           },
           "model": {
             "type": "string",
-            "description": "使用的模型名称",
+            "description": "实际使用的模型名称",
             "example": "wan2.7-video-edit"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "任务的具体类型"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "任务进度百分比 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
           },
           "status": {
             "type": "string",
             "description": "任务状态",
             "enum": [
+              "pending",
               "processing",
               "completed",
               "failed"
             ],
-            "example": "processing"
+            "example": "pending"
           },
-          "created_at": {
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "视频任务详细信息"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "任务的输出类型",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "使用量和计费信息"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "任务是否可以取消",
+            "example": true
+          },
+          "estimated_time": {
             "type": "integer",
-            "description": "任务创建时间戳",
-            "example": 1700000000
+            "description": "预估完成时间（秒）",
+            "minimum": 0,
+            "example": 120
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "使用量和计费信息",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "计费规则",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "预估消耗积分数",
+            "minimum": 0,
+            "example": 5
+          },
+          "user_group": {
+            "type": "string",
+            "description": "用户组类别",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
           }
         }
       },
