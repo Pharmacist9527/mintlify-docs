@@ -1,0 +1,394 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "wan2.7-text-to-video API",
+    "description": "WAN2.7モデルを使用して、簡略化されたモデルパラメータ設定でテキストから動画を生成します",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "wan2.7-text-to-video API",
+        "description": "- WAN2.7（wan2.7-text-to-video）モデルはテキストから動画への生成をサポートしています\n- オーディオ駆動をサポートし、audio_urlでオーディオを入力できます\n- 非同期処理モード、返されたタスクIDを使用して[ステータスを照会](/ja/api-manual/task-management/get-task-detail)してください\n- 生成された動画リンクは24時間有効です。速やかに保存してください",
+        "operationId": "createWan27TextToVideoGeneration",
+        "tags": [
+          "動画生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Wan27TextToVideoRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "テキストから動画",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "A cat playing piano"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "動画タスクが正常に作成されました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_request",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足のため、チャージが必要です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アクセスが拒否されました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: wan2.7-text-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限を超えました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Wan27TextToVideoRequest": {
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "モデル名、`wan2.7-text-to-video`固定",
+            "enum": [
+              "wan2.7-text-to-video"
+            ],
+            "example": "wan2.7-text-to-video"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "動画生成のテキストプロンプト、最大5000文字",
+            "maxLength": 5000,
+            "example": "A cat playing piano"
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "ネガティブプロンプト、動画に表示したくない内容を記述します、最大500文字",
+            "maxLength": 500,
+            "example": "Blurry, low quality"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "音声ファイルURL（driving_audio）\n\n**形式要件：**\n- サポートされる形式：`wav`、`mp3`\n- 長さ：`2〜30`秒\n- ファイルサイズ：最大`15MB`\n\n**オーバーフロー処理：**\n- 音声の長さが`duration`値を超える場合、最初のN秒が自動的に抽出され、残りは破棄されます\n- 音声の長さが動画の長さより短い場合、音声の長さを超える部分は無音になります。例えば、音声が3秒で動画の長さが5秒の場合、出力動画は最初の3秒に音声があり、最後の2秒は無音になります",
+            "example": "https://example.com/audio.mp3"
+          },
+          "quality": {
+            "type": "string",
+            "description": "動画の画質、デフォルトは`720p`\n\n**説明：**\n- `720p`：標準画質、標準価格、これがデフォルトです\n- `1080p`：高画質、価格が上がります",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "default": "720p",
+            "example": "720p"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "動画のアスペクト比、デフォルトは`16:9`\n\n**説明：**\n- `720p`：`16:9`（横向き）、`9:16`（縦向き）、`1:1`（正方形）、`4:3`、`3:4`をサポート\n- `1080p`：`16:9`（横向き）、`9:16`（縦向き）、`1:1`（正方形）、`4:3`、`3:4`をサポート",
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "default": "16:9",
+            "example": "16:9"
+          },
+          "duration": {
+            "type": "number",
+            "description": "動画の長さ（秒）、範囲 2-15\n\n**注意：**\n- `2〜15`秒の任意の整数値をサポート\n- 各リクエストは`duration`値に基づいて事前請求され、実際の請求は生成された動画の秒数に基づきます",
+            "minimum": 2,
+            "maximum": 15,
+            "default": 5,
+            "example": 5
+          },
+          "seed": {
+            "type": "integer",
+            "description": "ランダムシード、生成結果の再現に使用します",
+            "example": 42
+          },
+          "prompt_extend": {
+            "type": "boolean",
+            "description": "インテリジェントプロンプト書き換えを有効にするかどうか。有効にすると、大規模モデルがプロンプトを最適化し、シンプルまたは説明が不十分なプロンプトの結果を大幅に改善します。デフォルトは`true`",
+            "default": true,
+            "example": true
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "タスク完了時のHTTPSコールバックURL\n\n**コールバックのタイミング：**\n- タスクが完了（completed）、失敗（failed）、またはキャンセル（cancelled）された時にトリガーされます\n- 課金確認後に送信されます\n\n**セキュリティ制限：**\n- HTTPSプロトコルのみサポートされています\n- 内部IPアドレスへのコールバックは禁止されています（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x など）\n- URLの長さは`2048`文字を超えてはなりません\n\n**コールバックメカニズム：**\n- タイムアウト：`10`秒\n- 失敗後最大`3`回リトライ（失敗後`1`/`2`/`4`秒でリトライ）\n- コールバックのレスポンス形式はタスク照会APIのレスポンスと同一です\n- 2xxステータスコードは成功とみなされ、その他のステータスコードはリトライをトリガーします",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "タスクID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "使用された実際のモデル名",
+            "example": "wan2.7-text-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "タスクタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗率（0-100）",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクステータス",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "動画タスクの詳細"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "タスク出力タイプ",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクをキャンセルできるかどうか",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "推定完了時間（秒）",
+            "minimum": 0,
+            "example": 120
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "使用量と課金情報",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "課金ルール",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "推定消費クレジット数",
+            "minimum": 0,
+            "example": 5
+          },
+          "user_group": {
+            "type": "string",
+            "description": "ユーザーグループカテゴリ",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## すべてのAPIにBearer Token認証が必要です ##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}

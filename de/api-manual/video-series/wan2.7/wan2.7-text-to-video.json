@@ -1,0 +1,394 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "wan2.7-text-to-video API",
+    "description": "Generieren Sie Videos aus Text mit dem WAN2.7-Modell mit vereinfachter Modellparameter-Konfiguration",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Produktionsumgebung"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "wan2.7-text-to-video API",
+        "description": "- WAN2.7 (wan2.7-text-to-video) Modell unterstützt Text-zu-Video-Generierung\n- Unterstützt Audio-Steuerung, Audio kann über audio_url übergeben werden\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID, um den [Status abzufragen](/de/api-manual/task-management/get-task-detail)\n- Generierte Video-Links sind 24 Stunden gültig, bitte speichern Sie diese umgehend",
+        "operationId": "createWan27TextToVideoGeneration",
+        "tags": [
+          "Videogenerierung"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Wan27TextToVideoRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "Text zu Video",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "A cat playing piano"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Videoaufgabe erfolgreich erstellt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Anfrageparameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_request",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nicht autorisiert, ungültiges oder abgelaufenes Token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Unzureichendes Kontingent, Aufladung erforderlich",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Zugriff verweigert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: wan2.7-text-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ratenlimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Interner Serverfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Wan27TextToVideoRequest": {
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modellname, fest als `wan2.7-text-to-video`",
+            "enum": [
+              "wan2.7-text-to-video"
+            ],
+            "example": "wan2.7-text-to-video"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Text-Prompt für die Videogenerierung, maximale Länge 5000 Zeichen",
+            "maxLength": 5000,
+            "example": "A cat playing piano"
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "Negativer Prompt, beschreibt unerwünschte Inhalte im Video, maximale Länge 500 Zeichen",
+            "maxLength": 500,
+            "example": "Blurry, low quality"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Audio-Datei-URL (driving_audio)\n\n**Formatanforderungen:**\n- Unterstützte Formate: `wav`, `mp3`\n- Dauer: `2~30` Sekunden\n- Dateigröße: Bis zu `15MB`\n\n**Überlaufbehandlung:**\n- Wenn die Audiolänge den `duration`-Wert überschreitet, werden die ersten N Sekunden automatisch extrahiert und der Rest verworfen\n- Wenn die Audiolänge kürzer als die Videodauer ist, ist der Teil, der die Audiolänge überschreitet, stumm. Wenn das Audio beispielsweise 3 Sekunden und die Videodauer 5 Sekunden beträgt, hat das Ausgabevideo in den ersten 3 Sekunden Ton und ist in den letzten 2 Sekunden stumm",
+            "example": "https://example.com/audio.mp3"
+          },
+          "quality": {
+            "type": "string",
+            "description": "Videoqualität, Standard ist `720p`\n\n**Optionen:**\n- `720p`: Standardauflösung, Standardpreis, dies ist die Voreinstellung\n- `1080p`: Hohe Auflösung, höherer Preis",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "default": "720p",
+            "example": "720p"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Video-Seitenverhältnis, Standard ist `16:9`\n\n**Optionen:**\n- `720p`: Unterstützt `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`\n- `1080p`: Unterstützt `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`",
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "default": "16:9",
+            "example": "16:9"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Videodauer (Sekunden), Bereich 2-15\n\n**Hinweis:**\n- Unterstützt beliebige ganzzahlige Werte zwischen `2~15` Sekunden\n- Jede Anfrage wird basierend auf dem `duration`-Wert vorab berechnet, die tatsächliche Abrechnung erfolgt anhand der generierten Videodauer",
+            "minimum": 2,
+            "maximum": 15,
+            "default": 5,
+            "example": 5
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Zufalls-Seed, zur Reproduktion der Generierungsergebnisse",
+            "example": 42
+          },
+          "prompt_extend": {
+            "type": "boolean",
+            "description": "Ob intelligentes Prompt-Umschreiben aktiviert werden soll. Wenn aktiviert, optimiert ein großes Modell den Prompt, was die Ergebnisse bei einfachen oder unzureichend beschreibenden Prompts erheblich verbessert. Standard ist `true`",
+            "default": true,
+            "example": true
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "HTTPS-Callback-URL für Aufgabenabschluss\n\n**Callback-Zeitpunkt:**\n- Wird ausgelöst, wenn die Aufgabe abgeschlossen, fehlgeschlagen oder abgebrochen wurde\n- Wird nach Abrechnungsbestätigung gesendet\n\n**Sicherheitsbeschränkungen:**\n- Nur HTTPS-Protokoll wird unterstützt\n- Callbacks an interne IP-Adressen sind untersagt (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, usw.)\n- URL-Länge darf `2048` Zeichen nicht überschreiten\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Bis zu `3` Wiederholungsversuche nach Fehlschlag (Wiederholung nach `1`/`2`/`4` Sekunden nach Fehlschlag)\n- Das Callback-Antwortformat entspricht der Antwort der Aufgabenabfrage-API\n- 2xx-Statuscodes gelten als erfolgreich, andere Statuscodes lösen Wiederholungsversuche aus",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Zeitstempel der Aufgabenerstellung",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "Aufgaben-ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "Tatsächlich verwendeter Modellname",
+            "example": "wan2.7-text-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Aufgabentyp"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Aufgabenfortschritt in Prozent (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Aufgabenstatus",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Details zur Videoaufgabe"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Aufgaben-Ausgabetyp",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "Nutzungs- und Abrechnungsinformationen"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Ob die Aufgabe abgebrochen werden kann",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Geschätzte Abschlusszeit (Sekunden)",
+            "minimum": 0,
+            "example": 120
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Nutzungs- und Abrechnungsinformationen",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Abrechnungsregel",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Geschätzter Credit-Verbrauch",
+            "minimum": 0,
+            "example": 5
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Benutzergruppenkategorie",
+            "enum": [
+              "default",
+              "vip"
+            ],
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Fehlercode-Bezeichner"
+              },
+              "message": {
+                "type": "string",
+                "description": "Fehlerbeschreibung"
+              },
+              "type": {
+                "type": "string",
+                "description": "Fehlertyp"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## Alle APIs erfordern Bearer-Token-Authentifizierung ##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüssel-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  }
+}
