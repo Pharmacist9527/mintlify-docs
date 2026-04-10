@@ -1,0 +1,391 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VideoRetalk 립싱크 인터페이스",
+    "description": "오디오로 비디오 입술 동작 생성. 사람이 말하는 비디오와 목표 오디오를 입력하면, 비디오 속 인물의 입술 동작을 목표 오디오에 맞게 교체합니다.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "운영 환경"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "VideoRetalk 립싱크 비디오 생성",
+        "description": "- 오디오로 비디오 입술 동작을 생성하며, 비디오 속 인물의 입술 동작을 목표 오디오에 맞게 교체합니다\n- 비동기 처리 모드이며, 반환된 작업 ID로 [조회](/ko/api-manual/task-management/get-task-detail)할 수 있습니다\n- 생성된 비디오 링크의 유효 기간은 24시간이므로 빠르게 저장하십시오\n\n**주요 활용 시나리오:**\n- 다국어 더빙: 원본 비디오의 입술 동작을 다른 언어의 더빙으로 교체\n- 가상 앵커: TTS로 생성한 오디오로 인물 비디오 구동\n- 광고 제작: 동일한 비디오 소재로 다국어 광고 버전을 빠르게 생성\n- 교육 훈련: 강사 비디오를 다국어 설명으로 교체\n\n**주의 사항:**\n- 입력 URL은 공개 인터넷으로 접근 가능해야 합니다\n- 비디오에 반드시 얼굴이 포함되어야 하며, 없으면 작업이 실패합니다\n- 다중 얼굴 시나리오에서는 반드시 `ref_image_url`을 전달하세요",
+        "operationId": "createVideoRetalkGeneration",
+        "tags": [
+          "립싱크"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoRetalkRequest"
+              },
+              "examples": {
+                "minimal": {
+                  "summary": "최소 호출",
+                  "value": {
+                    "model": "videoretalk",
+                    "video_url": "https://example.com/speaker.mp4",
+                    "audio_url": "https://example.com/target-speech.wav"
+                  }
+                },
+                "multi_face": {
+                  "summary": "다중 얼굴 시나리오 + 비디오 확장",
+                  "value": {
+                    "model": "videoretalk",
+                    "video_url": "https://example.com/two-people-talking.mp4",
+                    "audio_url": "https://example.com/long-speech.wav",
+                    "ref_image_url": "https://example.com/target-person-face.jpg",
+                    "video_extension": true,
+                    "query_face_threshold": 150
+                  }
+                },
+                "adjust_threshold": {
+                  "summary": "얼굴 매칭 감도 조정",
+                  "value": {
+                    "model": "videoretalk",
+                    "video_url": "https://example.com/speaker.mp4",
+                    "audio_url": "https://example.com/speech.wav",
+                    "query_face_threshold": 140
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "립싱크 비디오 생성 작업 생성 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoRetalkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "요청 파라미터 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "missing_required_params",
+                    "message": "Missing required parameter: video_url or audio_url",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음, 토큰 유효하지 않거나 만료됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "크레딧 부족, 충전 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "접근 권한 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: videoretalk",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "서버 내부 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoRetalkRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "video_url",
+          "audio_url"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "모델 이름",
+            "enum": [
+              "videoretalk"
+            ],
+            "default": "videoretalk",
+            "example": "videoretalk"
+          },
+          "video_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "입술 동작을 교체할 인물이 포함된 입력 비디오 URL\n\n**요구 사항:**\n- 공개 인터넷으로 접근 가능한 비디오 URL\n- 형식: MP4, MOV 등 일반적인 형식\n- 비디오에 명확하게 보이는 얼굴이 포함되어야 함\n- 권장 시간: `2` ~ `300`초",
+            "example": "https://example.com/speaker.mp4"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "목표 오디오 URL, 비디오 인물이 이 오디오를 말하는 것처럼 처리됩니다\n\n**요구 사항:**\n- 공개 인터넷으로 접근 가능한 오디오 URL\n- 형식: WAV, MP3, M4A 등 일반적인 형식\n- 음성 발화 내용 권장",
+            "example": "https://example.com/target-speech.wav"
+          },
+          "ref_image_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "얼굴 참조 이미지 URL\n\n비디오에 **여러 얼굴**이 있을 때, 이 이미지로 입술 동작을 교체할 목표 얼굴을 지정합니다\n\n**요구 사항:**\n- 이미지에 목표 인물의 정면 얼굴이 포함되어야 함\n- 비디오에 여러 얼굴이 있을 때만 필요",
+            "example": "https://example.com/target-person-face.jpg"
+          },
+          "video_extension": {
+            "type": "boolean",
+            "description": "오디오 시간 > 비디오 시간일 때, 비디오를 오디오 길이에 맞게 자동 확장할지 여부\n\n- `true`: 출력 시간 = 오디오 시간(비디오 자동 확장)\n- `false`: 출력 시간 = min(비디오 시간, 오디오 시간)",
+            "default": false,
+            "example": false
+          },
+          "query_face_threshold": {
+            "type": "integer",
+            "description": "얼굴 매칭 신뢰도 임계값\n\n- 범위: `120` ~ `200`\n- 값이 낮을수록 매칭하기 쉬움(오매칭 가능성 있음)\n- 값이 높을수록 더 엄격함(매칭 실패 가능성 있음)\n- '매칭 얼굴을 찾을 수 없음' 오류 시 낮춰보세요(예: `140`)\n- 잘못된 얼굴에 매칭되면 높여보세요(예: `190`)",
+            "default": 170,
+            "minimum": 120,
+            "maximum": 200,
+            "example": 170
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "작업 완료 후 HTTPS 콜백 주소\n\n**콜백 시점:**\n- 작업 완료(completed), 실패(failed) 또는 취소(cancelled) 시 트리거\n- 과금 확인 완료 후 발송\n\n**보안 제한:**\n- HTTPS 프로토콜만 지원\n- 내부 IP 주소로의 콜백 금지(127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x 등)\n- URL 길이 `2048`자 이하\n\n**콜백 메커니즘:**\n- 타임아웃: `10`초\n- 실패 후 최대 `3`회 재시도(각각 실패 후 `1`초/`2`초/`4`초 후 재시도)\n- 콜백 응답 본문 형식은 작업 조회 인터페이스 반환 형식과 동일\n- 콜백 주소가 2xx 상태 코드를 반환하면 성공으로 간주, 그 외 상태 코드는 재시도 트리거",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoRetalkResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "작업 생성 타임스탬프",
+            "example": 1775200000
+          },
+          "id": {
+            "type": "string",
+            "description": "작업 ID",
+            "example": "task-unified-1775200000-xyz12345"
+          },
+          "model": {
+            "type": "string",
+            "description": "실제 사용된 모델 이름",
+            "example": "videoretalk"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "작업의 구체적인 유형"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "작업 진행률 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "작업 상태\n\n| 상태 | progress | 설명 |\n|------|----------|------|\n| `pending` | 0~10 | 처리 대기 중 |\n| `processing` | 10~80 | 처리 중 |\n| `completed` | 100 | 완료 |\n| `failed` | 0 | 실패 |",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "비디오 작업 상세 정보"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "video"
+            ],
+            "description": "작업의 출력 유형",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "사용량 및 과금 정보"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "작업 취소 가능 여부",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "예상 완료 시간(초)",
+            "minimum": 0,
+            "example": 90
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "예상 비디오 시간(초)",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "사용량 정보",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "과금 규칙",
+            "enum": [
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "예상 소모 크레딧 수(비디오 및 오디오 시간 기준)",
+            "minimum": 0,
+            "example": 480.0
+          },
+          "user_group": {
+            "type": "string",
+            "description": "사용자 그룹 유형",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "오류 코드 식별자"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명 메시지"
+              },
+              "type": {
+                "type": "string",
+                "description": "오류 유형"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 인터페이스는 Bearer Token 인증이 필요합니다##\n\n**API Key 발급:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에서 API Key를 발급받으세요\n\n**요청 헤더에 다음을 추가하세요:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "립싱크",
+      "description": "VideoRetalk 립싱크 비디오 생성 관련 인터페이스"
+    }
+  ]
+}

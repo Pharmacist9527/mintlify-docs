@@ -1,0 +1,426 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "topaz-video-upscale 接口",
+    "description": "使用Topaz模型进行AI视频超分辨率放大",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "视频生成"
+        ],
+        "summary": "topaz-video-upscale 接口",
+        "description": "- Topaz Video Upscale (topaz-video-upscale) 模型支持AI视频超分辨率放大\n- 支持 1x（仅增强）、2x 和 4x 放大倍数\n- 按输入视频时长（每秒）和放大倍数计费\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 放大后的视频链接有效期为24小时，请尽快保存",
+        "operationId": "createVideoGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "basic_2x_upscale": {
+                  "summary": "基本 2x 放大（默认）",
+                  "value": {
+                    "model": "topaz-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ]
+                  }
+                },
+                "upscale_4x": {
+                  "summary": "4x 放大（更高质量，1.75倍价格）",
+                  "value": {
+                    "model": "topaz-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ],
+                    "model_params": {
+                      "upscale_factor": "4"
+                    }
+                  }
+                },
+                "upscale_1x_enhance": {
+                  "summary": "1x 增强（不改变分辨率，仅画质提升）",
+                  "value": {
+                    "model": "topaz-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ],
+                    "model_params": {
+                      "upscale_factor": "1"
+                    }
+                  }
+                },
+                "with_callback": {
+                  "summary": "带回调URL",
+                  "value": {
+                    "model": "topaz-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ],
+                    "model_params": {
+                      "upscale_factor": "2"
+                    },
+                    "callback_url": "https://your-domain.com/webhooks/video-task-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "视频放大任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_video": {
+                    "summary": "缺少视频URL",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "video_urls is required and must not be empty for topaz-video-upscale",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "probe_failed": {
+                    "summary": "视频探测失败",
+                    "value": {
+                      "error": {
+                        "code": "video_probe_failed",
+                        "message": "Failed to detect video duration, please check video URL accessibility",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: topaz-video-upscale",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "video_urls"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "视频放大模型名称",
+            "enum": [
+              "topaz-video-upscale"
+            ],
+            "default": "topaz-video-upscale",
+            "example": "topaz-video-upscale"
+          },
+          "video_urls": {
+            "type": "array",
+            "description": "输入视频URL列表，用于放大处理\n\n**注意：**\n- 每次请求仅支持 `1` 个视频\n- 视频URL必须可被服务器直接访问（公共URL或预签名URL）\n- 服务器将自动检测输入视频时长用于计费\n- 支持的格式：`.mp4`",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "example": [
+              "https://example.com/my-video.mp4"
+            ]
+          },
+          "model_params": {
+            "type": "object",
+            "description": "模型特定参数，用于控制放大行为",
+            "properties": {
+              "upscale_factor": {
+                "type": "string",
+                "description": "视频放大倍数，控制输出分辨率倍数\n\n**可选项：**\n- `\"1\"` - 仅增强（不改变分辨率，AI画质提升）\n- `\"2\"` - 2倍放大（如 720p 到 1440p）— **默认值**\n- `\"4\"` - 4倍放大（如 720p 到 2880p）\n\n**计费影响：**\n- 不同放大倍数价格不同，倍数越高费用越高\n\n**类型处理：**\n- 同时接受字符串（`\"4\"`）和数字（`4`）格式\n- 无效值将静默回退到 `\"2\"`（默认值）",
+                "enum": [
+                  "1",
+                  "2",
+                  "4"
+                ],
+                "default": "2",
+                "example": "2"
+              }
+            }
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "任务完成后的HTTPS回调地址\n\n**回调时机：**\n- 任务完成（completed）、失败（failed）或取消（cancelled）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持HTTPS协议\n- 禁止回调到内网IP地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x等）\n- URL长度不超过`2048`字符\n\n**回调机制：**\n- 超时时间：`10`秒\n- 失败后最多重试`3`次（会分别在失败的`1`秒/`2`秒/`4`秒后进行重试）\n- 回调响应体格式与任务查询接口返回的格式一致\n- 回调地址若返回2xx状态码视为成功，其他状态码会触发重试",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "topaz-video-upscale"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "任务的具体类型"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "任务进度百分比 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "任务状态",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "视频任务详细信息"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "任务的输出类型",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用量和计费信息"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "任务是否可以取消",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "预估完成时间（秒）",
+            "minimum": 0,
+            "example": 600
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "视频时长（秒）",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "使用量和计费信息",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "计费规则。topaz-video-upscale 按输入视频时长（每秒）乘以放大倍数定价进行 `per_second` 计费",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "预估消耗积分（预授权）。最终计费将在任务完成后根据实际输入视频时长计算",
+            "minimum": 0,
+            "example": 28.8
+          },
+          "user_group": {
+            "type": "string",
+            "description": "用户组类别",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "错误代码标识符"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key ：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "视频生成",
+      "description": "AI视频生成相关接口"
+    }
+  ]
+}
