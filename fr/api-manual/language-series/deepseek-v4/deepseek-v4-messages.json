@@ -1,0 +1,823 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API compatible Anthropic DeepSeek V4",
+    "description": "La série DeepSeek V4 est appelée via le protocole Anthropic Messages (`deepseek-v4-flash` / `deepseek-v4-pro`).\n\n**Compatibilité** :\n- Chemin : `/v1/messages` (chemin standard Anthropic)\n- Les structures de requête / réponse sont cohérentes avec l'API Anthropic Messages\n- Champs pris en charge : `model` `max_tokens` (obligatoire) `messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **Champs non pris en charge** : `top_k`, `container`, `mcp_servers`, `metadata`, `service_tier`, `cache_control`\n- **Types de contenu non pris en charge** : images (`image`), documents (`document`), résultats de recherche, `redacted_thinking`, `server_tool_use`\n\n**Capacités du modèle** :\n- Contexte de 1M tokens, sortie maximale de 384K tokens\n- Pro active `thinking` par défaut, la réponse contiendra un content block `thinking`\n\n**Grille tarifaire (UC/1K tokens, unité interne EvoLink)** :\n| Modèle | Hit de cache d'entrée | Miss de cache d'entrée | Sortie |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 20 | 100 | 200 |\n| deepseek-v4-pro | 100 | 1200 | 2400 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommandée)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternative"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Interface Messages DeepSeek V4 (compatible Anthropic)",
+        "description": "- Appeler les modèles DeepSeek V4 via le protocole Anthropic Messages\n- Prend en charge `deepseek-v4-flash` / `deepseek-v4-pro`\n- Les structures de requête / réponse sont alignées sur l'API Anthropic\n- **Conversation textuelle** (les types de contenu image / document ne sont pas pris en charge)\n- **Prompts système** : transmis via le champ `system` au niveau supérieur\n- **Mode de réflexion** : commutateur via l'objet `thinking` ; le contenu de réflexion est retourné via un block `content[type=thinking]`\n- **Sortie en streaming** : flux d'événements SSE\n- **Appel d'outils** : compatible avec le flux `tool_use` / `tool_result` d'Anthropic",
+        "operationId": "createMessageDeepSeekV4",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Requête minimale exécutable",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello, world"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Avec prompt système + multi-tours",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "system": "Vous êtes un éditeur technique expérimenté.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Décrivez DeepSeek V4 en trois phrases."
+                      }
+                    ]
+                  }
+                },
+                "thinking": {
+                  "summary": "Configuration explicite du mode de réflexion",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 4096,
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "output_config": {
+                      "effort": "high"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Prouvez l'identité d'Euler e^(iπ) + 1 = 0"
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "Désactiver le mode de réflexion",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "En une phrase : quelle est la capitale du Japon ?"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "Appel d'outils (style tool_use Anthropic)",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Consultez la météo à Shanghai et dites-le-moi"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "Consulter la météo d'une ville donnée",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "Nom de la ville"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "Sortie en streaming (SSE)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Écrivez un court poème sur le printemps"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Objet message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_enabled": {
+                    "summary": "thinking activé (par défaut, inclut un content block thinking)",
+                    "value": {
+                      "id": "53ee6690-e14a-4e6b-890b-a135100d51c7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "L'utilisateur demande la capitale du Japon — une question de géographie de base. La réponse est Tokyo, il suffit de la donner directement.",
+                          "signature": "53ee6690-e14a-4e6b-890b-a135100d51c7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "La capitale du Japon est **Tokyo**."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 77,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "thinking_disabled": {
+                    "summary": "thinking désactivé (uniquement text block)",
+                    "value": {
+                      "id": "a42c8fa2-e1b7-4cd3-9c48-71d2f5c6a8e0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "La capitale du Japon est Tokyo."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 9,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "Déclenche un appel d'outil (stop_reason=tool_use)",
+                    "value": {
+                      "id": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-pro",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "L'utilisateur veut consulter la météo à Pékin. Je dois appeler l'outil get_weather avec le paramètre Pékin.",
+                          "signature": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3"
+                        },
+                        {
+                          "type": "text",
+                          "text": "D'accord, je consulte la météo à Pékin pour vous."
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "Pékin"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 35,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 68,
+                        "service_tier": "standard"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid request",
+                    "type": "invalid_request_error"
+                  },
+                  "request_id": "req_xxx",
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Erreur d'authentification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Authentication error",
+                    "type": "authentication_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Quota insuffisant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Insufficient quota",
+                    "type": "billing_error"
+                  },
+                  "type": "error",
+                  "fallback_suggestion": "https://evolink.ai/dashboard/credits"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Erreur d'autorisation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Permission denied",
+                    "type": "permission_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Modèle ou ressource introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de débit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Rate limited",
+                    "type": "rate_limit_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Erreur de passerelle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporairement indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modèle à appeler\n\n- `deepseek-v4-flash` : rapide et généraliste\n- `deepseek-v4-pro` : raisonnement approfondi\n\n**Astuce** : Les deux modèles **ont thinking activé par défaut**, la réponse contient toujours un content block `type=\"thinking\"` ; pour le désactiver, définissez explicitement `thinking.type=\"disabled\"`. Un model non spécifié ou non pris en charge sera automatiquement mappé à `deepseek-v4-flash`.",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Nombre maximum de tokens à générer (**obligatoire**)\n\n**Remarque** :\n- La série V4 peut atteindre **384 000**\n- Les tokens produits par thinking sont également comptés dans la limite max_tokens",
+            "minimum": 1,
+            "maximum": 384000,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "Liste des messages de conversation, alternant user / assistant par tour\n\n**Remarque** :\n- Contient au moins 1 message\n- Le dernier message est généralement `role=user`\n- Les types de contenu `image` / `document` ne sont pas pris en charge",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "Prompt système, utilisé pour définir le rôle et le comportement de l'IA\n\n**Remarque** :\n- Prend en charge une chaîne ou un tableau de chaînes\n- Contrairement au message `system` de l'endpoint OpenAI, l'endpoint Anthropic utilise le champ `system` au niveau supérieur",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Température d'échantillonnage\n\n**Remarque** :\n- Plage `[0.0, 2.0]`\n- Par défaut 1 ; plus la valeur est élevée, plus la sortie est divergente, plus elle est basse, plus elle est déterministe",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Seuil d'échantillonnage nucleus\n\n**Remarque** :\n- Plage `[0, 1]`\n- Il est recommandé de ne pas ajuster simultanément temperature et top_p",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "Séquences d'arrêt personnalisées\n\n**Remarque** :\n- Le modèle arrête la génération dès qu'il rencontre l'une des chaînes\n- Jusqu'à 4 (selon la spécification Anthropic)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Retourner ou non en streaming SSE\n\n- `true` : retour en streaming Server-Sent Events\n- `false` : retour en une seule fois après la réponse complète (par défaut)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Contrôle du mode de réflexion (V4)\n\n**Remarque** :\n- **Activé par défaut pour les deux modèles** (`type=enabled`)\n- Une fois activé, le tableau `content` de la réponse contiendra un block de processus de raisonnement `type=\"thinking\"` (facturé au tarif des tokens de sortie)\n- **Attention** : l'API **ignore** le champ natif Anthropic `budget_tokens`, utilisez `output_config.effort` pour contrôler la profondeur\n- Dans les conversations multi-tours, il suffit de replacer le thinking block de la réponse précédente tel quel dans le tableau `content` de l'assistant (le style du protocole Anthropic est plus indulgent, l'absence de thinking ne provoque pas d'erreur, mais conserver signature aide à la cohérence du contexte)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- `enabled` : activer la réflexion approfondie\n- `disabled` : désactiver la réflexion approfondie",
+                "default": "enabled"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "**Ignoré** — Deepseek n'utilise pas budget_tokens d'Anthropic, utilisez plutôt `output_config.effort`"
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "Configuration de sortie (extension V4)\n\n**Remarque** : Deepseek ne prend en charge que le champ `effort`",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "Niveau d'effort de raisonnement\n\n- `low` : faible effort, réponse plus rapide\n- `medium` : effort moyen (par défaut)\n- `high` : effort élevé, raisonnement plus approfondi",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Liste des définitions d'outils\n\n**Remarque** :\n- Suit la spécification de définition d'outil Anthropic\n- `input_schema` utilise un objet JSON Schema",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "Contrôle le comportement d'appel des outils\n\n**type possibles** :\n- `auto` : le modèle décide automatiquement (par défaut lorsque tools est fourni)\n- `any` : doit appeler un outil (sans spécifier lequel)\n- `tool` : doit appeler le `name` spécifié\n- `none` : interdire l'appel d'outils",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "any",
+                  "tool",
+                  "none"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "Nom de l'outil spécifié lorsque `type=\"tool\"`"
+              },
+              "disable_parallel_tool_use": {
+                "type": "boolean",
+                "description": "Interdire les appels d'outils en parallèle (champ standard Anthropic)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "Rôle du message\n\n- `user` : message utilisateur (également utilisé pour retransmettre les blocks `tool_result`)\n- `assistant` : réponse historique de l'assistant (peut contenir des blocks `text` / `thinking` / `tool_use`)\n\n⚠️ **N'accepte pas `system`** : le prompt système doit passer par le champ `system` au niveau supérieur ; l'apparition de `role=\"system\"` dans messages sera rejetée (400 unknown variant)."
+          },
+          "content": {
+            "description": "Contenu du message\n\n**Remarque** :\n- Transmettre directement une chaîne pour du texte brut\n- Transmettre un tableau de content blocks pour les données structurées (`text` / `tool_use` / `tool_result`)\n- **Ne prend pas en charge** les types multimodaux comme `image` / `document`",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "Bloc de contenu de message\n\n**type pris en charge** :\n- `text` : fragment de texte\n- `tool_use` : l'assistant initie un appel d'outil\n- `tool_result` : l'utilisateur retransmet le résultat d'exécution de l'outil",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenu textuel lorsque type=`text`"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de l'appel d'outil (obligatoire pour tool_use / tool_result)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nom de l'outil (obligatoire pour tool_use)"
+          },
+          "input": {
+            "type": "object",
+            "description": "Paramètres d'entrée de l'outil (objet JSON pour tool_use)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "ID de l'appel d'outil correspondant (obligatoire pour tool_result, renseigné avec tool_use.id)"
+          },
+          "content": {
+            "description": "Résultat d'exécution de l'outil (tool_result), chaîne ou tableau de content blocks",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nom de l'outil\n\n**Remarque** :\n- Seuls `a-zA-Z0-9_-` sont autorisés\n- Maximum 64 caractères"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description de la fonctionnalité de l'outil, pour que le modèle puisse juger quand l'appeler"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "Objet JSON Schema des paramètres d'entrée de l'outil\n\n**Remarque** :\n- `type` doit être `object`\n- Devrait déclarer `properties` et `required`"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Réponse de message au style Anthropic",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID unique du message"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "Type de l'objet de réponse"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "Modèle réellement utilisé",
+            "example": "deepseek-v4-pro"
+          },
+          "content": {
+            "type": "array",
+            "description": "Liste des blocks de contenu de la réponse\n\n**Types de block possibles** :\n- `thinking` : processus de raisonnement (uniquement lorsque thinking est activé)\n- `text` : texte de la réponse finale\n- `tool_use` : appel d'outil initié par le modèle",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "Raison de l'arrêt\n\n- `end_turn` : fin naturelle\n- `max_tokens` : limite max_tokens atteinte\n- `stop_sequence` : hit d'une stop_sequences\n- `tool_use` : le modèle a déclenché un appel d'outil",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "stop_sequence",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Séquence spécifique touchée lorsque stop_reason=`stop_sequence`, sinon null"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "Bloc de contenu dans la réponse",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Texte lorsque type=`text`"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Texte du processus de raisonnement lorsque type=`thinking`"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Signature d'intégrité lorsque type=`thinking` (spécification Anthropic, utilisée pour vérifier que le raisonnement n'a pas été altéré)"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de l'appel d'outil lorsque type=`tool_use`"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nom de l'outil lorsque type=`tool_use`"
+          },
+          "input": {
+            "type": "object",
+            "description": "Paramètres JSON générés par le modèle lorsque type=`tool_use`"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Statistiques d'utilisation des tokens (spécification Anthropic)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens d'entrée (partie non touchée par le cache)",
+            "example": 10
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens de sortie (incluant thinking)",
+            "example": 30
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens d'entrée pour la création du cache (l'endpoint Anthropic actuel de Deepseek n'effectue pas d'écriture de cache, cette valeur est fixée à 0)",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens d'entrée ayant touché le cache\n\n**Remarque** : facturés au tarif de hit de cache (Flash 20 UC/1K, Pro 100 UC/1K)",
+            "example": 0
+          },
+          "service_tier": {
+            "type": "string",
+            "description": "Niveau de service (champ standard Anthropic)",
+            "example": "standard"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur (ex. invalid_request_error / authentication_error / billing_error)"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "ID de traçage de la requête"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API** :\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête** :\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**Remarque** : Bien que l'API native Anthropic utilise l'en-tête `x-api-key`, EvoLink adopte uniformément l'authentification Bearer Token pour `/v1/messages`."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Points de terminaison du protocole Anthropic Messages"
+    }
+  ]
+}
