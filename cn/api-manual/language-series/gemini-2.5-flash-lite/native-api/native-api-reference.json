@@ -379,9 +379,35 @@
             },
             "minItems": 1
           },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "系统指令（可选），当前以文本为主"
+          },
+          "tools": {
+            "type": "array",
+            "description": "模型可调用的工具列表，如函数调用或代码执行",
+            "items": {
+              "type": "object"
+            }
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "工具调用配置（可选）"
+          },
+          "safetySettings": {
+            "type": "array",
+            "description": "安全设置列表（可选）",
+            "items": {
+              "type": "object"
+            }
+          },
           "generationConfig": {
             "$ref": "#/components/schemas/GenerationConfig",
             "description": "生成配置参数（可选）"
+          },
+          "cachedContent": {
+            "type": "string",
+            "description": "缓存内容名称，格式为 cachedContents/{cachedContent}"
           }
         }
       },
@@ -403,7 +429,7 @@
           },
           "parts": {
             "type": "array",
-            "description": "内容片段列表，支持文本和文件数据",
+            "description": "内容片段列表，支持文本、文件、内联数据、函数调用、函数返回和代码执行结果",
             "items": {
               "$ref": "#/components/schemas/Part"
             },
@@ -418,8 +444,24 @@
           },
           {
             "$ref": "#/components/schemas/FilePart"
+          },
+          {
+            "$ref": "#/components/schemas/InlineDataPart"
+          },
+          {
+            "$ref": "#/components/schemas/FunctionCallPart"
+          },
+          {
+            "$ref": "#/components/schemas/FunctionResponsePart"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutableCodePart"
+          },
+          {
+            "$ref": "#/components/schemas/CodeExecutionResultPart"
           }
-        ]
+        ],
+        "description": "内容片段联合类型。思考模型返回的 thoughtSignature 需要在下一轮原样回传。"
       },
       "TextPart": {
         "title": "文本输入",
@@ -432,6 +474,15 @@
             "type": "string",
             "description": "文本内容",
             "example": "你好！很高兴能向你介绍我自己。\n\n我是一个大型语言模型，由 Google 训练和开发..."
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "是否为思考内容"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "思考签名，需要在下一轮原样回传",
+            "example": "<Signature_A>"
           }
         }
       },
@@ -493,6 +544,29 @@
             "description": "Top-K 采样参数\n\n**说明**:\n- 例如 10 表示限制每次采样时只考虑概率最高的 10 个 token\n- 较小的值会使输出更加聚焦\n- 默认不限制",
             "minimum": 1,
             "example": 40
+          },
+          "responseMimeType": {
+            "type": "string",
+            "description": "生成候选内容的 MIME 类型，例如 text/plain 或 application/json",
+            "example": "application/json"
+          },
+          "responseSchema": {
+            "type": "object",
+            "description": "生成内容的输出结构定义（JSON Mode / 结构化输出）"
+          },
+          "responseJsonSchema": {
+            "type": "object",
+            "description": "生成内容的 JSON Schema（可选，适合更复杂的结构化输出）"
+          },
+          "candidateCount": {
+            "type": "integer",
+            "description": "返回候选数量",
+            "minimum": 1,
+            "example": 1
+          },
+          "thinkingConfig": {
+            "type": "object",
+            "description": "思考配置（适用于支持 thinking 的模型）"
           }
         }
       },
@@ -512,6 +586,16 @@
           },
           "usageMetadata": {
             "$ref": "#/components/schemas/UsageMetadata"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "模型版本",
+            "example": "gemini-2.5-flash-lite"
+          },
+          "responseId": {
+            "type": "string",
+            "description": "响应 ID",
+            "example": "l-LoaPu0BPmo1dkP6ZPHiQc"
           }
         }
       },
@@ -525,11 +609,25 @@
             "type": "string",
             "description": "完成原因",
             "enum": [
+              "FINISH_REASON_UNSPECIFIED",
               "STOP",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
-              "OTHER"
+              "LANGUAGE",
+              "OTHER",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "MALFORMED_FUNCTION_CALL",
+              "IMAGE_SAFETY",
+              "IMAGE_PROHIBITED_CONTENT",
+              "IMAGE_OTHER",
+              "NO_IMAGE",
+              "IMAGE_RECITATION",
+              "UNEXPECTED_TOOL_CALL",
+              "TOO_MANY_TOOL_CALLS",
+              "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
           },
@@ -561,9 +659,9 @@
           },
           "parts": {
             "type": "array",
-            "description": "响应内容片段",
+            "description": "响应内容片段列表，支持文本、内联数据、函数调用、函数返回和代码执行结果",
             "items": {
-              "$ref": "#/components/schemas/TextPart"
+              "$ref": "#/components/schemas/Part"
             }
           }
         }
@@ -589,6 +687,11 @@
             "type": "integer",
             "description": "输入内容的 token 数量",
             "example": 4
+          },
+          "cachedContentTokenCount": {
+            "type": "integer",
+            "description": "缓存内容 token 数量",
+            "example": 0
           },
           "candidatesTokenCount": {
             "type": "integer",
@@ -622,10 +725,12 @@
             "type": "string",
             "description": "内容模态类型",
             "enum": [
+              "MODALITY_UNSPECIFIED",
               "TEXT",
               "IMAGE",
               "AUDIO",
-              "VIDEO"
+              "VIDEO",
+              "DOCUMENT"
             ],
             "example": "TEXT"
           },
@@ -647,11 +752,25 @@
             "type": "string",
             "description": "完成原因（仅最后一块包含此字段）",
             "enum": [
+              "FINISH_REASON_UNSPECIFIED",
               "STOP",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
-              "OTHER"
+              "LANGUAGE",
+              "OTHER",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "MALFORMED_FUNCTION_CALL",
+              "IMAGE_SAFETY",
+              "IMAGE_PROHIBITED_CONTENT",
+              "IMAGE_OTHER",
+              "NO_IMAGE",
+              "IMAGE_RECITATION",
+              "UNEXPECTED_TOOL_CALL",
+              "TOO_MANY_TOOL_CALLS",
+              "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
           }
@@ -677,6 +796,11 @@
                 "type": "integer",
                 "description": "输入内容的 token 数量（仅最后一块）",
                 "example": 4
+              },
+              "cachedContentTokenCount": {
+                "type": "integer",
+                "description": "缓存内容 token 数量（仅最后一块）",
+                "example": 0
               },
               "candidatesTokenCount": {
                 "type": "integer",
@@ -736,6 +860,198 @@
                 "description": "错误时的建议"
               }
             }
+          }
+        }
+      },
+      "BlobData": {
+        "type": "object",
+        "required": [
+          "mimeType",
+          "data"
+        ],
+        "properties": {
+          "mimeType": {
+            "type": "string",
+            "description": "IANA MIME 类型",
+            "example": "image/png"
+          },
+          "data": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64 编码的原始媒体数据"
+          }
+        }
+      },
+      "InlineDataPart": {
+        "title": "内联数据",
+        "type": "object",
+        "required": [
+          "inlineData"
+        ],
+        "properties": {
+          "inlineData": {
+            "$ref": "#/components/schemas/BlobData"
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "是否为思考内容"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "思考签名，需要在下一轮原样回传",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FunctionCall": {
+        "type": "object",
+        "required": [
+          "name",
+          "args"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "函数名",
+            "example": "get_weather"
+          },
+          "args": {
+            "type": "object",
+            "description": "函数参数"
+          }
+        }
+      },
+      "FunctionCallPart": {
+        "title": "函数调用",
+        "type": "object",
+        "required": [
+          "functionCall"
+        ],
+        "properties": {
+          "functionCall": {
+            "$ref": "#/components/schemas/FunctionCall"
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "是否为思考内容"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "思考签名，需要在下一轮原样回传",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FunctionResponseMediaPart": {
+        "type": "object",
+        "required": [
+          "inlineData"
+        ],
+        "properties": {
+          "inlineData": {
+            "$ref": "#/components/schemas/BlobData"
+          }
+        }
+      },
+      "FunctionResponse": {
+        "type": "object",
+        "required": [
+          "name",
+          "response"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "函数名",
+            "example": "get_weather"
+          },
+          "response": {
+            "type": "object",
+            "description": "函数返回内容"
+          },
+          "parts": {
+            "type": "array",
+            "description": "可选的多模态返回片段",
+            "items": {
+              "$ref": "#/components/schemas/FunctionResponseMediaPart"
+            }
+          }
+        }
+      },
+      "FunctionResponsePart": {
+        "title": "函数返回",
+        "type": "object",
+        "required": [
+          "functionResponse"
+        ],
+        "properties": {
+          "functionResponse": {
+            "$ref": "#/components/schemas/FunctionResponse"
+          }
+        }
+      },
+      "ExecutableCode": {
+        "type": "object",
+        "required": [
+          "language",
+          "code"
+        ],
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "代码语言",
+            "example": "python"
+          },
+          "code": {
+            "type": "string",
+            "description": "生成的代码"
+          }
+        }
+      },
+      "ExecutableCodePart": {
+        "title": "生成代码",
+        "type": "object",
+        "required": [
+          "executableCode"
+        ],
+        "properties": {
+          "executableCode": {
+            "$ref": "#/components/schemas/ExecutableCode"
+          }
+        }
+      },
+      "CodeExecutionResult": {
+        "type": "object",
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "代码执行结果",
+            "enum": [
+              "OUTCOME_UNSPECIFIED",
+              "OUTCOME_OK",
+              "OUTCOME_FAILED",
+              "OUTCOME_DEADLINE_EXCEEDED"
+            ],
+            "example": "OUTCOME_OK"
+          },
+          "output": {
+            "type": "string",
+            "description": "标准输出、错误输出或其他描述"
+          }
+        }
+      },
+      "CodeExecutionResultPart": {
+        "title": "代码执行结果",
+        "type": "object",
+        "required": [
+          "codeExecutionResult"
+        ],
+        "properties": {
+          "codeExecutionResult": {
+            "$ref": "#/components/schemas/CodeExecutionResult"
           }
         }
       }
