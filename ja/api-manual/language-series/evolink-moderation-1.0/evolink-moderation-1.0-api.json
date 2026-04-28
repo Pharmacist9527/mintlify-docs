@@ -1,0 +1,831 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EvoLink Moderation 1.0 完全な API リファレンス",
+    "description": "EvoLink コンテンツモデレーション API。テキストおよび画像に対する有害コンテンツ検出を行い、`evolink_summary` フィールドを通じて統一されたリスクサマリーを返却するため、ビジネス側で一目でリスクレベルを判断できます。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "フォールバックエンドポイント"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/moderations": {
+      "post": {
+        "summary": "EvoLink Moderation コンテンツモデレーション API",
+        "description": "- 同期 API。入力された**テキスト**および/または**画像**に対して 13 次元の有害コンテンツ検出を行います\n- レスポンスでは `evolink_summary` フィールドを通じて `risk_level` / `flagged` / `violations` / `max_score` / `max_category` の 5 項目から成る統一サマリーを返却します\n\n**主な機能**：\n- **マルチモーダル審査**：テキストのみ、画像のみ、テキスト + 画像の組み合わせ入力に対応\n- **13 個のカテゴリー**：harassment、hate、sexual、violence、self-harm、illicit、sexual/minors など\n- **リスク階層化**：各カテゴリーごとに medium / high の閾値を独立に設定し、感度ごとに判定基準を差別化（レッドライン項目 sexual/minors の閾値が最も厳格）\n- **説明可能性**：レスポンスでカテゴリーごとの `category_scores` と簡略化された `evolink_summary` の両方を返却し、ビジネス側はどちらかを選んで利用可能\n\n**入力制約**：\n- 1 リクエストあたり画像は最大 1 枚（複数枚を審査したい場合は並列にリクエストを分割してください）\n- 画像は HTTPS URL 入力のみサポート\n\n**典型的な使い方**：以下のサンプルを参照してください。テキストのみ、テキスト + 画像、画像のみの 3 つの典型的なシナリオを網羅しています。",
+        "operationId": "createModeration",
+        "tags": [
+          "コンテンツモデレーション"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationRequest"
+              },
+              "examples": {
+                "moderate_text": {
+                  "summary": "テキストのみの審査",
+                  "value": {
+                    "model": "evolink-moderation-1.0",
+                    "input": [
+                      {
+                        "type": "text",
+                        "text": "I want to kill them."
+                      }
+                    ]
+                  }
+                },
+                "moderate_image_url": {
+                  "summary": "画像のみの審査",
+                  "value": {
+                    "model": "evolink-moderation-1.0",
+                    "input": [
+                      {
+                        "type": "image_url",
+                        "image_url": {
+                          "url": "https://example.com/image.png"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "moderate_text_and_image": {
+                  "summary": "テキスト + 画像の組み合わせ審査（推奨）",
+                  "value": {
+                    "model": "evolink-moderation-1.0",
+                    "input": [
+                      {
+                        "type": "text",
+                        "text": "この画像に何が写っているか説明してください。"
+                      },
+                      {
+                        "type": "image_url",
+                        "image_url": {
+                          "url": "https://example.com/image.png"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "モデレーション成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModerationResponse"
+                },
+                "example": {
+                  "evolink_summary": {
+                    "risk_level": "medium",
+                    "flagged": false,
+                    "violations": [],
+                    "max_score": 0.5973832720,
+                    "max_category": "sexual"
+                  },
+                  "id": "modr-0d9740456c391e43c445bf0f010940c7",
+                  "model": "evolink-moderation-1.0",
+                  "results": [
+                    {
+                      "flagged": false,
+                      "categories": {
+                        "harassment": false,
+                        "harassment/threatening": false,
+                        "hate": false,
+                        "hate/threatening": false,
+                        "illicit": false,
+                        "illicit/violent": false,
+                        "self-harm": false,
+                        "self-harm/intent": false,
+                        "self-harm/instructions": false,
+                        "sexual": false,
+                        "sexual/minors": false,
+                        "violence": false,
+                        "violence/graphic": false
+                      },
+                      "category_scores": {
+                        "harassment": 0.0006,
+                        "harassment/threatening": 0.0007,
+                        "hate": 0.00003,
+                        "hate/threatening": 0.0000025,
+                        "illicit": 0.000013,
+                        "illicit/violent": 0.0000096,
+                        "self-harm": 0.0000166,
+                        "self-harm/intent": 0.000004,
+                        "self-harm/instructions": 0.0000031,
+                        "sexual": 0.5973832720,
+                        "sexual/minors": 0.000004,
+                        "violence": 0.0231,
+                        "violence/graphic": 0.0089
+                      },
+                      "category_applied_input_types": {
+                        "harassment": ["text"],
+                        "harassment/threatening": ["text"],
+                        "hate": ["text"],
+                        "hate/threatening": ["text"],
+                        "illicit": ["text"],
+                        "illicit/violent": ["text"],
+                        "self-harm": ["text"],
+                        "self-harm/intent": ["text"],
+                        "self-harm/instructions": ["text"],
+                        "sexual": ["text"],
+                        "sexual/minors": ["text"],
+                        "violence": ["text"],
+                        "violence/graphic": ["text"]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "field input is required",
+                    "type": "invalid_request_error",
+                    "param": "input"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークンが無効または期限切れ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージが必要です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "このモデルへのアクセス権限がありません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "リソースが存在しません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Specified model not found",
+                    "type": "not_found_error",
+                    "param": "model",
+                    "fallback_suggestion": "evolink-moderation-1.0"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "リクエストボディが大きすぎます（画像ファイルが上限を超過）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Image file too large",
+                    "type": "request_too_large_error",
+                    "param": "input",
+                    "fallback_suggestion": "compress image to under 20MB"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエスト頻度が上限を超過しました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Bad gateway",
+                    "type": "bad_gateway_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスは一時的に利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ModerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "モデレーションモデル名。`evolink-moderation-1.0` で固定です。",
+            "enum": [
+              "evolink-moderation-1.0"
+            ],
+            "example": "evolink-moderation-1.0"
+          },
+          "input": {
+            "type": "array",
+            "description": "審査対象のコンテンツ。すべてオブジェクト配列の形式に統一されています。各要素は `text` または `image_url` オブジェクトです。\n\n```json\n\"input\": [\n  {\"type\": \"text\", \"text\": \"審査対象のテキスト\"},\n  {\"type\": \"image_url\", \"image_url\": {\"url\": \"https://...\"}}\n]\n```\n\n**制約**：\n- 配列内で `type=image_url` のオブジェクトは**最大 1 個**。複数枚の画像を審査したい場合は、並列でリクエストを分割してください\n- `type=text` のオブジェクト数に制限はありません",
+            "items": {
+              "$ref": "#/components/schemas/ModerationContentItem"
+            }
+          }
+        }
+      },
+      "ModerationContentItem": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextInputItem"
+          },
+          {
+            "$ref": "#/components/schemas/ImageInputItem"
+          }
+        ]
+      },
+      "TextInputItem": {
+        "title": "テキスト入力項目",
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text"
+            ],
+            "description": "コンテンツタイプ。`text` で固定です。"
+          },
+          "text": {
+            "type": "string",
+            "description": "審査対象のテキスト",
+            "example": "この画像に何が写っているか説明してください。"
+          }
+        }
+      },
+      "ImageInputItem": {
+        "title": "画像入力項目",
+        "type": "object",
+        "required": [
+          "type",
+          "image_url"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image_url"
+            ],
+            "description": "コンテンツタイプ。`image_url` で固定です。"
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "画像の HTTPS URL。例：`https://example.com/image.png`\n\n**サポート形式**：`.jpeg` / `.jpg` / `.png` / `.webp`\n\n**サイズ上限**：1 枚あたり 20MB 以下を推奨（超過すると 413 が発生する可能性があります）\n\n**注意**：1 リクエストあたり画像は最大 1 枚です。複数枚の場合は並列に分割してください。",
+                "example": "https://example.com/image.png"
+              }
+            }
+          }
+        }
+      },
+      "ModerationResponse": {
+        "type": "object",
+        "description": "モデレーションレスポンス。最上位の `evolink_summary` はビジネス側で利用を推奨する統一リスクサマリーです。`results` はカテゴリーごとの詳細スコアを提供します。",
+        "properties": {
+          "evolink_summary": {
+            "$ref": "#/components/schemas/EvolinkSummary"
+          },
+          "id": {
+            "type": "string",
+            "description": "本モデレーションリクエストの一意の識別子",
+            "example": "modr-0d9740456c391e43c445bf0f010940c7"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名。`evolink-moderation-1.0` で固定です。",
+            "example": "evolink-moderation-1.0"
+          },
+          "results": {
+            "type": "array",
+            "description": "モデレーション結果のリスト。固定で **1 個**の result を返します（配列形式の入力は単一のスコア結果に統合されます）。\n\n## マルチモーダル評価範囲\n\n13 個のカテゴリーのうち、一部のカテゴリーは**テキストのみで評価**され、画像は評価されません：\n\n| カテゴリー | 評価範囲 |\n|------|----------|\n| `harassment` / `harassment/threatening` | テキストのみ |\n| `hate` / `hate/threatening` | テキストのみ |\n| `illicit` / `illicit/violent` | テキストのみ |\n| `sexual/minors` | **テキストのみ（要注意：レッドライン項目）** |\n| `self-harm` / `self-harm/intent` / `self-harm/instructions` | テキスト + 画像 |\n| `sexual` | テキスト + 画像 |\n| `violence` / `violence/graphic` | テキスト + 画像 |\n\n**重要事項**：\n- 画像のみを送信した場合、上記 7 つのテキスト専用カテゴリーのスコアは常に `0` となり、`category_applied_input_types` は空配列になります。**これはコンテンツが安全であることを意味するのではなく、評価されていないだけです**\n- 未成年者リスク（`sexual/minors` レッドライン項目）に関わるビジネスでは、**必ずテキストコンテキストと併せて審査に送る必要があり**、画像スコアのみに依存することはできません",
+            "items": {
+              "$ref": "#/components/schemas/ModerationResult"
+            }
+          }
+        }
+      },
+      "ModerationResult": {
+        "type": "object",
+        "description": "単一入力のモデレーション結果",
+        "properties": {
+          "flagged": {
+            "type": "boolean",
+            "description": "グローバル違反フラグ：`categories` 内のいずれかのカテゴリーが true の場合、本フィールドは true になります。\n\n**ビジネス側では `evolink_summary.flagged` の利用を優先することを推奨します**。EvoLink プラットフォームの階層化された閾値に基づいて判定されており、ロジックがより細かく制御しやすくなっています。本フィールドはフォールバック用のリファレンスとしての利用がより適しています。",
+            "example": false
+          },
+          "categories": {
+            "$ref": "#/components/schemas/ModerationCategories"
+          },
+          "category_scores": {
+            "$ref": "#/components/schemas/ModerationCategoryScores"
+          },
+          "category_applied_input_types": {
+            "$ref": "#/components/schemas/ModerationCategoryAppliedInputTypes"
+          }
+        }
+      },
+      "ModerationCategories": {
+        "type": "object",
+        "description": "13 個のカテゴリーの違反真偽値フラグ",
+        "properties": {
+          "harassment": {
+            "type": "boolean",
+            "description": "ハラスメント：あらゆる対象に向けたハラスメント的な表現を表明、扇動、または助長するコンテンツ"
+          },
+          "harassment/threatening": {
+            "type": "boolean",
+            "description": "脅迫的ハラスメント：暴力または重大な危害を伴うハラスメントコンテンツ"
+          },
+          "hate": {
+            "type": "boolean",
+            "description": "ヘイト：人種、性別、民族、宗教、国籍、性的指向、障害、またはカーストに基づくヘイトコンテンツ"
+          },
+          "hate/threatening": {
+            "type": "boolean",
+            "description": "脅迫的ヘイト：対象グループへの暴力または重大な危害を伴うヘイトコンテンツ"
+          },
+          "illicit": {
+            "type": "boolean",
+            "description": "違法行為：違法行為に関する指示や助言を提供するコンテンツ（例：「窃盗の方法」）"
+          },
+          "illicit/violent": {
+            "type": "boolean",
+            "description": "暴力的違法行為：違法コンテンツに暴力や武器の入手に関する助言が含まれるもの"
+          },
+          "self-harm": {
+            "type": "boolean",
+            "description": "自傷：自傷行為（自殺、リストカット、摂食障害など）を宣伝、助長、または描写するコンテンツ"
+          },
+          "self-harm/instructions": {
+            "type": "boolean",
+            "description": "自傷の手引き：自傷行為の実行を奨励または指示するコンテンツ"
+          },
+          "self-harm/intent": {
+            "type": "boolean",
+            "description": "自傷の意図：自身が自傷行為を実行している、または実行する意図を表明するコンテンツ"
+          },
+          "sexual": {
+            "type": "boolean",
+            "description": "性的：性的興奮を引き起こす目的のコンテンツ（性教育や健康に関するものを除く）"
+          },
+          "sexual/minors": {
+            "type": "boolean",
+            "description": "未成年に関する性的コンテンツ（**レッドライン項目**）：18 歳未満の人物が関与する性的コンテンツ"
+          },
+          "violence": {
+            "type": "boolean",
+            "description": "暴力：死、暴力、または身体的傷害を描写するコンテンツ"
+          },
+          "violence/graphic": {
+            "type": "boolean",
+            "description": "残虐な暴力：死、暴力、または身体的傷害を生々しい詳細で描写するコンテンツ"
+          }
+        }
+      },
+      "ModerationCategoryScores": {
+        "type": "object",
+        "description": "13 個のカテゴリーの信頼度スコア（0～1、高いほど違反度が高い）",
+        "properties": {
+          "harassment": {
+            "type": "number",
+            "description": "harassment の信頼度",
+            "example": 0.0006
+          },
+          "harassment/threatening": {
+            "type": "number",
+            "description": "harassment/threatening の信頼度",
+            "example": 0.0007
+          },
+          "hate": {
+            "type": "number",
+            "description": "hate の信頼度",
+            "example": 0.00003
+          },
+          "hate/threatening": {
+            "type": "number",
+            "description": "hate/threatening の信頼度",
+            "example": 0.0000025
+          },
+          "illicit": {
+            "type": "number",
+            "description": "illicit の信頼度",
+            "example": 0.000013
+          },
+          "illicit/violent": {
+            "type": "number",
+            "description": "illicit/violent の信頼度",
+            "example": 0.0000096
+          },
+          "self-harm": {
+            "type": "number",
+            "description": "self-harm の信頼度",
+            "example": 0.0000166
+          },
+          "self-harm/instructions": {
+            "type": "number",
+            "description": "self-harm/instructions の信頼度",
+            "example": 0.0000031
+          },
+          "self-harm/intent": {
+            "type": "number",
+            "description": "self-harm/intent の信頼度",
+            "example": 0.000004
+          },
+          "sexual": {
+            "type": "number",
+            "description": "sexual の信頼度",
+            "example": 0.5973
+          },
+          "sexual/minors": {
+            "type": "number",
+            "description": "sexual/minors の信頼度",
+            "example": 0.000004
+          },
+          "violence": {
+            "type": "number",
+            "description": "violence の信頼度",
+            "example": 0.0231
+          },
+          "violence/graphic": {
+            "type": "number",
+            "description": "violence/graphic の信頼度",
+            "example": 0.0089
+          }
+        }
+      },
+      "ModerationCategoryAppliedInputTypes": {
+        "type": "object",
+        "description": "各カテゴリーで**実際に評価された入力タイプ**を示します。値は配列で、要素は `text` または `image` です。\n\n各カテゴリーの評価範囲（テキストのみ / テキスト+画像）は `results` フィールドの説明に対照表として記載されています。ここの配列は本リクエストで**実際に評価対象となった**入力タイプを表します。",
+        "properties": {
+          "harassment": {
+            "type": "array",
+            "description": "harassment の評価対象となる入力タイプ（text のみ）",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "harassment/threatening": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "hate": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "hate/threatening": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "illicit": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "illicit/violent": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "self-harm": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "image"
+              ]
+            }
+          },
+          "self-harm/instructions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "image"
+              ]
+            }
+          },
+          "self-harm/intent": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "image"
+              ]
+            }
+          },
+          "sexual": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "image"
+              ]
+            }
+          },
+          "sexual/minors": {
+            "type": "array",
+            "description": "sexual/minors は text のみサポート",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          },
+          "violence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "image"
+              ]
+            }
+          },
+          "violence/graphic": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "image"
+              ]
+            }
+          }
+        }
+      },
+      "EvolinkSummary": {
+        "type": "object",
+        "description": "**EvoLink リスクサマリー**：13 個のカテゴリーの `category_scores` をベースに、各カテゴリーの感度に応じて差別化された閾値で算出された統一サマリーです。ビジネス側ではこれをもとに直接 通過/拒否/レビュー送付 を判断できます。\n\n## リスク階層化閾値表\n\n| カテゴリー | medium 閾値 | high 閾値 | 備考 |\n|------|-----------|----------|------|\n| `sexual/minors` | 0.05 | 0.20 | **レッドライン項目**、最も厳格な閾値 |\n| `self-harm` / `self-harm/intent` / `self-harm/instructions` | 0.30 | 0.60 | 人命に関わるため厳格 |\n| `violence/graphic` | 0.40 | 0.70 | 残虐な暴力 |\n| `illicit/violent` | 0.40 | 0.70 | 暴力的違法行為 |\n| `sexual` | 0.50 | 0.80 | 通常の性的コンテンツ |\n| `violence` | 0.50 | 0.80 | 通常の暴力 |\n| `harassment/threatening` | 0.50 | 0.80 | 脅迫的ハラスメント |\n| `hate/threatening` | 0.50 | 0.80 | 脅迫的ヘイト |\n| `harassment` | 0.60 | 0.85 | 通常のハラスメント |\n| `hate` | 0.60 | 0.85 | 通常のヘイト |\n| `illicit` | 0.60 | 0.85 | 通常の違法行為の手引き |\n\n## 判定ルール\n\n```\nいずれかのカテゴリーの score >= 当該カテゴリーの high 閾値   → risk_level = \"high\",   flagged = true,  violations に追加\nいずれかのカテゴリーの score >= 当該カテゴリーの medium 閾値 → risk_level = \"medium\", flagged = false\nそれ以外                                                       → risk_level = \"low\",    flagged = false\n```\n\n## ビジネス側の利用ガイダンス\n\n```python\nsummary = response[\"evolink_summary\"]\n\nif summary[\"flagged\"]:                         # high → 直接拒否\n    reject(reason=summary[\"violations\"])\nelif summary[\"risk_level\"] == \"medium\":        # グレーゾーン\n    log_for_review(summary)                    # ログ記録、人手によるサンプリングレビュー\n    proceed()\nelse:                                          # low → 通過\n    proceed()\n```",
+        "properties": {
+          "risk_level": {
+            "type": "string",
+            "description": "リスクレベル\n\n- `low`：すべてのカテゴリーが medium 閾値を下回る\n- `medium`：少なくとも 1 つのカテゴリーが medium 閾値を超えるが、high 閾値は超えていない\n- `high`：少なくとも 1 つのカテゴリーが high 閾値を超える（レッドライン）",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "example": "medium"
+          },
+          "flagged": {
+            "type": "boolean",
+            "description": "拒否推奨をトリガーしたかどうか。\n\n`risk_level == \"high\"` と等価です。**ビジネス上はこれをもとに直接 通過/拒否 を判定することを推奨します**。\n\n注意：本フィールドは `results[].flagged` とは異なります。`results[].flagged` は任意のカテゴリーが越えたかを示すグローバルブール値ですが、本フィールドは EvoLink の階層化された閾値に基づき、感度に応じて差別化された判定が行われており、より制御しやすくなっています。",
+            "example": false
+          },
+          "violations": {
+            "type": "array",
+            "description": "**high 閾値をトリガーしたカテゴリーのリスト**。\n\n- `risk_level == \"high\"` のとき、本配列には high 閾値を超えたすべてのカテゴリー名が列挙されます（例：`[\"sexual/minors\", \"violence\"]`）\n- `risk_level == \"medium\"` または `\"low\"` のとき、本配列は空 `[]` です",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "sexual/minors"
+            ]
+          },
+          "max_score": {
+            "type": "number",
+            "description": "13 個のカテゴリーのうち最大のスコア値（0～1）。ビジネスのモニタリングや閾値のチューニングに利用できます。",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.5973832720
+          },
+          "max_category": {
+            "type": "string",
+            "description": "最大スコアに対応するカテゴリー名（13 個のカテゴリーのいずれか）",
+            "example": "sexual"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP ステータスエラーコード"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明メッセージ"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              },
+              "param": {
+                "type": "string",
+                "description": "関連するパラメータ名"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "エラー時の推奨対処"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのエンドポイントには Bearer Token による認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys) にアクセスして、API キーを取得してください。\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "コンテンツモデレーション",
+      "description": "EvoLink コンテンツモデレーション API（テキスト + 画像）"
+    }
+  ]
+}
