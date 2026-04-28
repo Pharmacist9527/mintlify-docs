@@ -10,12 +10,12 @@
   },
   "servers": [
     {
-      "url": "https://api.evolink.ai",
-      "description": "Standard"
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommandée)"
     },
     {
-      "url": "https://direct.evolink.ai",
-      "description": "Optimisé pour les tâches de longue durée"
+      "url": "https://api.evolink.ai",
+      "description": "URL alternative"
     }
   ],
   "security": [
@@ -1074,6 +1074,7 @@
               "claude-sonnet-4-20250514",
               "claude-opus-4-5-20251101",
               "claude-opus-4-6",
+              "claude-opus-4-7",
               "claude-sonnet-4-6"
             ],
             "examples": [
@@ -1097,6 +1098,11 @@
             ],
             "minimum": 1,
             "title": "Tokens max"
+          },
+          "inference_geo": {
+            "type": "string",
+            "description": "Specifies the geographic region for inference processing. If not specified, the workspace's `default_inference_geo` is used.",
+            "title": "Inference Geo"
           },
           "container": {
             "description": "Identifiant de conteneur pour réutilisation entre les requêtes.",
@@ -1136,6 +1142,10 @@
           "metadata": {
             "$ref": "#/components/schemas/Metadata",
             "description": "Un objet décrivant les métadonnées de la requête."
+          },
+          "output_config": {
+            "$ref": "#/components/schemas/OutputConfig",
+            "description": "Configuration options for the model's output, such as the output format."
           },
           "service_tier": {
             "type": "string",
@@ -1188,10 +1198,13 @@
             "title": "Temperature"
           },
           "thinking": {
-            "description": "Configuration pour activer la réflexion étendue de Claude.",
+            "description": "Configuration pour activer la réflexion étendue de Claude.\n\n`type: \"enabled\"` nécessite `budget_tokens`, avec un minimum de 1 024, et est comptabilisé dans `max_tokens`. Vous pouvez utiliser `display` pour contrôler l'affichage du contenu de réflexion.\n\n`type: \"adaptive\"` laisse Claude décider dynamiquement quand et dans quelle mesure utiliser la réflexion étendue selon la complexité de la requête ; vous pouvez également utiliser `display` pour contrôler l'affichage du contenu de réflexion.\n\n`type: \"disabled\"` désactive la réflexion étendue.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ThinkingConfigEnabled"
+              },
+              {
+                "$ref": "#/components/schemas/ThinkingConfigAdaptive"
               },
               {
                 "$ref": "#/components/schemas/ThinkingConfigDisabled"
@@ -1700,6 +1713,9 @@
               "claude-sonnet-4-5-20250929",
               "claude-opus-4-1-20250805",
               "claude-sonnet-4-20250514",
+              "claude-opus-4-5-20251101",
+              "claude-opus-4-6",
+              "claude-opus-4-7",
               "claude-sonnet-4-6"
             ],
             "examples": [
@@ -1777,6 +1793,81 @@
           }
         },
         "title": "Métadonnées",
+        "type": "object"
+      },
+      "JSONOutputFormat": {
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "description": "Schéma JSON utilisé pour définir la sortie de Claude.",
+            "type": "object"
+          },
+          "type": {
+            "const": "json_schema",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "type"
+        ],
+        "title": "JSONOutputFormat",
+        "type": "object"
+      },
+      "OutputConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "effort": {
+            "description": "Niveau d'effort de sortie.",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "title": "Effort",
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/JSONOutputFormat",
+            "description": "Schéma utilisé pour contraindre le format de sortie de Claude."
+          },
+          "task_budget": {
+            "$ref": "#/components/schemas/TokenTaskBudget",
+            "description": "Budget total de jetons sur l'ensemble des contextes."
+          }
+        },
+        "title": "OutputConfig",
+        "type": "object"
+      },
+      "TokenTaskBudget": {
+        "additionalProperties": false,
+        "properties": {
+          "remaining": {
+            "description": "Budget de jetons restant.",
+            "minimum": 0,
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Budget total de jetons sur l'ensemble des contextes.",
+            "minimum": 20000,
+            "title": "Total",
+            "type": "integer"
+          },
+          "type": {
+            "const": "tokens",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "total",
+          "type"
+        ],
+        "title": "TokenTaskBudget",
         "type": "object"
       },
       "NotFoundError": {
@@ -5375,6 +5466,30 @@
         "title": "Désactivé",
         "type": "object"
       },
+      "ThinkingConfigAdaptive": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "description": "Contrôle la façon dont le contenu de réflexion apparaît dans la réponse.",
+            "enum": [
+              "summarized",
+              "omitted"
+            ],
+            "title": "Affichage",
+            "type": "string"
+          },
+          "type": {
+            "const": "adaptive",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "Adaptive",
+        "type": "object"
+      },
       "ThinkingConfigEnabled": {
         "additionalProperties": false,
         "properties": {
@@ -5383,6 +5498,15 @@
             "minimum": 1024,
             "title": "Tokens budgétaires",
             "type": "integer"
+          },
+          "display": {
+            "description": "Contrôle la façon dont le contenu de réflexion apparaît dans la réponse.",
+            "enum": [
+              "summarized",
+              "omitted"
+            ],
+            "title": "Affichage",
+            "type": "string"
           },
           "type": {
             "const": "enabled",

@@ -1,0 +1,823 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepSeek V4 Anthropic 호환 인터페이스",
+    "description": "DeepSeek V4 시리즈를 Anthropic Messages 프로토콜로 호출합니다 (`deepseek-v4-flash` / `deepseek-v4-pro`).\n\n**호환성 설명**:\n- 경로: `/v1/messages` (Anthropic 표준 경로)\n- 요청 / 응답 구조는 Anthropic Messages API와 일치\n- 지원 필드: `model` `max_tokens`(필수) `messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **미지원 필드**: `top_k`, `container`, `mcp_servers`, `metadata`, `service_tier`, `cache_control`\n- **미지원 콘텐츠 유형**: 이미지(`image`), 문서(`document`), 검색 결과, `redacted_thinking`, `server_tool_use`\n\n**모델 기능**:\n- 컨텍스트 1M tokens, 최대 출력 384K tokens\n- Pro는 기본적으로 `thinking`이 활성화되어 있으며, 응답에 `thinking` content block이 반환됩니다\n\n**과금 단가 (UC/1K tokens, EvoLink 내부 단위)**:\n| 모델 | 입력 캐시 히트 | 입력 캐시 미스 | 출력 |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 20 | 100 | 200 |\n| deepseek-v4-pro | 100 | 1200 | 2400 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션 (권장)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "DeepSeek V4 Messages 인터페이스 (Anthropic 호환)",
+        "description": "- Anthropic Messages 프로토콜로 DeepSeek V4 모델 호출\n- `deepseek-v4-flash` / `deepseek-v4-pro` 지원\n- 요청 / 응답 구조는 Anthropic API와 정렬되어 있음\n- **순수 텍스트 대화** (현재 이미지 / 문서 콘텐츠 유형은 미지원)\n- **시스템 프롬프트**: 최상위 `system` 필드로 전달\n- **사고 모드**: `thinking` 객체 스위치; 사고 내용은 `content[type=thinking]` block으로 반환\n- **스트리밍 출력**: SSE 이벤트 스트림\n- **도구 호출**: Anthropic `tool_use` / `tool_result` 흐름 호환",
+        "operationId": "createMessageDeepSeekV4",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "최소 실행 가능 요청",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello, world"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system 프롬프트 포함 + 다중 턴",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "system": "당신은 베테랑 기술 편집자입니다.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "DeepSeek V4를 세 문장으로 소개해주세요."
+                      }
+                    ]
+                  }
+                },
+                "thinking": {
+                  "summary": "사고 모드 명시적 설정",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 4096,
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "output_config": {
+                      "effort": "high"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "오일러 항등식 e^(iπ) + 1 = 0을 증명하세요"
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "사고 모드 비활성화",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "한 문장으로: 일본의 수도는?"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "도구 호출 (Anthropic tool_use 스타일)",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "상하이의 날씨를 조회하고 알려주세요"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "지정된 도시의 날씨를 조회합니다",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "도시 이름"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "스트리밍 출력 (SSE)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "봄에 관한 짧은 시를 써주세요"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "메시지 객체",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_enabled": {
+                    "summary": "thinking 활성화 (기본값, thinking content block 포함)",
+                    "value": {
+                      "id": "53ee6690-e14a-4e6b-890b-a135100d51c7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "사용자가 \"일본의 수도\"를 묻고 있습니다. 기초 지리 질문이고 답은 도쿄이므로 바로 답하면 됩니다.",
+                          "signature": "53ee6690-e14a-4e6b-890b-a135100d51c7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "일본의 수도는 **도쿄**입니다."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 77,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "thinking_disabled": {
+                    "summary": "thinking 비활성화 (text block만)",
+                    "value": {
+                      "id": "a42c8fa2-e1b7-4cd3-9c48-71d2f5c6a8e0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "일본의 수도는 도쿄입니다."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 9,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "도구 호출 트리거 (stop_reason=tool_use)",
+                    "value": {
+                      "id": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-pro",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "사용자가 베이징 날씨를 확인하고 싶어 합니다. get_weather 도구를 베이징 파라미터로 호출해야 합니다.",
+                          "signature": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3"
+                        },
+                        {
+                          "type": "text",
+                          "text": "알겠습니다, 베이징 날씨를 조회해 드리겠습니다."
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "베이징"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 35,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 68,
+                        "service_tier": "standard"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "요청 매개변수 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid request",
+                    "type": "invalid_request_error"
+                  },
+                  "request_id": "req_xxx",
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Authentication error",
+                    "type": "authentication_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량 부족",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Insufficient quota",
+                    "type": "billing_error"
+                  },
+                  "type": "error",
+                  "fallback_suggestion": "https://evolink.ai/dashboard/credits"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Permission denied",
+                    "type": "permission_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "모델 또는 리소스를 찾을 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "속도 제한",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Rate limited",
+                    "type": "rate_limit_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "내부 서버 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "게이트웨이 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스 일시적으로 사용 불가",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "호출할 모델\n\n- `deepseek-v4-flash`: 빠른 범용\n- `deepseek-v4-pro`: 심층 추론\n\n**팁**: 두 모델 **모두 기본적으로 thinking이 활성화**되어 있어 응답에 항상 `type=\"thinking\"` content block이 포함됩니다. 끄려면 `thinking.type=\"disabled\"`를 명시적으로 지정하세요. 지정되지 않았거나 지원되지 않는 model은 자동으로 `deepseek-v4-flash`에 매핑됩니다.",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "생성할 최대 token 수 (**필수**)\n\n**설명**:\n- V4 시리즈는 최대 **384,000**까지 가능\n- thinking에서 생성된 token도 max_tokens 상한에 포함됩니다",
+            "minimum": 1,
+            "maximum": 384000,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "대화 메시지 목록, 턴별로 user / assistant 교대\n\n**설명**:\n- 최소 1개의 메시지 포함\n- 마지막 메시지는 일반적으로 `role=user`\n- `image` / `document` 콘텐츠 유형은 현재 미지원",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "시스템 프롬프트, AI 역할 및 동작 설정에 사용\n\n**설명**:\n- 문자열 또는 문자열 배열 지원\n- OpenAI 엔드포인트의 `system` 메시지와 달리, Anthropic 엔드포인트는 최상위 `system` 필드를 사용합니다",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "샘플링 온도\n\n**설명**:\n- 범위 `[0.0, 2.0]`\n- 기본값 1; 값이 높을수록 발산적이고, 낮을수록 결정적",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "핵 샘플링 임계값\n\n**설명**:\n- 범위 `[0, 1]`\n- temperature와 top_p를 동시에 조정하지 않는 것을 권장합니다",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "사용자 정의 중지 시퀀스\n\n**설명**:\n- 모델이 어떤 문자열이든 만나면 생성을 중단\n- 최대 4개 (Anthropic 규격 준수)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE 스트리밍으로 반환할지 여부\n\n- `true`: Server-Sent Events 스트리밍 반환\n- `false`: 완전한 응답 후 한 번에 반환 (기본값)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "사고 모드 제어 (V4)\n\n**설명**:\n- **두 모델 모두 기본 활성화** (`type=enabled`)\n- 활성화하면 응답 `content` 배열에 `type=\"thinking\"`의 추론 과정 block이 나타납니다 (출력 token으로 과금)\n- **주의**: 이 API는 Anthropic 네이티브 `budget_tokens` 필드를 **무시**합니다. 깊이를 제어하려면 `output_config.effort`를 사용하세요\n- 다중 턴 대화에서는 이전 턴 응답의 thinking block을 그대로 assistant `content` 배열에 되돌려 놓으면 됩니다 (Anthropic 프로토콜 스타일은 더 관대하여 thinking이 없어도 오류를 일으키지 않지만, signature를 유지하면 컨텍스트 일관성에 도움이 됩니다)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- `enabled`: 심층 사고 활성화\n- `disabled`: 심층 사고 비활성화",
+                "default": "enabled"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "**무시됨** — Deepseek는 Anthropic의 budget_tokens를 사용하지 않습니다. 대신 `output_config.effort`를 사용하세요"
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "출력 설정 (V4 확장)\n\n**설명**: Deepseek는 `effort` 필드만 지원합니다",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "추론 노력 수준\n\n- `low`: 낮은 노력, 빠른 응답\n- `medium`: 중간 노력 (기본값)\n- `high`: 높은 노력, 더 깊이 있는 추론",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "도구 정의 목록\n\n**설명**:\n- Anthropic tool 정의 규격 준수\n- `input_schema`는 JSON Schema 객체 사용",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "도구 호출 동작 제어\n\n**가능한 type**:\n- `auto`: 모델이 자동 결정 (tools 제공 시 기본값)\n- `any`: 어떤 도구든 반드시 호출 (지정 없음)\n- `tool`: 지정된 `name`을 반드시 호출\n- `none`: 도구 호출 금지",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "any",
+                  "tool",
+                  "none"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "`type=\"tool\"`일 때 지정하는 도구명"
+              },
+              "disable_parallel_tool_use": {
+                "type": "boolean",
+                "description": "병렬 도구 호출 금지 (Anthropic 표준 필드)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "메시지 역할\n\n- `user`: 사용자 메시지 (`tool_result` block을 되돌려 보낼 때도 사용)\n- `assistant`: 어시스턴트 이전 응답 (`text` / `thinking` / `tool_use` blocks 포함 가능)\n\n⚠️ **`system`은 허용되지 않음**: 시스템 프롬프트는 반드시 최상위 `system` 필드를 사용해야 합니다. messages 안에 `role=\"system\"`이 나타나면 거부됩니다 (400 unknown variant)."
+          },
+          "content": {
+            "description": "메시지 내용\n\n**설명**:\n- 순수 텍스트인 경우 문자열을 직접 전달\n- 구조화된 경우 content block 배열 전달 (`text` / `tool_use` / `tool_result`)\n- `image` / `document` 등 멀티모달 유형은 **미지원**",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "메시지 콘텐츠 블록\n\n**지원 type**:\n- `text`: 텍스트 조각\n- `tool_use`: assistant가 시작한 도구 호출\n- `tool_result`: user가 되돌려 보내는 도구 실행 결과",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text`일 때의 텍스트 내용"
+          },
+          "id": {
+            "type": "string",
+            "description": "도구 호출 ID (tool_use / tool_result 시 필수)"
+          },
+          "name": {
+            "type": "string",
+            "description": "도구명 (tool_use 시 필수)"
+          },
+          "input": {
+            "type": "object",
+            "description": "도구 입력 매개변수 (tool_use 시, JSON 객체)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "해당 도구 호출 ID (tool_result 시 필수, tool_use.id로 되돌려 채움)"
+          },
+          "content": {
+            "description": "도구 실행 결과 (tool_result), 문자열 또는 content block 배열",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "도구 이름\n\n**설명**:\n- `a-zA-Z0-9_-`만 허용\n- 최대 64자"
+          },
+          "description": {
+            "type": "string",
+            "description": "도구 기능 설명, 모델이 언제 호출할지 판단하는 데 사용"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "도구 입력 매개변수의 JSON Schema 객체\n\n**설명**:\n- `type`은 반드시 `object`\n- `properties`와 `required`를 선언해야 합니다"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic 스타일의 메시지 응답",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "메시지 고유 ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "응답 객체 유형"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "실제 사용된 모델",
+            "example": "deepseek-v4-pro"
+          },
+          "content": {
+            "type": "array",
+            "description": "응답 콘텐츠 블록 목록\n\n**포함될 수 있는 block type**:\n- `thinking`: 추론 과정 (thinking 활성화 시에만)\n- `text`: 최종 응답 텍스트\n- `tool_use`: 모델이 시작한 도구 호출",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "중지 원인\n\n- `end_turn`: 자연 종료\n- `max_tokens`: max_tokens 상한 도달\n- `stop_sequence`: stop_sequences 히트\n- `tool_use`: 모델이 도구 호출 트리거",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "stop_sequence",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "stop_reason=`stop_sequence`일 때 히트한 구체적인 시퀀스, 그렇지 않으면 null"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "응답 내의 콘텐츠 블록",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text`일 때의 텍스트"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking`일 때의 추론 과정 텍스트"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking`일 때의 완전성 서명 (Anthropic 규격, 추론이 변조되지 않았음을 검증하는 데 사용)"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use`일 때의 도구 호출 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use`일 때의 도구명"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use`일 때 모델이 생성한 JSON 입력 매개변수"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 사용 통계 (Anthropic 규격)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "입력 token 수 (캐시 미스 부분)",
+            "example": 10
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "출력 token 수 (thinking 포함)",
+            "example": 30
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "캐시 생성 입력 token 수 (현재 Deepseek Anthropic 엔드포인트는 캐시 쓰기를 하지 않으므로 이 값은 항상 0)",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "캐시 히트 입력 token 수\n\n**설명**: 캐시 히트 단가로 과금됩니다 (Flash 20 UC/1K, Pro 100 UC/1K)",
+            "example": 0
+          },
+          "service_tier": {
+            "type": "string",
+            "description": "서비스 계층 (Anthropic 규격 필드)",
+            "example": "standard"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "오류 유형 (예: invalid_request_error / authentication_error / billing_error 등)"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "요청 추적 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 인터페이스는 Bearer Token 인증이 필요합니다##\n\n**API Key 받기**:\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)를 방문하여 API Key를 받으세요\n\n**사용 시 요청 헤더에 추가**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**참고**: Anthropic 네이티브 API는 `x-api-key` 헤더를 사용하지만, EvoLink는 `/v1/messages`에 대해 Bearer Token 인증을 일괄 채택합니다."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 프로토콜 인터페이스"
+    }
+  ]
+}

@@ -1,0 +1,417 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "HappyHorse 1.0 Video-Edit API",
+    "description": "HappyHorse 1.0 video editing API, performs style transfer, local replacement, etc., based on a source video and text instructions",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "HappyHorse 1.0 Video-Edit",
+        "description": "- HappyHorse 1.0 video edit, takes 1 source video and text instructions to perform style transfer, local replacement, etc.\n- Optionally accepts 0–5 reference images for style / subject guidance\n- **Does not support** `duration`: output video duration = `min(input video duration, 15)`, determined by the model\n- **Does not support** `aspect_ratio`: output aspect ratio matches the source video\n- **Special billing rule**: `(input video duration + output video duration) × resolution unit price`; the model truncates inputs longer than 15 seconds to 15 seconds\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "operationId": "createHappyHorse10VideoEdit",
+        "tags": [
+          "Video Generation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "with_reference": {
+                  "summary": "Video edit with reference image",
+                  "value": {
+                    "model": "happyhorse-1.0-video-edit",
+                    "prompt": "Have the character in the video wear the striped sweater from the image",
+                    "video_urls": [
+                      "https://cdn.example.com/source.mp4"
+                    ],
+                    "image_urls": [
+                      "https://cdn.example.com/sweater.jpg"
+                    ],
+                    "quality": "720p",
+                    "keep_original_sound": true
+                  }
+                },
+                "style_transfer": {
+                  "summary": "Style transfer (no reference image)",
+                  "value": {
+                    "model": "happyhorse-1.0-video-edit",
+                    "prompt": "Replace the video background with snowy mountains",
+                    "video_urls": [
+                      "https://cdn.example.com/source.mp4"
+                    ],
+                    "quality": "1080p",
+                    "keep_original_sound": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Video generation task created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "missing_video_urls",
+                    "message": "happyhorse-1.0-video-edit requires video_urls or video_url",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated, token invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota, top-up required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: happyhorse-1.0-video-edit",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt",
+          "video_urls"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Video generation model name",
+            "enum": [
+              "happyhorse-1.0-video-edit"
+            ],
+            "default": "happyhorse-1.0-video-edit",
+            "example": "happyhorse-1.0-video-edit"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Edit instruction text, **required**\n\n**Length limits:**\n- Chinese: up to `2500` characters\n- Non-Chinese: up to `5000` characters\n- Excess content is automatically truncated\n\n**Prompt tips:**\n- Use editing instructions instead of creative descriptions\n- Examples: `Replace the protagonist's clothes with the striped sweater in the image`, `Replace the video background with snowy mountains`",
+            "example": "Have the character in the video wear the striped sweater from the image"
+          },
+          "video_urls": {
+            "type": "array",
+            "description": "Source video URL to edit, **required**, **only 1** (the first item of the array is taken)\n\n**Video requirements:**\n- Supported formats: MP4, MOV (H.264 encoding recommended)\n- Duration: `3` ~ `60` seconds\n- The model automatically truncates inputs longer than `15` seconds to the first `15` seconds\n- Resolution: long edge ≤ `2160` px, short edge ≥ `320` px\n- Aspect ratio: `1:2.5` ~ `2.5:1`\n- File size: ≤ `100MB`\n- Frame rate: > `8` fps\n- Video URL must be **publicly accessible (HTTP or HTTPS)**; private OSS, intranet, or authenticated links are not supported\n\n**Compatible fields:** `video_url` / `video` are also accepted (lower priority than `video_urls`)",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "example": [
+              "https://cdn.example.com/source.mp4"
+            ]
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "Reference image URL array, **optional**, **0 ~ 5 images**\n\nUsed for style / subject guidance.\n\n**Image requirements:**\n- Supported formats: JPEG, JPG, PNG, WEBP\n- Resolution: width and height ≥ `300` px\n- Aspect ratio: `1:2.5` ~ `2.5:1`\n- File size: ≤ `10MB`\n- Image URLs must be **publicly accessible (HTTP or HTTPS)**",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 5,
+            "example": [
+              "https://cdn.example.com/sweater.jpg"
+            ]
+          },
+          "keep_original_sound": {
+            "type": "boolean",
+            "description": "Whether to keep the original audio of the input video, defaults to `false`\n\n**Options:**\n- `true`: Keep the original audio of the input video\n- `false`: Discard the original audio; the model generates new audio",
+            "default": false,
+            "example": false
+          },
+          "quality": {
+            "type": "string",
+            "description": "Video resolution tier, defaults to `720p`\n\n**Options:**\n- `720p`: Standard clarity, this is the default\n- `1080p`: HD clarity\n\n**Billing note:** Resolution tier directly affects billing",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "default": "720p",
+            "example": "720p"
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Random seed, default is random\n\n**Details:**\n- Range: `1` ~ `2147483647`\n- A fixed seed reduces parameter-induced variation when iterating on prompts and improves reproducibility",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "example": 42
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "HTTPS callback URL for task completion\n\n**Callback timing:**\n- Triggered when the task is completed, failed, or cancelled\n- Sent after billing confirmation is complete\n\n**Security restrictions:**\n- Only HTTPS protocol is supported\n- Callbacks to private IP addresses are prohibited (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- URL length must not exceed `2048` characters\n\n**Callback mechanism:**\n- Timeout: `10` seconds\n- Up to `3` retries after failure (at `1`/`2`/`4` seconds after failure respectively)\n- Callback response body format is consistent with the task query endpoint response format\n- A 2xx status code is considered successful; other status codes trigger retries",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Task creation timestamp",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "Task ID",
+            "example": "task-unified-1761313744-h1edgh12"
+          },
+          "model": {
+            "type": "string",
+            "description": "Actual model name used",
+            "example": "happyhorse-1.0-video-edit"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Specific type of the task"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Task progress percentage (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Task status",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Video task details"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Output type of the task",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Usage and billing information"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Whether the task can be cancelled",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Estimated completion time (seconds)",
+            "minimum": 0,
+            "example": 2400
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Output video duration (seconds), equals min(input video duration, 15)",
+            "example": 6
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Usage and billing information. EDIT billing = (input video duration + output video duration) × resolution unit price; pre-deduction is estimated as locally detected input duration × 2, and the actual deduction is reconciled based on the model-returned usage field",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Billing rule",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Estimated credits consumed (pre-deducted as input duration × 2)",
+            "minimum": 0,
+            "example": 1608660
+          },
+          "user_group": {
+            "type": "string",
+            "description": "User group category",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code identifier"
+              },
+              "message": {
+                "type": "string",
+                "description": "Error description message"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All endpoints require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit the [API Key Management Page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Video Generation",
+      "description": "AI video generation endpoints"
+    }
+  ]
+}

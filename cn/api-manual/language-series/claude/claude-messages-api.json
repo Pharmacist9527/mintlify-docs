@@ -10,12 +10,12 @@
   },
   "servers": [
     {
-      "url": "https://api.evolink.ai",
-      "description": "标准接口"
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
     },
     {
-      "url": "https://direct.evolink.ai",
-      "description": "适合长时间任务"
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
     }
   ],
   "security": [
@@ -1074,6 +1074,7 @@
               "claude-sonnet-4-20250514",
               "claude-opus-4-5-20251101",
               "claude-opus-4-6",
+              "claude-opus-4-7",
               "claude-sonnet-4-6"
             ],
             "examples": [
@@ -1097,6 +1098,11 @@
             ],
             "minimum": 1,
             "title": "Max Tokens"
+          },
+          "inference_geo": {
+            "type": "string",
+            "description": "指定推理处理的地理区域。如果未指定，将使用工作区的 `default_inference_geo`。",
+            "title": "Inference Geo"
           },
           "container": {
             "description": "跨请求重用的容器标识符。",
@@ -1136,6 +1142,10 @@
           "metadata": {
             "$ref": "#/components/schemas/Metadata",
             "description": "描述请求元数据的对象。"
+          },
+          "output_config": {
+            "$ref": "#/components/schemas/OutputConfig",
+            "description": "模型输出的配置，例如输出格式。"
           },
           "service_tier": {
             "type": "string",
@@ -1188,13 +1198,16 @@
             "title": "Temperature"
           },
           "thinking": {
-            "description": "启用 Claude 扩展思考的配置。",
+            "description": "启用 Claude 扩展思考的配置。\n\n`type: \"enabled\"` 时，需要提供 `budget_tokens`，且预算至少为 1,024，并会计入 `max_tokens` 上限。可通过 `display` 控制思考内容的展示方式。\n\n`type: \"adaptive\"` 时，Claude 会根据请求复杂度动态决定是否以及如何使用扩展思考；同样可通过 `display` 控制思考内容的展示方式。\n\n`type: \"disabled\"` 时，不启用扩展思考。",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ThinkingConfigEnabled"
               },
               {
                 "$ref": "#/components/schemas/ThinkingConfigDisabled"
+              },
+              {
+                "$ref": "#/components/schemas/ThinkingConfigAdaptive"
               }
             ]
           },
@@ -1702,6 +1715,7 @@
               "claude-sonnet-4-20250514",
               "claude-opus-4-5-20251101",
               "claude-opus-4-6",
+              "claude-opus-4-7",
               "claude-sonnet-4-6"
             ],
             "examples": [
@@ -1779,6 +1793,81 @@
           }
         },
         "title": "Metadata",
+        "type": "object"
+      },
+      "JSONOutputFormat": {
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "description": "用于定义 Claude 输出的 JSON schema。",
+            "type": "object"
+          },
+          "type": {
+            "const": "json_schema",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "type"
+        ],
+        "title": "JSONOutputFormat",
+        "type": "object"
+      },
+      "OutputConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "effort": {
+            "description": "输出努力程度。",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "title": "Effort",
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/JSONOutputFormat",
+            "description": "用于约束 Claude 输出格式的 schema。"
+          },
+          "task_budget": {
+            "$ref": "#/components/schemas/TokenTaskBudget",
+            "description": "跨上下文会话的总 token 预算。"
+          }
+        },
+        "title": "OutputConfig",
+        "type": "object"
+      },
+      "TokenTaskBudget": {
+        "additionalProperties": false,
+        "properties": {
+          "remaining": {
+            "description": "剩余可用 token 预算。",
+            "minimum": 0,
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "total": {
+            "description": "跨上下文会话的总 token 预算。",
+            "minimum": 20000,
+            "title": "Total",
+            "type": "integer"
+          },
+          "type": {
+            "const": "tokens",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "total",
+          "type"
+        ],
+        "title": "TokenTaskBudget",
         "type": "object"
       },
       "NotFoundError": {
@@ -5377,6 +5466,30 @@
         "title": "Disabled",
         "type": "object"
       },
+      "ThinkingConfigAdaptive": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "description": "控制思考内容在响应中的展示方式。",
+            "enum": [
+              "summarized",
+              "omitted"
+            ],
+            "title": "Display",
+            "type": "string"
+          },
+          "type": {
+            "const": "adaptive",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "Adaptive",
+        "type": "object"
+      },
       "ThinkingConfigEnabled": {
         "additionalProperties": false,
         "properties": {
@@ -5385,6 +5498,15 @@
             "minimum": 1024,
             "title": "Budget Tokens",
             "type": "integer"
+          },
+          "display": {
+            "description": "控制思考内容在响应中的展示方式。",
+            "enum": [
+              "summarized",
+              "omitted"
+            ],
+            "title": "显示",
+            "type": "string"
           },
           "type": {
             "const": "enabled",

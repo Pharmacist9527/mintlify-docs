@@ -10,12 +10,12 @@
   },
   "servers": [
     {
-      "url": "https://api.evolink.ai",
-      "description": "Standard"
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션 (권장)"
     },
     {
-      "url": "https://direct.evolink.ai",
-      "description": "장시간 작업에 최적화"
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
     }
   ],
   "security": [
@@ -373,7 +373,7 @@
         "properties": {
           "contents": {
             "type": "array",
-            "description": "대화 내용 목록, 다중 턴 대화 및 멀티모달 입력 지원",
+            "description": "List of conversation contents, supports multi-turn dialogue and multimodal input",
             "items": {
               "$ref": "#/components/schemas/Content"
             },
@@ -381,7 +381,33 @@
           },
           "generationConfig": {
             "$ref": "#/components/schemas/GenerationConfig",
-            "description": "생성 설정 파라미터 (선택 사항)"
+            "description": "Generation configuration parameters (optional)"
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "System instruction (optional), mainly text content"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of tools the model can call, such as function calling or code execution"
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "Tool calling configuration (optional)"
+          },
+          "safetySettings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Safety settings list (optional)"
+          },
+          "cachedContent": {
+            "type": "string",
+            "description": "Cached content name, in the form cachedContents/{cachedContent}"
           }
         }
       },
@@ -403,7 +429,7 @@
           },
           "parts": {
             "type": "array",
-            "description": "콘텐츠 파트 목록, 텍스트 및 파일 데이터 지원",
+            "description": "Content parts list, supports text, file data, inline data, function calls, function responses, and code execution results",
             "items": {
               "$ref": "#/components/schemas/Part"
             },
@@ -418,8 +444,24 @@
           },
           {
             "$ref": "#/components/schemas/FilePart"
+          },
+          {
+            "$ref": "#/components/schemas/InlineDataPart"
+          },
+          {
+            "$ref": "#/components/schemas/FunctionCallPart"
+          },
+          {
+            "$ref": "#/components/schemas/FunctionResponsePart"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutableCodePart"
+          },
+          {
+            "$ref": "#/components/schemas/CodeExecutionResultPart"
           }
-        ]
+        ],
+        "description": "Content part union type. The thoughtSignature returned by thinking models must be echoed back in the next turn."
       },
       "TextPart": {
         "title": "텍스트 입력",
@@ -432,6 +474,15 @@
             "type": "string",
             "description": "텍스트 내용",
             "example": "Hello! I'm pleased to introduce myself.\n\nI'm a large language model, trained and developed by Google..."
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "Whether this is thought content"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "Thought signature, must be echoed back in the next turn",
+            "example": "<Signature_A>"
           }
         }
       },
@@ -466,7 +517,7 @@
       },
       "GenerationConfig": {
         "type": "object",
-        "description": "생성 설정 파라미터",
+        "description": "Generation configuration parameters",
         "properties": {
           "temperature": {
             "type": "number",
@@ -493,6 +544,29 @@
             "description": "Top-K 샘플링 매개변수\n\n**설명**:\n- 예를 들어, 10은 샘플링 시 가장 확률이 높은 상위 10개 토큰만 고려하도록 제한합니다\n- 작은 값일수록 출력이 더 집중됩니다\n- 기본값: 제한 없음",
             "minimum": 1,
             "example": 40
+          },
+          "candidateCount": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of candidates to return",
+            "example": 1
+          },
+          "responseMimeType": {
+            "type": "string",
+            "description": "MIME type of generated candidate content, for example text/plain or application/json",
+            "example": "application/json"
+          },
+          "responseSchema": {
+            "type": "object",
+            "description": "Output schema definition for generated content (JSON mode / structured output)"
+          },
+          "responseJsonSchema": {
+            "type": "object",
+            "description": "JSON Schema for generated content (useful for more complex structured output)"
+          },
+          "thinkingConfig": {
+            "type": "object",
+            "description": "Thinking configuration (for models that support thinking)"
           }
         }
       },
@@ -502,7 +576,7 @@
         "properties": {
           "candidates": {
             "type": "array",
-            "description": "마지막 프레임 이미지 URL\n\n**참고:**\n- `image_start` (첫 프레임 이미지 URL)와 `image_end` (마지막 프레임 이미지 URL) 중 하나 이상 필요\n- 마지막 프레임은 첫 프레임이 필요합니다\n- 이미지 요구사항은 `image_start`와 동일합니다",
+            "description": "List of candidate responses",
             "items": {
               "$ref": "#/components/schemas/Candidate"
             }
@@ -512,6 +586,16 @@
           },
           "usageMetadata": {
             "$ref": "#/components/schemas/UsageMetadata"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Model version",
+            "example": "gemini-3.1-pro-preview"
+          },
+          "responseId": {
+            "type": "string",
+            "description": "Response ID",
+            "example": "l-LoaPu0BPmo1dkP6ZPHiQc"
           }
         }
       },
@@ -523,13 +607,27 @@
           },
           "finishReason": {
             "type": "string",
-            "description": "종료 이유",
+            "description": "Finish reason",
             "enum": [
+              "FINISH_REASON_UNSPECIFIED",
               "STOP",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
-              "OTHER"
+              "LANGUAGE",
+              "OTHER",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "MALFORMED_FUNCTION_CALL",
+              "IMAGE_SAFETY",
+              "IMAGE_PROHIBITED_CONTENT",
+              "IMAGE_OTHER",
+              "NO_IMAGE",
+              "IMAGE_RECITATION",
+              "UNEXPECTED_TOOL_CALL",
+              "TOO_MANY_TOOL_CALLS",
+              "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
           },
@@ -561,9 +659,9 @@
           },
           "parts": {
             "type": "array",
-            "description": "응답 콘텐츠 파트",
+            "description": "Response content parts, supports text, inline data, function calls, function responses, and code execution results",
             "items": {
-              "$ref": "#/components/schemas/TextPart"
+              "$ref": "#/components/schemas/Part"
             }
           }
         }
@@ -611,6 +709,11 @@
             "items": {
               "$ref": "#/components/schemas/TokenDetail"
             }
+          },
+          "cachedContentTokenCount": {
+            "type": "integer",
+            "description": "Number of cached content tokens",
+            "example": 0
           }
         }
       },
@@ -620,12 +723,14 @@
         "properties": {
           "modality": {
             "type": "string",
-            "description": "콘텐츠 모달리티 유형",
+            "description": "Content modality type",
             "enum": [
+              "MODALITY_UNSPECIFIED",
               "TEXT",
               "IMAGE",
               "AUDIO",
-              "VIDEO"
+              "VIDEO",
+              "DOCUMENT"
             ],
             "example": "TEXT"
           },
@@ -638,20 +743,34 @@
       },
       "StreamCandidate": {
         "type": "object",
-        "description": "스트림 응답 후보 (일반 응답보다 간소화됨)",
+        "description": "Stream response candidate (more simplified than regular response)",
         "properties": {
           "content": {
             "$ref": "#/components/schemas/ContentResponse"
           },
           "finishReason": {
             "type": "string",
-            "description": "종료 이유 (마지막 청크에만 포함)",
+            "description": "Finish reason (only included in last chunk)",
             "enum": [
+              "FINISH_REASON_UNSPECIFIED",
               "STOP",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
-              "OTHER"
+              "LANGUAGE",
+              "OTHER",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "MALFORMED_FUNCTION_CALL",
+              "IMAGE_SAFETY",
+              "IMAGE_PROHIBITED_CONTENT",
+              "IMAGE_OTHER",
+              "NO_IMAGE",
+              "IMAGE_RECITATION",
+              "UNEXPECTED_TOOL_CALL",
+              "TOO_MANY_TOOL_CALLS",
+              "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
           }
@@ -692,6 +811,11 @@
                 "type": "string",
                 "description": "트래픽 유형",
                 "example": "ON_DEMAND"
+              },
+              "cachedContentTokenCount": {
+                "type": "integer",
+                "description": "Number of cached content tokens (last chunk only)",
+                "example": 0
               }
             }
           },
@@ -736,6 +860,198 @@
                 "description": "오류 발생 시 제안"
               }
             }
+          }
+        }
+      },
+      "BlobData": {
+        "type": "object",
+        "properties": {
+          "mimeType": {
+            "type": "string",
+            "description": "IANA MIME type",
+            "example": "image/png"
+          },
+          "data": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64-encoded raw media data"
+          }
+        },
+        "required": [
+          "mimeType",
+          "data"
+        ]
+      },
+      "InlineDataPart": {
+        "title": "Inline Data",
+        "type": "object",
+        "required": [
+          "inlineData"
+        ],
+        "properties": {
+          "inlineData": {
+            "$ref": "#/components/schemas/BlobData"
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "Whether this is thought content"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "Thought signature, must be echoed back in the next turn",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FunctionCall": {
+        "type": "object",
+        "required": [
+          "name",
+          "args"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Function name",
+            "example": "get_weather"
+          },
+          "args": {
+            "type": "object",
+            "description": "Function arguments"
+          }
+        }
+      },
+      "FunctionCallPart": {
+        "title": "Function Call",
+        "type": "object",
+        "required": [
+          "functionCall"
+        ],
+        "properties": {
+          "functionCall": {
+            "$ref": "#/components/schemas/FunctionCall"
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "Whether this is thought content"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "Thought signature, must be echoed back in the next turn",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FunctionResponseMediaPart": {
+        "type": "object",
+        "required": [
+          "inlineData"
+        ],
+        "properties": {
+          "inlineData": {
+            "$ref": "#/components/schemas/BlobData"
+          }
+        }
+      },
+      "FunctionResponse": {
+        "type": "object",
+        "required": [
+          "name",
+          "response"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Function name",
+            "example": "get_weather"
+          },
+          "parts": {
+            "type": "array",
+            "description": "Optional multimodal response parts",
+            "items": {
+              "$ref": "#/components/schemas/FunctionResponseMediaPart"
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "Function response payload"
+          }
+        }
+      },
+      "FunctionResponsePart": {
+        "title": "Function Response",
+        "type": "object",
+        "required": [
+          "functionResponse"
+        ],
+        "properties": {
+          "functionResponse": {
+            "$ref": "#/components/schemas/FunctionResponse"
+          }
+        }
+      },
+      "ExecutableCode": {
+        "type": "object",
+        "required": [
+          "language",
+          "code"
+        ],
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "Code language",
+            "example": "python"
+          },
+          "code": {
+            "type": "string",
+            "description": "Generated code"
+          }
+        }
+      },
+      "ExecutableCodePart": {
+        "title": "Generated Code",
+        "type": "object",
+        "required": [
+          "executableCode"
+        ],
+        "properties": {
+          "executableCode": {
+            "$ref": "#/components/schemas/ExecutableCode"
+          }
+        }
+      },
+      "CodeExecutionResult": {
+        "type": "object",
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "Code execution result",
+            "enum": [
+              "OUTCOME_UNSPECIFIED",
+              "OUTCOME_OK",
+              "OUTCOME_FAILED",
+              "OUTCOME_DEADLINE_EXCEEDED"
+            ],
+            "example": "OUTCOME_OK"
+          },
+          "output": {
+            "type": "string",
+            "description": "Standard output, error output, or other description"
+          }
+        }
+      },
+      "CodeExecutionResultPart": {
+        "title": "Code Execution Result",
+        "type": "object",
+        "required": [
+          "codeExecutionResult"
+        ],
+        "properties": {
+          "codeExecutionResult": {
+            "$ref": "#/components/schemas/CodeExecutionResult"
           }
         }
       }

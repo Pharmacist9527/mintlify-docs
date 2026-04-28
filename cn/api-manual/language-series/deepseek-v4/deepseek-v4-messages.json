@@ -1,0 +1,823 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepSeek V4 Anthropic 兼容接口",
+    "description": "DeepSeek V4 系列通过 Anthropic Messages 协议调用（`deepseek-v4-flash` / `deepseek-v4-pro`）。\n\n**兼容说明**：\n- 路径：`/v1/messages`（Anthropic 标准路径）\n- 请求 / 响应结构与 Anthropic Messages API 一致\n- 已支持字段：`model` `max_tokens`（必填）`messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **未支持字段**：`top_k`、`container`、`mcp_servers`、`metadata`、`service_tier`、`cache_control`\n- **未支持内容类型**：图像（`image`）、文档（`document`）、搜索结果、`redacted_thinking`、`server_tool_use`\n\n**模型能力**：\n- 上下文 1M tokens，最大输出 384K tokens\n- Pro 默认启用 `thinking`，响应中会返回 `thinking` content block\n\n**计费档位（UC/1K tokens，EvoLink 内部单位）**：\n| 模型 | 输入缓存命中 | 输入缓存未命中 | 输出 |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 20 | 100 | 200 |\n| deepseek-v4-pro | 100 | 1200 | 2400 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "DeepSeek V4 Messages 接口（Anthropic 兼容）",
+        "description": "- 使用 Anthropic Messages 协议调用 DeepSeek V4 模型\n- 支持 `deepseek-v4-flash` / `deepseek-v4-pro`\n- 请求 / 响应结构与 Anthropic API 对齐\n- **纯文本对话**（暂不支持图像 / 文档内容类型）\n- **系统提示词**：通过顶层 `system` 传入\n- **思考模式**：`thinking` 对象开关；思考内容通过 `content[type=thinking]` block 返回\n- **流式输出**：SSE 事件流\n- **工具调用**：兼容 Anthropic `tool_use` / `tool_result` 流程",
+        "operationId": "createMessageDeepSeekV4",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小可运行请求",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello, world"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "含 system 提示词 + 多轮",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "system": "你是一名资深中文技术编辑。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "用三句话介绍 DeepSeek V4。"
+                      }
+                    ]
+                  }
+                },
+                "thinking": {
+                  "summary": "显式配置思考模式",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 4096,
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "output_config": {
+                      "effort": "high"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "证明欧拉公式 e^(iπ) + 1 = 0"
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "关闭思考模式",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一句话：日本首都是？"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "工具调用（Anthropic tool_use 风格）",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "查询上海的天气并告诉我"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "查询指定城市的天气",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "城市名称"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "流式输出（SSE）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "写一首关于春天的短诗"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "消息对象",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_enabled": {
+                    "summary": "thinking 启用（默认，含 thinking content block）",
+                    "value": {
+                      "id": "53ee6690-e14a-4e6b-890b-a135100d51c7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "用户问的是\"日本首都\"，这是一个基础地理知识问题，答案就是东京，直接给出即可。",
+                          "signature": "53ee6690-e14a-4e6b-890b-a135100d51c7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "日本的首都是**东京**。"
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 77,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "thinking_disabled": {
+                    "summary": "thinking 关闭（仅 text block）",
+                    "value": {
+                      "id": "a42c8fa2-e1b7-4cd3-9c48-71d2f5c6a8e0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "日本的首都是东京。"
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 9,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "触发工具调用（stop_reason=tool_use）",
+                    "value": {
+                      "id": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-pro",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "用户想查北京天气，我需要调用 get_weather 工具，参数为北京。",
+                          "signature": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3"
+                        },
+                        {
+                          "type": "text",
+                          "text": "好的，我来为您查询北京的天气情况。"
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "北京"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 35,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 68,
+                        "service_tier": "standard"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid request",
+                    "type": "invalid_request_error"
+                  },
+                  "request_id": "req_xxx",
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "身份验证错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Authentication error",
+                    "type": "authentication_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Insufficient quota",
+                    "type": "billing_error"
+                  },
+                  "type": "error",
+                  "fallback_suggestion": "https://evolink.ai/dashboard/credits"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Permission denied",
+                    "type": "permission_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模型或资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "速率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Rate limited",
+                    "type": "rate_limit_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "网关错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "要调用的模型\n\n- `deepseek-v4-flash`：快速通用\n- `deepseek-v4-pro`：深度推理\n\n**提示**：两个模型 **均默认启用 thinking**，响应中始终包含 `type=\"thinking\"` content block；如需关闭请显式 `thinking.type=\"disabled\"`。未指定或不支持的 model 会被自动映射到 `deepseek-v4-flash`。",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "要生成的最大 token 数（**必填**）\n\n**说明**：\n- V4 系列最大可达 **384,000**\n- thinking 产生的 token 也计入 max_tokens 上限",
+            "minimum": 1,
+            "maximum": 384000,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "对话消息列表，按轮次 user / assistant 交替\n\n**说明**：\n- 至少包含 1 条消息\n- 最后一条消息通常为 `role=user`\n- 暂不支持 `image` / `document` 内容类型",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "系统提示词，用于设定 AI 角色与行为\n\n**说明**：\n- 支持字符串或字符串数组\n- 不同于 OpenAI 端点的 `system` 消息，Anthropic 端点使用顶层 `system` 字段",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "采样温度\n\n**说明**：\n- 范围 `[0.0, 2.0]`\n- 默认 1；值越高越发散，越低越确定",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核采样阈值\n\n**说明**：\n- 范围 `[0, 1]`\n- 建议不要同时调整 temperature 与 top_p",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "自定义停止序列\n\n**说明**：\n- 模型遇到任一字符串即停止生成\n- 最多 4 条（遵循 Anthropic 规范）",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否以 SSE 流式返回\n\n- `true`：Server-Sent Events 流式返回\n- `false`：完整响应后一次性返回（默认）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "思考模式控制（V4）\n\n**说明**：\n- **两个模型均默认启用**（`type=enabled`）\n- 启用后响应 `content` 数组中会出现 `type=\"thinking\"` 的推理过程 block（按输出 token 计费）\n- **注意**：该接口会 **忽略** Anthropic 原生的 `budget_tokens` 字段，使用 `output_config.effort` 控制深度\n- 多轮对话中把上一轮响应的 thinking block 原样放回 assistant `content` 数组即可（Anthropic 协议风格更宽松，不会因为缺失 thinking 而报错，但保留 signature 有助于上下文一致性）",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- `enabled`：启用深度思考\n- `disabled`：禁用深度思考",
+                "default": "enabled"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "**已忽略** — Deepseek 不使用 Anthropic 的 budget_tokens，请改用 `output_config.effort`"
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "输出配置（V4 扩展）\n\n**说明**：Deepseek 仅支持 `effort` 字段",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "推理努力程度\n\n- `low`：低努力，响应更快\n- `medium`：中等努力（默认）\n- `high`：高努力，更深入的推理",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "工具定义列表\n\n**说明**：\n- 遵循 Anthropic tool 定义规范\n- `input_schema` 使用 JSON Schema 对象",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "控制工具调用行为\n\n**可选 type**：\n- `auto`：模型自动决定（默认，当提供 tools 时）\n- `any`：必须调用某个工具（不指定哪个）\n- `tool`：必须调用指定的 `name`\n- `none`：禁止调用工具",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "any",
+                  "tool",
+                  "none"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "当 `type=\"tool\"` 时指定的工具名"
+              },
+              "disable_parallel_tool_use": {
+                "type": "boolean",
+                "description": "禁止并行工具调用（Anthropic 标准字段）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "消息角色\n\n- `user`：用户消息（也用于回传 `tool_result` block）\n- `assistant`：助手历史回复（可含 `text` / `thinking` / `tool_use` blocks）\n\n⚠️ **不接受 `system`**：系统提示必须走顶层 `system` 字段；在 messages 里出现 `role=\"system\"` 会被接口拒绝（400 unknown variant）。"
+          },
+          "content": {
+            "description": "消息内容\n\n**说明**：\n- 纯文本时直接传字符串\n- 结构化时传 content block 数组（`text` / `tool_use` / `tool_result`）\n- **不支持** `image` / `document` 等多模态类型",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "消息内容块\n\n**支持 type**：\n- `text`：文本片段\n- `tool_use`：assistant 发起工具调用\n- `tool_result`：user 传回工具执行结果",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "当 type=`text` 时的文本内容"
+          },
+          "id": {
+            "type": "string",
+            "description": "工具调用 ID（tool_use / tool_result 时必填）"
+          },
+          "name": {
+            "type": "string",
+            "description": "工具名（tool_use 时必填）"
+          },
+          "input": {
+            "type": "object",
+            "description": "工具入参（tool_use 时,JSON 对象）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "对应的工具调用 ID（tool_result 时必填,回填到 tool_use.id）"
+          },
+          "content": {
+            "description": "工具执行结果（tool_result）,字符串或 content block 数组",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "工具名称\n\n**说明**：\n- 只允许 `a-zA-Z0-9_-`\n- 最大 64 字符"
+          },
+          "description": {
+            "type": "string",
+            "description": "工具功能描述,供模型判断何时调用"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "工具入参的 JSON Schema 对象\n\n**说明**:\n- `type` 必须为 `object`\n- 应声明 `properties` 与 `required`"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic 风格的消息响应",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "消息唯一 ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "响应对象类型"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型",
+            "example": "deepseek-v4-pro"
+          },
+          "content": {
+            "type": "array",
+            "description": "响应内容块列表\n\n**可能包含的 block type**:\n- `thinking`：推理过程（仅启用 thinking 时）\n- `text`：最终回答文本\n- `tool_use`：模型发起的工具调用",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止原因\n\n- `end_turn`：自然结束\n- `max_tokens`：达到 max_tokens 上限\n- `stop_sequence`：命中 stop_sequences\n- `tool_use`：模型触发工具调用",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "stop_sequence",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "当 stop_reason=`stop_sequence` 时命中的具体序列,否则 null"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "响应中的内容块",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` 时的文本"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` 时的推理过程文本"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` 时的完整性签名（Anthropic 规范,用于验证推理未被篡改）"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` 时的工具调用 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` 时的工具名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` 时模型生成的 JSON 入参"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用统计（Anthropic 规范）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "输入 token 数（未命中缓存部分）",
+            "example": 10
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "输出 token 数（含 thinking）",
+            "example": 30
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "缓存创建的输入 token 数（当前 Deepseek Anthropic 端点不做缓存写入,此值固定为 0）",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "缓存命中的输入 token 数\n\n**说明**：按缓存命中价计费（Flash 20 UC/1K,Pro 100 UC/1K）",
+            "example": 0
+          },
+          "service_tier": {
+            "type": "string",
+            "description": "服务档位（Anthropic 规范字段）",
+            "example": "standard"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "错误类型（如 invalid_request_error / authentication_error / billing_error 等）"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "请求追踪 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**备注**：虽然 Anthropic 原生 API 使用 `x-api-key` 头,EvoLink 对 `/v1/messages` 统一采用 Bearer Token 鉴权。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 协议接口"
+    }
+  ]
+}

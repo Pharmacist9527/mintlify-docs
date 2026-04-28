@@ -1,0 +1,823 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepSeek V4 Anthropic 互換インターフェース",
+    "description": "DeepSeek V4 シリーズを Anthropic Messages プロトコルで呼び出します（`deepseek-v4-flash` / `deepseek-v4-pro`）。\n\n**互換性説明**：\n- パス：`/v1/messages`（Anthropic 標準パス）\n- リクエスト / レスポンス構造は Anthropic Messages API と一致\n- サポート済みフィールド：`model` `max_tokens`（必須）`messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **未サポートフィールド**：`top_k`、`container`、`mcp_servers`、`metadata`、`service_tier`、`cache_control`\n- **未サポートコンテンツタイプ**：画像（`image`）、ドキュメント（`document`）、検索結果、`redacted_thinking`、`server_tool_use`\n\n**モデル機能**：\n- コンテキスト 1M tokens、最大出力 384K tokens\n- Pro はデフォルトで `thinking` が有効、レスポンスに `thinking` content block が返されます\n\n**課金区分（UC/1K tokens、EvoLink 内部単位）**：\n| モデル | 入力キャッシュヒット | 入力キャッシュミス | 出力 |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 20 | 100 | 200 |\n| deepseek-v4-pro | 100 | 1200 | 2400 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "DeepSeek V4 Messages インターフェース（Anthropic 互換）",
+        "description": "- Anthropic Messages プロトコルを使用して DeepSeek V4 モデルを呼び出し\n- `deepseek-v4-flash` / `deepseek-v4-pro` をサポート\n- リクエスト / レスポンス構造は Anthropic API と整合\n- **テキスト会話**（画像 / ドキュメントコンテンツタイプは現在未サポート）\n- **システムプロンプト**：トップレベルの `system` で渡す\n- **思考モード**：`thinking` オブジェクトで切替；思考内容は `content[type=thinking]` block で返されます\n- **ストリーミング出力**：SSE イベントストリーム\n- **ツール呼び出し**：Anthropic `tool_use` / `tool_result` フローに互換",
+        "operationId": "createMessageDeepSeekV4",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小実行可能リクエスト",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello, world"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system プロンプト + マルチターン",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "system": "あなたはベテランの技術編集者です。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "DeepSeek V4 を3文で紹介してください。"
+                      }
+                    ]
+                  }
+                },
+                "thinking": {
+                  "summary": "思考モードの明示的設定",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 4096,
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "output_config": {
+                      "effort": "high"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "オイラーの等式 e^(iπ) + 1 = 0 を証明してください"
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "思考モードを無効化",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一言で：日本の首都は？"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "ツール呼び出し（Anthropic tool_use スタイル）",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "上海の天気を調べて教えてください"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "指定された都市の天気を照会します",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "都市名"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "ストリーミング出力（SSE）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "春についての短い詩を書いてください"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "メッセージオブジェクト",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_enabled": {
+                    "summary": "thinking 有効（デフォルト、thinking content block を含む）",
+                    "value": {
+                      "id": "53ee6690-e14a-4e6b-890b-a135100d51c7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "ユーザーは「日本の首都」を尋ねています。基礎的な地理の質問で、答えは東京、直接答えればよいです。",
+                          "signature": "53ee6690-e14a-4e6b-890b-a135100d51c7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "日本の首都は**東京**です。"
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 77,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "thinking_disabled": {
+                    "summary": "thinking 無効（text block のみ）",
+                    "value": {
+                      "id": "a42c8fa2-e1b7-4cd3-9c48-71d2f5c6a8e0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-flash",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "日本の首都は東京です。"
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 7,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 9,
+                        "service_tier": "standard"
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "ツール呼び出しをトリガー（stop_reason=tool_use）",
+                    "value": {
+                      "id": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "deepseek-v4-pro",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "ユーザーは北京の天気を確認したがっています。get_weather ツールをパラメータ「北京」で呼び出す必要があります。",
+                          "signature": "b61d9e03-3a78-4b95-8612-54e7f2a9c1d3"
+                        },
+                        {
+                          "type": "text",
+                          "text": "承知しました、北京の天気を調べます。"
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "北京"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "stop_sequence": null,
+                      "usage": {
+                        "input_tokens": 35,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 68,
+                        "service_tier": "standard"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid request",
+                    "type": "invalid_request_error"
+                  },
+                  "request_id": "req_xxx",
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "認証エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Authentication error",
+                    "type": "authentication_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Insufficient quota",
+                    "type": "billing_error"
+                  },
+                  "type": "error",
+                  "fallback_suggestion": "https://evolink.ai/dashboard/credits"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "権限エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Permission denied",
+                    "type": "permission_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "モデルまたはリソースが存在しません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Rate limited",
+                    "type": "rate_limit_error"
+                  },
+                  "type": "error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部サーバーエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "ゲートウェイエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル\n\n- `deepseek-v4-flash`：高速汎用\n- `deepseek-v4-pro`：深度推論\n\n**ヒント**：両モデルは **デフォルトで thinking が有効** であり、レスポンスには常に `type=\"thinking\"` の content block が含まれます。無効化する場合は明示的に `thinking.type=\"disabled\"` を指定してください。未指定またはサポートされていない model は自動的に `deepseek-v4-flash` にマッピングされます。",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "生成する最大 token 数（**必須**）\n\n**説明**：\n- V4 シリーズは最大 **384,000** まで可能\n- thinking で生成される token も max_tokens の上限に含まれます",
+            "minimum": 1,
+            "maximum": 384000,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "会話メッセージリスト、ターンごとに user / assistant が交互\n\n**説明**：\n- 少なくとも 1 つのメッセージを含む\n- 最後のメッセージは通常 `role=user`\n- `image` / `document` コンテンツタイプは現在未サポート",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "システムプロンプト、AI の役割と動作を設定するために使用\n\n**説明**：\n- 文字列または文字列配列をサポート\n- OpenAI エンドポイントの `system` メッセージとは異なり、Anthropic エンドポイントはトップレベルの `system` フィールドを使用",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度\n\n**説明**：\n- 範囲 `[0.0, 2.0]`\n- デフォルト 1；値が高いほど発散的、低いほど確定的",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核サンプリング閾値\n\n**説明**：\n- 範囲 `[0, 1]`\n- temperature と top_p を同時に調整しないことを推奨",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "カスタム停止シーケンス\n\n**説明**：\n- モデルがいずれかの文字列に遭遇すると生成を停止\n- 最大 4 個（Anthropic 規範に従う）",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE ストリーミングで返すかどうか\n\n- `true`：Server-Sent Events でストリーミング返却\n- `false`：完全なレスポンス後に一度に返す（デフォルト）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "思考モード制御（V4）\n\n**説明**：\n- **両モデルともデフォルトで有効**（`type=enabled`）\n- 有効時、レスポンスの `content` 配列に `type=\"thinking\"` の推論過程 block が出現します（出力 token として課金）\n- **注意**：この API は Anthropic ネイティブの `budget_tokens` フィールドを **無視** します。深度制御には `output_config.effort` を使用してください\n- マルチターン会話では、前ターンのレスポンスの thinking block をそのまま assistant `content` 配列に戻すだけで OK（Anthropic プロトコルスタイルはより寛容で、thinking の欠落でエラーにはなりませんが、signature を保持することでコンテキストの一貫性が向上します）",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- `enabled`：深度思考を有効化\n- `disabled`：深度思考を無効化",
+                "default": "enabled"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "**無視されます** — Deepseek は Anthropic の budget_tokens を使用しません。代わりに `output_config.effort` を使用してください"
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "出力設定（V4 拡張）\n\n**説明**：Deepseek は `effort` フィールドのみサポート",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "推論努力度\n\n- `low`：低努力、レスポンスがより高速\n- `medium`：中程度の努力（デフォルト）\n- `high`：高努力、より深い推論",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツール定義リスト\n\n**説明**：\n- Anthropic tool 定義規範に従う\n- `input_schema` は JSON Schema オブジェクトを使用",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "ツール呼び出し動作を制御\n\n**選択可能な type**：\n- `auto`：モデルが自動決定（tools 提供時のデフォルト）\n- `any`：必ず何らかのツールを呼び出す（どれかは指定しない）\n- `tool`：指定された `name` のツールを必ず呼び出す\n- `none`：ツール呼び出しを禁止",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "any",
+                  "tool",
+                  "none"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "`type=\"tool\"` の場合に指定するツール名"
+              },
+              "disable_parallel_tool_use": {
+                "type": "boolean",
+                "description": "並行ツール呼び出しを禁止（Anthropic 標準フィールド）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "メッセージの役割\n\n- `user`：ユーザーメッセージ（`tool_result` block の返送にも使用）\n- `assistant`：アシスタント履歴応答（`text` / `thinking` / `tool_use` blocks を含むことが可能）\n\n⚠️ **`system` は受け入れられません**：システムプロンプトはトップレベルの `system` フィールドを通す必要があります；messages 内に `role=\"system\"` が出現すると拒否されます（400 unknown variant）。"
+          },
+          "content": {
+            "description": "メッセージ内容\n\n**説明**：\n- プレーンテキストの場合は文字列を直接渡す\n- 構造化の場合は content block 配列を渡す（`text` / `tool_use` / `tool_result`）\n- `image` / `document` などのマルチモーダルタイプは **未サポート**",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "メッセージ内容ブロック\n\n**サポートされる type**：\n- `text`：テキスト断片\n- `tool_use`：assistant がツール呼び出しを発起\n- `tool_result`：user がツール実行結果を返送",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト内容"
+          },
+          "id": {
+            "type": "string",
+            "description": "ツール呼び出し ID（tool_use / tool_result の場合に必須）"
+          },
+          "name": {
+            "type": "string",
+            "description": "ツール名（tool_use の場合に必須）"
+          },
+          "input": {
+            "type": "object",
+            "description": "ツール入力パラメータ（tool_use の場合、JSON オブジェクト）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "対応するツール呼び出し ID（tool_result の場合に必須、tool_use.id に返送）"
+          },
+          "content": {
+            "description": "ツール実行結果（tool_result）、文字列または content block 配列",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "ツール名\n\n**説明**：\n- `a-zA-Z0-9_-` のみ許可\n- 最大 64 文字"
+          },
+          "description": {
+            "type": "string",
+            "description": "ツール機能の説明、モデルがいつ呼び出すかを判断するため"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "ツール入力パラメータの JSON Schema オブジェクト\n\n**説明**：\n- `type` は `object` でなければなりません\n- `properties` と `required` を宣言するべきです"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic スタイルのメッセージレスポンス",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "メッセージの一意 ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "レスポンスオブジェクトタイプ"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル",
+            "example": "deepseek-v4-pro"
+          },
+          "content": {
+            "type": "array",
+            "description": "レスポンス内容ブロックリスト\n\n**含まれる可能性のある block type**：\n- `thinking`：推論過程（thinking 有効時のみ）\n- `text`：最終回答テキスト\n- `tool_use`：モデルが発起したツール呼び出し",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止理由\n\n- `end_turn`：自然終了\n- `max_tokens`：max_tokens の上限に到達\n- `stop_sequence`：stop_sequences にヒット\n- `tool_use`：モデルがツール呼び出しをトリガー",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "stop_sequence",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "stop_reason=`stop_sequence` の場合にヒットした具体的なシーケンス、それ以外は null"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "レスポンス中の内容ブロック",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` の場合の推論過程テキスト"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` の場合の完全性署名（Anthropic 規範、推論が改ざんされていないことを検証するため）"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール呼び出し ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` の場合にモデルが生成した JSON 入力パラメータ"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用統計（Anthropic 規範）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "入力 token 数（キャッシュ未ヒット部分）",
+            "example": 10
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力 token 数（thinking を含む）",
+            "example": 30
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュ作成の入力 token 数（現在の Deepseek Anthropic エンドポイントはキャッシュ書き込みを行わないため、この値は固定で 0）",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュヒットの入力 token 数\n\n**説明**：キャッシュヒット価格で課金（Flash 20 UC/1K、Pro 100 UC/1K）",
+            "example": 0
+          },
+          "service_tier": {
+            "type": "string",
+            "description": "サービス区分（Anthropic 規範フィールド）",
+            "example": "standard"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "エラータイプ（例：invalid_request_error / authentication_error / billing_error など）"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラー説明"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "リクエストトラッキング ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのインターフェースは Bearer Token による認証が必要です##\n\n**API Key の取得**：\n\n[API Key 管理ページ](https://evolink.ai/dashboard/keys) にアクセスして API Key を取得してください\n\n**使用時はリクエストヘッダに追加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**備考**：Anthropic ネイティブ API は `x-api-key` ヘッダを使用しますが、EvoLink の `/v1/messages` は統一して Bearer Token 認証を採用します。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages プロトコルインターフェース"
+    }
+  ]
+}
