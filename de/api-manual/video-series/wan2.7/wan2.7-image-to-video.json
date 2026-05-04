@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "wan2.7-image-to-video API",
-    "description": "Generieren Sie Videos aus Bildern mit dem WAN2.7-Modell, unterstützt Startbild/Endbild, Referenzvideo-Clips und Audio-Steuerung",
+    "description": "Generieren Sie Videos aus Bildern mit dem WAN2.7-Modell. Unterstützt Start-/Endbilder, Video-Fortsetzungs-Clips und audiogetriebene Generierung",
     "license": {
       "name": "MIT"
     },
@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-image-to-video API",
-        "description": "- WAN2.7 (wan2.7-image-to-video) Modell unterstützt Bild-zu-Video-Generierung\n- Unterstützt die folgenden 6 Materialkombinationen, ungültige Kombinationen führen zu Fehlern:\n  1. Startbild (`image_start`)\n  2. Startbild + Audio (`image_start` + `audio_url`)\n  3. Startbild + Endbild (`image_start` + `image_end`)\n  4. Startbild + Endbild + Audio (`image_start` + `image_end` + `audio_url`)\n  5. Video-Fortsetzung (`video_urls`)\n  6. Video-Fortsetzung + Endbild (`video_urls` + `image_end`)\n- Hinweis: `image_start` und `video_urls` sind gegenseitig ausschließend; `video_urls` kann nicht zusammen mit `audio_url` verwendet werden\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID, um den [Status abzufragen](/de/api-manual/task-management/get-task-detail)\n- Generierte Video-Links sind 24 Stunden gültig, bitte speichern Sie diese umgehend",
+        "description": "- Das WAN2.7 (wan2.7-image-to-video)-Modell unterstützt Bild-zu-Video-Generierung mit multimodalen Eingaben (Bild / Audio / Video)\n- Wählen Sie einen von drei Modi über `generation_mode`:\n  - `first_frame`: **Startbild zu Video** — erzeugt ein Video ausgehend vom Startbild, optional mit treibendem Audio\n  - `first_last_frame`: **Start- und Endbild zu Video** — erzeugt ein Video durch Interpolation zwischen Start- und Endbild, optional mit treibendem Audio\n  - `video_continuation`: **Video-Fortsetzung** — setzt einen Eingabe-Videoclip fort; optional ist ein Endbild erlaubt (kein treibendes Audio)\n- `generation_mode` ist optional (rückwärtskompatibel); bei Auslassung wird der passende Modus anhand der bereitgestellten Materialien automatisch gewählt\n- Gültige Material-Kombinationen (jede andere Kombination wird abgelehnt):\n  1. `image_start` (Startbild)\n  2. `image_start` + `audio_urls` (Startbild + treibendes Audio)\n  3. `image_start` + `image_end` (Start- + Endbild)\n  4. `image_start` + `image_end` + `audio_urls` (Start- + Endbild + treibendes Audio)\n  5. `video_urls` (Video-Fortsetzung)\n  6. `video_urls` + `image_end` (Video-Fortsetzung + Endbild)\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Task-ID für die [Statusabfrage](/de/api-manual/task-management/get-task-detail)\n- Generierte Videolinks sind 24 Stunden gültig, bitte zeitnah speichern",
         "operationId": "createWan27ImageToVideoGeneration",
         "tags": [
           "Videogenerierung"
@@ -36,12 +36,42 @@
                 "$ref": "#/components/schemas/Wan27ImageToVideoRequest"
               },
               "examples": {
-                "image_to_video": {
+                "first_frame": {
                   "summary": "Startbild zu Video",
                   "value": {
                     "model": "wan2.7-image-to-video",
-                    "prompt": "A cat playing piano",
+                    "generation_mode": "first_frame",
+                    "prompt": "Eine Katze spielt Klavier",
                     "image_start": "https://example.com/first_frame.jpg"
+                  }
+                },
+                "first_frame_with_audio": {
+                  "summary": "Startbild + treibendes Audio",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_frame",
+                    "prompt": "Ein junger Mann führt einen englischen Rap auf",
+                    "image_start": "https://example.com/first_frame.jpg",
+                    "audio_urls": ["https://example.com/rap.mp3"]
+                  }
+                },
+                "first_last_frame": {
+                  "summary": "Start- und Endbild zu Video",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_last_frame",
+                    "prompt": "Die Kamera steigt allmählich von Augenhöhe in eine Vogelperspektive auf",
+                    "image_start": "https://example.com/first_frame.png",
+                    "image_end": "https://example.com/last_frame.png"
+                  }
+                },
+                "video_continuation": {
+                  "summary": "Video-Fortsetzung",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "video_continuation",
+                    "prompt": "Ein Mädchen macht ein Selfie vor dem Spiegel und verlässt dann mit dem Rucksack das Haus",
+                    "video_urls": ["https://example.com/clip.mp4"]
                   }
                 }
               }
@@ -50,7 +80,7 @@
         },
         "responses": {
           "200": {
-            "description": "Videoaufgabe erfolgreich erstellt",
+            "description": "Video-Aufgabe erfolgreich erstellt",
             "content": {
               "application/json": {
                 "schema": {
@@ -77,7 +107,7 @@
             }
           },
           "401": {
-            "description": "Nicht autorisiert, ungültiges oder abgelaufenes Token",
+            "description": "Nicht authentifiziert, Token ungültig oder abgelaufen",
             "content": {
               "application/json": {
                 "schema": {
@@ -111,7 +141,7 @@
             }
           },
           "403": {
-            "description": "Zugriff verweigert",
+            "description": "Keine Zugriffsberechtigung",
             "content": {
               "application/json": {
                 "schema": {
@@ -128,7 +158,7 @@
             }
           },
           "429": {
-            "description": "Ratenlimit überschritten",
+            "description": "Anfragerate überschritten",
             "content": {
               "application/json": {
                 "schema": {
@@ -175,34 +205,44 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Modellname, fest als `wan2.7-image-to-video`",
+            "description": "Modellname, muss `wan2.7-image-to-video` sein",
             "enum": [
               "wan2.7-image-to-video"
             ],
             "example": "wan2.7-image-to-video"
           },
+          "generation_mode": {
+            "type": "string",
+            "description": "Generierungsmodus, der bestimmt, welche Material-Kombinationen gültig sind. **Explizite Angabe wird empfohlen**\n\n**Werte:**\n- `first_frame`: Startbild zu Video. Erforderlich: `image_start`. Optional: `audio_urls`. Nicht akzeptiert: `image_end`, `video_urls`\n- `first_last_frame`: Start- und Endbild zu Video. Erforderlich: `image_start` + `image_end`. Optional: `audio_urls`. Nicht akzeptiert: `video_urls`\n- `video_continuation`: Video-Fortsetzung. Erforderlich: `video_urls[0]`. Optional: `image_end` (als Endbild). Nicht akzeptiert: `image_start`, `audio_urls`\n\n**Rückwärtskompatibles Verhalten:** Wird `generation_mode` weggelassen, wird der passende Modus anhand der bereitgestellten Materialien automatisch gewählt; explizite Angabe vermeidet Mehrdeutigkeit",
+            "enum": [
+              "first_frame",
+              "first_last_frame",
+              "video_continuation"
+            ],
+            "example": "first_frame"
+          },
           "prompt": {
             "type": "string",
-            "description": "Text-Prompt für die Videogenerierung, maximale Länge 5000 Zeichen",
+            "description": "Textprompt für die Videogenerierung. Unterstützt Chinesisch und Englisch; jedes Zeichen/jeder Buchstabe zählt als 1, Überschuss wird automatisch gekürzt. Maximale Länge: 5000 Zeichen",
             "maxLength": 5000,
-            "example": "A cat playing piano"
+            "example": "Eine Katze spielt Klavier"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "Negativer Prompt, beschreibt unerwünschte Inhalte im Video, maximale Länge 500 Zeichen",
+            "description": "Negativprompt zur Beschreibung von Inhalten, die im Video vermieden werden sollen. Unterstützt Chinesisch und Englisch. Maximale Länge 500 Zeichen; Überschuss wird automatisch gekürzt",
             "maxLength": 500,
-            "example": "Blurry, low quality"
+            "example": "Unscharf, geringe Qualität"
           },
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "Startbild-URL (first_frame), gegenseitig ausschließend mit video_urls, können nicht gleichzeitig übergeben werden\n\n**Bildeinschränkungen:**\n- Format: JPEG, JPG, PNG (kein Transparenzkanal), BMP, WEBP\n- Auflösung: Breite und Höhe im Bereich `[240, 8000]` Pixel\n- Seitenverhältnis: 1:8 bis 8:1\n- Dateigröße: Bis zu `20MB`",
+            "description": "URL des Startbilds\n\n**Modus-Einschränkungen:**\n- Modus `first_frame`: **erforderlich**\n- Modus `first_last_frame`: **erforderlich**\n- Modus `video_continuation`: **nicht erlaubt**\n\n**Bildgrenzen:**\n- Formate: JPEG, JPG, PNG (Transparenz nicht unterstützt), BMP, WEBP\n- Auflösung: Breite und Höhe in `[240, 8000]` Pixel\n- Seitenverhältnis: 1:8 ~ 8:1\n- Dateigröße: max. `20MB`",
             "example": "https://example.com/first_frame.jpg"
           },
           "image_end": {
             "type": "string",
             "format": "uri",
-            "description": "Endbild-URL (last_frame), kann mit image_start oder video_urls kombiniert werden, kann nicht allein übergeben werden\n\n**Bildeinschränkungen:**\n- Format: JPEG, JPG, PNG (kein Transparenzkanal), BMP, WEBP\n- Auflösung: Breite und Höhe im Bereich `[240, 8000]` Pixel\n- Seitenverhältnis: 1:8 bis 8:1\n- Dateigröße: Bis zu `20MB`",
+            "description": "URL des Endbilds\n\n**Modus-Einschränkungen:**\n- Modus `first_last_frame`: **erforderlich**\n- Modus `video_continuation`: optional (dient als Endbild der Fortsetzung)\n- Modus `first_frame`: **nicht erlaubt** (verwenden Sie `first_last_frame`, falls Start- und Endbild benötigt werden)\n\n**Bildgrenzen:**\n- Formate: JPEG, JPG, PNG (Transparenz nicht unterstützt), BMP, WEBP\n- Auflösung: Breite und Höhe in `[240, 8000]` Pixel\n- Seitenverhältnis: 1:8 ~ 8:1\n- Dateigröße: max. `20MB`",
             "example": "https://example.com/last_frame.jpg"
           },
           "video_urls": {
@@ -211,18 +251,23 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "Video-Fortsetzungs-URL-Array (first_clip), nur video_urls[0] wird verwendet. Gegenseitig ausschließend mit image_start, kann nicht zusammen mit audio_url verwendet werden\n\n**Videoeinschränkungen:**\n- Format: mp4, mov\n- Dauer: `2~10` Sekunden\n- Auflösung: Breite und Höhe im Bereich `[240, 4096]` Pixel\n- Seitenverhältnis: 1:8 bis 8:1\n- Dateigröße: Bis zu `100MB`\n\n**Fortsetzungshinweis:**\n- Das Modell generiert basierend auf dem Videoinhalt eine Fortsetzung, die maximale Fortsetzungsdauer wird durch den duration-Parameter gesteuert\n- Beispiel: Bei duration=15, Eingabevideo 3 Sekunden, generiert das Modell 12 Sekunden Fortsetzung, Gesamtausgabevideo 15 Sekunden, Abrechnung nach 15 Sekunden",
+            "description": "Video-Fortsetzungs-URL-Liste. **Es wird nur 1 Element unterstützt**\n\n**Modus-Einschränkungen:**\n- Modus `video_continuation`: **erforderlich**\n- Modus `first_frame` / `first_last_frame`: **nicht erlaubt**\n- Darf nicht zusammen mit `audio_urls` verwendet werden\n\n**Videogrenzen:**\n- Formate: mp4, mov\n- Dauer: `2 ~ 10` Sekunden (Länge des Eingabe-Clips)\n- Auflösung: Breite und Höhe in `[240, 4096]` Pixel\n- Seitenverhältnis: 1:8 ~ 8:1\n- Dateigröße: max. `100MB`\n\n**Regeln zur Fortsetzungsdauer:**\n- `duration` steht für die **Gesamtlänge des finalen Ausgabe-Videos** (Eingabe-Clip + modellgenerierte Fortsetzung)\n- Generierte Fortsetzungsdauer = `duration` − Länge des Eingabe-Videos\n- `duration` muss ≥ Länge des Eingabe-Videos sein\n- Abrechnung erfolgt anhand der Gesamtlänge des finalen Videos (also `duration`)\n\n**Beispiele:**\n\n| Eingabe-Cliplänge | duration | generierte Fortsetzung | finales Video | abgerechnet |\n| --- | --- | --- | --- | --- |\n| 3s | 15 | 12s | 15s | 15s |\n| 5s | 10 | 5s | 10s | 10s |\n| 8s | 8 | 0s (nur Eingabe) | 8s | 8s |",
             "example": ["https://example.com/clip.mp4"]
           },
-          "audio_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Audio-Datei-URL (driving_audio), nur im Startbild-Modus verfügbar, kann nicht zusammen mit video_urls verwendet werden\n\n**Formatanforderungen:**\n- Unterstützte Formate: `wav`, `mp3`\n- Dauer: `2~30` Sekunden\n- Dateigröße: Bis zu `15MB`\n\n**Überlaufbehandlung:**\n- Wenn die Audiolänge den `duration`-Wert überschreitet, werden die ersten N Sekunden automatisch extrahiert und der Rest verworfen\n- Wenn die Audiolänge kürzer als die Videodauer ist, ist der Teil, der die Audiolänge überschreitet, stumm. Wenn das Audio beispielsweise 3 Sekunden und die Videodauer 5 Sekunden beträgt, hat das Ausgabevideo in den ersten 3 Sekunden Ton und ist in den letzten 2 Sekunden stumm",
-            "example": "https://example.com/audio.mp3"
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Treibende Audio-URL-Liste. **Derzeit wird nur 1 Element unterstützt**. Das Modell verwendet dieses Audio als treibende Quelle (z. B. für Lippensynchronisation oder Bewegungs-Sync)\n\n**Modus-Einschränkungen:**\n- Modus `first_frame`: optional\n- Modus `first_last_frame`: optional\n- Modus `video_continuation`: **nicht erlaubt** (darf nicht zusammen mit `video_urls` verwendet werden)\n\n**Formatanforderungen:**\n- Unterstützte Formate: `wav`, `mp3`\n- Dauer: `2 ~ 30` Sekunden\n- Dateigröße: max. `15MB`\n\n**Kürzungsverhalten:**\n- Wenn die Audiolänge `duration` überschreitet, werden die ersten N Sekunden verwendet, der Rest wird verworfen\n- Wenn die Audiolänge kürzer als die Videodauer ist, ist der Restteil stumm. Beispiel: bei 3s Audio und 5s Video sind die ersten 3s mit Ton, die letzten 2s ohne Ton",
+            "example": ["https://example.com/audio.mp3"]
           },
           "quality": {
             "type": "string",
-            "description": "Videoqualität, Standard ist `720p`\n\n**Optionen:**\n- `720p`: Standardauflösung, Standardpreis, dies ist die Voreinstellung\n- `1080p`: Hohe Auflösung, höherer Preis",
+            "description": "Videoqualität, Standard: `720p`\n\n**Optionen:**\n- `720p`: Standardqualität, Standardpreis (Standard)\n- `1080p`: Hohe Qualität, höherer Preis",
             "enum": [
               "720p",
               "1080p"
@@ -232,7 +277,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "Videodauer (Sekunden), Bereich 2-15\n\n**Hinweis:**\n- Unterstützt beliebige ganzzahlige Werte zwischen `2~15` Sekunden\n- Jede Anfrage wird basierend auf dem `duration`-Wert vorab berechnet, die tatsächliche Abrechnung erfolgt anhand der generierten Videodauer",
+            "description": "Videodauer in Sekunden (Ganzzahl). Bereich `2 ~ 15`, Standard `5`\n\n**Bedeutung:**\n- Modus `first_frame` / `first_last_frame`: Gesamtlänge des generierten Videos\n- Modus `video_continuation`: Gesamtlänge des finalen Videos (= Eingabe-Clip + modellgenerierte Fortsetzung)\n\n**Zusätzliche Einschränkungen im Modus `video_continuation`:**\n- `duration` muss **≥ Länge des Eingabe-Videos** sein (sonst wird ein Fehler zurückgegeben)\n- Generierte Fortsetzungsdauer = `duration` − Länge des Eingabe-Videos\n- Wenn `duration` der Länge des Eingabe-Videos entspricht, wird keine Fortsetzung generiert und der Eingabe-Clip unverändert ausgegeben\n- Siehe Fortsetzungsregeln und Beispiele im Feld `video_urls`\n\n**Abrechnung:** anhand der tatsächlich generierten Videodauer",
             "minimum": 2,
             "maximum": 15,
             "default": 5,
@@ -240,18 +285,20 @@
           },
           "seed": {
             "type": "integer",
-            "description": "Zufalls-Seed, zur Reproduktion der Generierungsergebnisse",
+            "description": "Zufallsseed, standardmäßig zufällig\n\n**Hinweise:**\n- Bereich: `1` ~ `2147483647`\n- Ein fester Seed reduziert beim Iterieren am Prompt die Variation und verbessert die Reproduzierbarkeit",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Ob intelligentes Prompt-Umschreiben aktiviert werden soll. Wenn aktiviert, optimiert ein großes Modell den Prompt, was die Ergebnisse bei einfachen oder unzureichend beschreibenden Prompts erheblich verbessert. Standard ist `true`",
-            "default": true,
+            "description": "Ob die intelligente Prompt-Umschreibung aktiviert werden soll. Wenn aktiviert, optimiert ein großes Modell den Prompt, was die Ergebnisse für einfache oder unzureichend beschreibende Prompts deutlich verbessert.\n\n**Hinweis:** Standard ist `false` — wird der Parameter weggelassen oder `false` gesendet, erfolgt keine Umschreibung. Senden Sie explizit `true`, um die Umschreibung zu aktivieren.",
+            "default": false,
             "example": true
           },
           "callback_url": {
             "type": "string",
-            "description": "HTTPS-Callback-URL für Aufgabenabschluss\n\n**Callback-Zeitpunkt:**\n- Wird ausgelöst, wenn die Aufgabe abgeschlossen, fehlgeschlagen oder abgebrochen wurde\n- Wird nach Abrechnungsbestätigung gesendet\n\n**Sicherheitsbeschränkungen:**\n- Nur HTTPS-Protokoll wird unterstützt\n- Callbacks an interne IP-Adressen sind untersagt (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, usw.)\n- URL-Länge darf `2048` Zeichen nicht überschreiten\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Bis zu `3` Wiederholungsversuche nach Fehlschlag (Wiederholung nach `1`/`2`/`4` Sekunden nach Fehlschlag)\n- Das Callback-Antwortformat entspricht der Antwort der Aufgabenabfrage-API\n- 2xx-Statuscodes gelten als erfolgreich, andere Statuscodes lösen Wiederholungsversuche aus",
+            "description": "HTTPS-Callback-URL für den Aufgabenabschluss\n\n**Callback-Zeitpunkt:**\n- Wird ausgelöst, wenn die Aufgabe abgeschlossen, fehlgeschlagen oder abgebrochen wurde\n- Wird nach Abrechnungsbestätigung gesendet\n\n**Sicherheitseinschränkungen:**\n- Nur HTTPS wird unterstützt\n- Callbacks an interne IP-Adressen sind verboten (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x usw.)\n- URL-Länge max. `2048` Zeichen\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Bis zu `3` Wiederholungen nach Fehlschlag (jeweils nach `1`/`2`/`4` Sekunden)\n- Callback-Antwortformat ist identisch mit der Task-Query-API\n- 2xx-Statuscodes gelten als erfolgreich, andere lösen Wiederholungen aus",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -280,7 +327,7 @@
             "enum": [
               "video.generation.task"
             ],
-            "description": "Aufgabentyp"
+            "description": "Spezifischer Aufgabentyp"
           },
           "progress": {
             "type": "integer",
@@ -302,7 +349,7 @@
           },
           "task_info": {
             "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Details zur Videoaufgabe"
+            "description": "Detaillierte Informationen zur Video-Aufgabe"
           },
           "type": {
             "type": "string",
@@ -312,7 +359,7 @@
               "audio",
               "video"
             ],
-            "description": "Aufgaben-Ausgabetyp",
+            "description": "Ausgabetyp der Aufgabe",
             "example": "video"
           },
           "usage": {
@@ -331,7 +378,7 @@
           },
           "estimated_time": {
             "type": "integer",
-            "description": "Geschätzte Abschlusszeit (Sekunden)",
+            "description": "Geschätzte Fertigstellungszeit (Sekunden)",
             "minimum": 0,
             "example": 120
           }
@@ -353,13 +400,13 @@
           },
           "credits_reserved": {
             "type": "number",
-            "description": "Geschätzter Credit-Verbrauch",
+            "description": "Geschätzt zu verbrauchende Credits",
             "minimum": 0,
             "example": 5
           },
           "user_group": {
             "type": "string",
-            "description": "Benutzergruppenkategorie",
+            "description": "Benutzergruppen-Kategorie",
             "enum": [
               "default",
               "vip"
@@ -376,7 +423,7 @@
             "properties": {
               "code": {
                 "type": "string",
-                "description": "Fehlercode-Bezeichner"
+                "description": "Fehlercode-Identifikator"
               },
               "message": {
                 "type": "string",
@@ -395,7 +442,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## Alle APIs erfordern Bearer-Token-Authentifizierung ##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüssel-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## Alle APIs erfordern Bearer-Token-Authentifizierung ##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüssel-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Im Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }

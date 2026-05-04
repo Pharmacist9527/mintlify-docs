@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-text-to-video接口",
-        "description": "- WAN2.7 (wan2.7-text-to-video) 模型支持文生视频模式\n- 支持音频驱动，可通过 audio_url 传入音频\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
+        "description": "- WAN2.7 (wan2.7-text-to-video) 模型支持文生视频模式，基于文本提示词生成一段流畅的视频\n- **多镜头叙事：** 通过 `prompt` 自然语言控制镜头结构\n  - 单镜头：在提示词中说明「生成单镜头视频」\n  - 多镜头：使用「生成多镜头视频」或时间戳分镜（如「第 1 个镜头 [0-3 秒] 全景：雨夜的街头」）\n  - 默认：未指定时模型根据 `prompt` 内容自行理解\n- **音频处理：**\n  - 传入 `audio_urls`：模型以该音频为驱动源生成视频\n  - 不传 `audio_urls`：模型根据视频画面内容自动生成匹配的背景音乐或音效\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
         "operationId": "createWan27TextToVideoGeneration",
         "tags": [
           "视频生成"
@@ -36,11 +36,39 @@
                 "$ref": "#/components/schemas/Wan27TextToVideoRequest"
               },
               "examples": {
-                "text_to_video": {
-                  "summary": "文本生成视频",
+                "single_shot": {
+                  "summary": "单镜头文生视频",
                   "value": {
                     "model": "wan2.7-text-to-video",
-                    "prompt": "一只猫在弹钢琴"
+                    "prompt": "一只小猫在月光下奔跑",
+                    "aspect_ratio": "16:9",
+                    "duration": 5
+                  }
+                },
+                "multi_shot_storyboard": {
+                  "summary": "多镜头分镜叙事",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "一段紧张刺激的侦探追查故事。第 1 个镜头 [0-3 秒] 全景：雨夜的街头，霓虹闪烁。第 2 个镜头 [3-6 秒] 中景：侦探进入老旧建筑。第 3 个镜头 [6-9 秒] 特写：侦探眼神坚毅，远处传来警笛声。第 4 个镜头 [9-12 秒] 中景：昏暗走廊小心前行。第 5 个镜头 [12-15 秒] 特写：发现关键线索，恍然大悟。",
+                    "aspect_ratio": "16:9",
+                    "duration": 15
+                  }
+                },
+                "with_audio": {
+                  "summary": "传入驱动音频",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "一只小巧可爱的卡通小猫将军身穿金色盔甲，骑着战马吟诵古诗",
+                    "audio_urls": ["https://example.com/recital.mp3"],
+                    "duration": 10
+                  }
+                },
+                "with_negative_prompt": {
+                  "summary": "使用反向提示词",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "一只小猫在月光下奔跑",
+                    "negative_prompt": "花朵"
                   }
                 }
               }
@@ -183,21 +211,26 @@
           },
           "prompt": {
             "type": "string",
-            "description": "视频生成的文本提示词，最大长度5000字",
+            "description": "视频生成的文本提示词。支持中英文，每个汉字/字母占 1 个字符，超过部分会自动截断，最大长度 5000 字符\n\n**多镜头叙事：** 通过自然语言控制镜头结构\n- 单镜头：在提示词中说明「生成单镜头视频」\n- 多镜头：使用「生成多镜头视频」或时间戳分镜（如「第 1 个镜头 [0-3 秒]」）",
             "maxLength": 5000,
-            "example": "一只猫在弹钢琴"
+            "example": "一只小猫在月光下奔跑"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "负面提示词，描述不希望在视频中出现的内容，最大长度500字",
+            "description": "负面提示词，描述不希望在视频画面中出现的内容。支持中英文，最大长度 500 字符，超过部分会自动截断",
             "maxLength": 500,
             "example": "模糊, 低质量"
           },
-          "audio_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "音频文件URL（driving_audio）\n\n**格式要求：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`2~30`秒\n- 文件大小：不超过`15MB`\n\n**超限处理：**\n- 若音频长度超过`duration`值，自动截取前N秒，其余部分丢弃\n- 若音频长度不足视频时长，超出音频长度部分为无声视频。例如，音频为3秒，视频时长为5秒，输出视频前3秒有声，后2秒无声",
-            "example": "https://example.com/audio.mp3"
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "驱动音频文件 URL 数组（可选）。**当前仅支持 1 个元素**\n\n**生效逻辑：**\n- 传入：模型以该音频为驱动源生成视频\n- 不传：模型根据画面内容自动生成匹配的背景音乐或音效\n\n**格式要求：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`2 ~ 30` 秒\n- 文件大小：不超过 `15MB`\n\n**截断处理：**\n- 若音频长度超过 `duration` 值，自动截取前 N 秒，其余部分丢弃\n- 若音频长度不足视频时长，超出音频长度部分为无声视频。例如：音频为 3 秒、视频时长为 5 秒，输出视频前 3 秒有声、后 2 秒无声",
+            "example": ["https://example.com/audio.mp3"]
           },
           "quality": {
             "type": "string",
@@ -211,7 +244,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "视频宽高比，默认为`16:9`\n\n**说明：**\n- `720p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`\n- `1080p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`",
+            "description": "视频宽高比，默认为 `16:9`\n\n**不同档位输出分辨率：**\n\n| 分辨率档位 | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -224,7 +257,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "视频时长（秒），范围 2-15\n\n**注意：**\n- 支持`2~15`秒之间的任意整数值\n- 单次请求会根据`duration`的值进行预扣费，实际扣费以生成视频的秒数为准",
+            "description": "视频时长（秒），范围 2-15\n\n**注意：**\n- 支持`2~15`秒之间的任意整数值\n- 实际扣费以生成视频的秒数为准",
             "minimum": 2,
             "maximum": 15,
             "default": 5,
@@ -232,14 +265,16 @@
           },
           "seed": {
             "type": "integer",
-            "description": "随机种子，用于复现生成结果",
+            "description": "随机种子，默认随机\n\n**说明：**\n- 取值范围：`1` ~ `2147483647`\n- 固定 seed 可在调试 prompt 时降低参数变化的干扰，提升结果可复现性",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。默认值为`true`",
-            "default": true,
-            "example": true
+            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。\n\n**注意：** 默认值为 `false`，不传或传 `false` 时不会触发改写，如需开启请显式传 `true`",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",

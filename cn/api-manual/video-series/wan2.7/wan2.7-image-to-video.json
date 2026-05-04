@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-image-to-video接口",
-        "description": "- WAN2.7 (wan2.7-image-to-video) 模型支持图生视频模式\n- 支持以下 6 种素材组合，非法组合将报错：\n  1. 首帧图（`image_start`）\n  2. 首帧图 + 音频（`image_start` + `audio_url`）\n  3. 首帧图 + 尾帧图（`image_start` + `image_end`）\n  4. 首帧图 + 尾帧图 + 音频（`image_start` + `image_end` + `audio_url`）\n  5. 视频续写（`video_urls`）\n  6. 视频续写 + 尾帧图（`video_urls` + `image_end`）\n- 注意：`image_start` 与 `video_urls` 互斥；`video_urls` 不能与 `audio_url` 同时使用\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
+        "description": "- WAN2.7 (wan2.7-image-to-video) 模型支持图生视频模式，支持多模态输入（图像/音频/视频）\n- 通过 `generation_mode` 参数选择三种生成模式：\n  - `first_frame`：**首帧生视频**——基于首帧图像生成视频，可选驱动音频\n  - `first_last_frame`：**首尾帧生视频**——基于首帧+尾帧两张图像插值生成视频，可选驱动音频\n  - `video_continuation`：**视频续写**——基于一段视频片段续写后续内容，可选尾帧图（不支持驱动音频）\n- `generation_mode` 为可选参数（向后兼容），未传时将根据请求中的素材类型自动选择合适的模式\n- 合法素材组合（非法组合将报错）：\n  1. `image_start`（首帧）\n  2. `image_start` + `audio_urls`（首帧 + 驱动音频）\n  3. `image_start` + `image_end`（首尾帧）\n  4. `image_start` + `image_end` + `audio_urls`（首尾帧 + 驱动音频）\n  5. `video_urls`（视频续写）\n  6. `video_urls` + `image_end`（视频续写 + 尾帧）\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
         "operationId": "createWan27ImageToVideoGeneration",
         "tags": [
           "视频生成"
@@ -36,12 +36,42 @@
                 "$ref": "#/components/schemas/Wan27ImageToVideoRequest"
               },
               "examples": {
-                "image_to_video": {
-                  "summary": "首帧图生成视频",
+                "first_frame": {
+                  "summary": "首帧生视频",
                   "value": {
                     "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_frame",
                     "prompt": "一只猫在弹钢琴",
                     "image_start": "https://example.com/first_frame.jpg"
+                  }
+                },
+                "first_frame_with_audio": {
+                  "summary": "首帧 + 驱动音频",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_frame",
+                    "prompt": "一个少年正在演唱一首英文 rap",
+                    "image_start": "https://example.com/first_frame.jpg",
+                    "audio_urls": ["https://example.com/rap.mp3"]
+                  }
+                },
+                "first_last_frame": {
+                  "summary": "首尾帧生视频",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_last_frame",
+                    "prompt": "镜头从平视角度逐渐升高至俯视",
+                    "image_start": "https://example.com/first_frame.png",
+                    "image_end": "https://example.com/last_frame.png"
+                  }
+                },
+                "video_continuation": {
+                  "summary": "视频续写",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "video_continuation",
+                    "prompt": "一个女孩对镜自拍，自拍结束后背着书包出门",
+                    "video_urls": ["https://example.com/clip.mp4"]
                   }
                 }
               }
@@ -181,28 +211,38 @@
             ],
             "example": "wan2.7-image-to-video"
           },
+          "generation_mode": {
+            "type": "string",
+            "description": "生成模式，决定素材组合的合法性。**推荐显式指定**\n\n**取值说明：**\n- `first_frame`：首帧生视频。必传 `image_start`；可选 `audio_urls`；不接受 `image_end` 与 `video_urls`\n- `first_last_frame`：首尾帧生视频。必传 `image_start` + `image_end`；可选 `audio_urls`；不接受 `video_urls`\n- `video_continuation`：视频续写。必传 `video_urls[0]`；可选 `image_end`（作为尾帧）；不接受 `image_start` 与 `audio_urls`\n\n**未传时的兼容行为：** 未传 `generation_mode` 时，将根据请求中的素材类型自动选择合适的模式；建议显式指定以避免歧义",
+            "enum": [
+              "first_frame",
+              "first_last_frame",
+              "video_continuation"
+            ],
+            "example": "first_frame"
+          },
           "prompt": {
             "type": "string",
-            "description": "视频生成的文本提示词，最大长度5000字",
+            "description": "视频生成的文本提示词。支持中英文，每个汉字/字母占 1 个字符，超过部分会自动截断。最大长度 5000 字符",
             "maxLength": 5000,
             "example": "一只猫在弹钢琴"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "负面提示词，描述不希望在视频中出现的内容，最大长度500字",
+            "description": "负面提示词，描述不希望在视频画面中出现的内容。支持中英文，最大长度 500 字符，超过部分会自动截断",
             "maxLength": 500,
             "example": "模糊, 低质量"
           },
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "首帧图片URL（first_frame），与 video_urls 互斥，不能同时传\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为`[240, 8000]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`20MB`",
+            "description": "首帧图片 URL\n\n**模式约束：**\n- `first_frame` 模式：**必传**\n- `first_last_frame` 模式：**必传**\n- `video_continuation` 模式：**禁止传入**\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为 `[240, 8000]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `20MB`",
             "example": "https://example.com/first_frame.jpg"
           },
           "image_end": {
             "type": "string",
             "format": "uri",
-            "description": "尾帧图片URL（last_frame），可搭配 image_start 或 video_urls 使用，不能单独传\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为`[240, 8000]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`20MB`",
+            "description": "尾帧图片 URL\n\n**模式约束：**\n- `first_last_frame` 模式：**必传**\n- `video_continuation` 模式：可选（作为视频续写的目标尾帧）\n- `first_frame` 模式：**禁止传入**（如需首尾帧，请使用 `first_last_frame`）\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为 `[240, 8000]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `20MB`",
             "example": "https://example.com/last_frame.jpg"
           },
           "video_urls": {
@@ -211,14 +251,19 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "视频续写URL数组（first_clip），仅取 video_urls[0]。与 image_start 互斥，不能与 audio_url 同时使用\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`2~10`秒\n- 分辨率：宽和高的范围为`[240, 4096]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`100MB`\n\n**续写说明：**\n- 模型将基于该视频内容进行续写生成，续写时长的上限由 duration 参数控制\n- 例如：当 duration=15 时，输入视频 3 秒，则模型续写生成 12 秒，最终输出视频总时长 15 秒，按 15 秒计费",
+            "description": "视频续写 URL 数组，**仅支持 1 个元素**\n\n**模式约束：**\n- `video_continuation` 模式：**必传**\n- `first_frame` / `first_last_frame` 模式：**禁止传入**\n- 不能与 `audio_urls` 同时使用\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`2 ~ 10` 秒（输入片段本身长度）\n- 分辨率：宽和高的范围为 `[240, 4096]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `100MB`\n\n**续写时长规则：**\n- `duration` 参数表示**最终输出视频的总时长**（包含原始输入片段 + 模型续写部分）\n- 模型续写的部分 = `duration` − 输入视频时长\n- `duration` 必须 ≥ 输入视频时长\n- 计费按最终输出视频总时长（即 `duration`）结算\n\n**示例：**\n\n| 输入视频时长 | duration | 续写生成 | 最终输出 | 计费时长 |\n| --- | --- | --- | --- | --- |\n| 3 秒 | 15 | 12 秒 | 15 秒 | 15 秒 |\n| 5 秒 | 10 | 5 秒 | 10 秒 | 10 秒 |\n| 8 秒 | 8 | 0 秒（仅原片输出） | 8 秒 | 8 秒 |",
             "example": ["https://example.com/clip.mp4"]
           },
-          "audio_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "音频文件URL（driving_audio），仅在首帧图模式下可用，不能与 video_urls 同时使用\n\n**格式要求：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`2~30`秒\n- 文件大小：不超过`15MB`\n\n**超限处理：**\n- 若音频长度超过`duration`值，自动截取前N秒，其余部分丢弃\n- 若音频长度不足视频时长，超出音频长度部分为无声视频。例如，音频为3秒，视频时长为5秒，输出视频前3秒有声，后2秒无声",
-            "example": "https://example.com/audio.mp3"
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "驱动音频文件 URL 数组。**当前仅支持 1 个元素**。模型将以该音频为驱动源生成视频（如口型同步、动作卡点等）\n\n**模式约束：**\n- `first_frame` 模式：可选\n- `first_last_frame` 模式：可选\n- `video_continuation` 模式：**禁止传入**（不能与 `video_urls` 同时使用）\n\n**格式要求：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`2 ~ 30` 秒\n- 文件大小：不超过 `15MB`\n\n**截断处理：**\n- 若音频长度超过 `duration` 值，自动截取前 N 秒，其余部分丢弃\n- 若音频长度不足视频时长，超出音频长度部分为无声视频。例如：音频为 3 秒、视频时长为 5 秒，输出视频前 3 秒有声、后 2 秒无声",
+            "example": ["https://example.com/audio.mp3"]
           },
           "quality": {
             "type": "string",
@@ -232,7 +277,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "视频时长（秒），范围 2-15\n\n**注意：**\n- 支持`2~15`秒之间的任意整数值\n- 单次请求会根据`duration`的值进行预扣费，实际扣费以生成视频的秒数为准",
+            "description": "视频时长（秒），整数，范围 `2 ~ 15`，默认 `5`\n\n**含义说明：**\n- `first_frame` / `first_last_frame` 模式：表示**生成视频的总时长**\n- `video_continuation` 模式：表示**最终输出视频的总时长**（= 原始输入片段 + 模型续写部分）\n\n**`video_continuation` 模式额外约束：**\n- `duration` 必须 **≥ 输入视频时长**（否则报错）\n- 续写生成的时长 = `duration` − 输入视频时长\n- 当 `duration` = 输入视频时长时，不进行续写，仅原样输出输入片段\n- 详见 `video_urls` 字段中的续写时长规则与示例\n\n**计费说明：** 实际扣费以生成视频的秒数为准",
             "minimum": 2,
             "maximum": 15,
             "default": 5,
@@ -240,14 +285,16 @@
           },
           "seed": {
             "type": "integer",
-            "description": "随机种子，用于复现生成结果",
+            "description": "随机种子，默认随机\n\n**说明：**\n- 取值范围：`1` ~ `2147483647`\n- 固定 seed 可在调试 prompt 时降低参数变化的干扰，提升结果可复现性",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。默认值为`true`",
-            "default": true,
-            "example": true
+            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。\n\n**注意：** 默认值为 `false`，不传或传 `false` 时不会触发改写，如需开启请显式传 `true`",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",

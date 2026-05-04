@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-text-to-video API",
-        "description": "- WAN2.7 (wan2.7-text-to-video) Modell unterstützt Text-zu-Video-Generierung\n- Unterstützt Audio-Steuerung, Audio kann über audio_url übergeben werden\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID, um den [Status abzufragen](/de/api-manual/task-management/get-task-detail)\n- Generierte Video-Links sind 24 Stunden gültig, bitte speichern Sie diese umgehend",
+        "description": "- Das WAN2.7 (wan2.7-text-to-video)-Modell unterstützt Text-zu-Video-Generierung und erzeugt aus Textprompts flüssige Videos\n- **Mehrfach-Einstellungs-Erzählung:** Steuerung der Aufnahmestruktur über natürliche Sprache im `prompt`\n  - Einzelaufnahme: \"Generiere ein Video mit einer einzigen Aufnahme\" im Prompt angeben\n  - Mehrere Aufnahmen: \"Generiere ein Video mit mehreren Aufnahmen\" oder Aufnahmen mit Zeitstempeln (z. B. \"Aufnahme 1 [0-3s] Totale: nächtliche Regenstraße\")\n  - Standard: ohne Angabe interpretiert das Modell den `prompt`-Inhalt eigenständig\n- **Audioverarbeitung:**\n  - Mit `audio_urls`: das Modell verwendet das übergebene Audio als treibende Quelle\n  - Ohne `audio_urls`: das Modell erzeugt automatisch passende Hintergrundmusik oder Soundeffekte zum Bildinhalt\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Task-ID für die [Statusabfrage](/de/api-manual/task-management/get-task-detail)\n- Generierte Videolinks sind 24 Stunden gültig, bitte zeitnah speichern",
         "operationId": "createWan27TextToVideoGeneration",
         "tags": [
           "Videogenerierung"
@@ -36,11 +36,39 @@
                 "$ref": "#/components/schemas/Wan27TextToVideoRequest"
               },
               "examples": {
-                "text_to_video": {
-                  "summary": "Text zu Video",
+                "single_shot": {
+                  "summary": "Einzelaufnahme Text-zu-Video",
                   "value": {
                     "model": "wan2.7-text-to-video",
-                    "prompt": "A cat playing piano"
+                    "prompt": "Ein kleines Kätzchen läuft im Mondlicht",
+                    "aspect_ratio": "16:9",
+                    "duration": 5
+                  }
+                },
+                "multi_shot_storyboard": {
+                  "summary": "Storyboard mit mehreren Aufnahmen",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "Eine spannende Detektivverfolgung. Aufnahme 1 [0-3s] Totale: nächtliche Regenstraße, blinkende Neonlichter. Aufnahme 2 [3-6s] Halbnah: Detektiv betritt ein altes Gebäude. Aufnahme 3 [6-9s] Nahaufnahme: entschlossene Augen, Sirenen in der Ferne. Aufnahme 4 [9-12s] Halbnah: vorsichtig durch dunklen Korridor. Aufnahme 5 [12-15s] Nahaufnahme: er entdeckt den Schlüsselhinweis.",
+                    "aspect_ratio": "16:9",
+                    "duration": 15
+                  }
+                },
+                "with_audio": {
+                  "summary": "Mit treibendem Audio",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "Ein winziger süßer Cartoon-Katzen-General in goldener Rüstung reitet ein Schlachtross und rezitiert ein klassisches Gedicht",
+                    "audio_urls": ["https://example.com/recital.mp3"],
+                    "duration": 10
+                  }
+                },
+                "with_negative_prompt": {
+                  "summary": "Mit Negativprompt",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "Ein kleines Kätzchen läuft im Mondlicht",
+                    "negative_prompt": "Blumen"
                   }
                 }
               }
@@ -49,7 +77,7 @@
         },
         "responses": {
           "200": {
-            "description": "Videoaufgabe erfolgreich erstellt",
+            "description": "Video-Aufgabe erfolgreich erstellt",
             "content": {
               "application/json": {
                 "schema": {
@@ -76,7 +104,7 @@
             }
           },
           "401": {
-            "description": "Nicht autorisiert, ungültiges oder abgelaufenes Token",
+            "description": "Nicht authentifiziert, Token ungültig oder abgelaufen",
             "content": {
               "application/json": {
                 "schema": {
@@ -110,7 +138,7 @@
             }
           },
           "403": {
-            "description": "Zugriff verweigert",
+            "description": "Keine Zugriffsberechtigung",
             "content": {
               "application/json": {
                 "schema": {
@@ -127,7 +155,7 @@
             }
           },
           "429": {
-            "description": "Ratenlimit überschritten",
+            "description": "Anfragerate überschritten",
             "content": {
               "application/json": {
                 "schema": {
@@ -175,7 +203,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Modellname, fest als `wan2.7-text-to-video`",
+            "description": "Modellname, muss `wan2.7-text-to-video` sein",
             "enum": [
               "wan2.7-text-to-video"
             ],
@@ -183,25 +211,30 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Text-Prompt für die Videogenerierung, maximale Länge 5000 Zeichen",
+            "description": "Textprompt für die Videogenerierung. Unterstützt Chinesisch und Englisch; jedes Zeichen/jeder Buchstabe zählt als 1, Überschuss wird automatisch gekürzt. Maximale Länge: 5000 Zeichen\n\n**Mehrfach-Einstellungs-Erzählung:** Steuerung der Aufnahmestruktur über natürliche Sprache\n- Einzelaufnahme: \"Generiere ein Video mit einer einzigen Aufnahme\" im Prompt angeben\n- Mehrere Aufnahmen: \"Generiere ein Video mit mehreren Aufnahmen\" oder zeitgestempelte Aufnahmenliste (z. B. \"Aufnahme 1 [0-3s]\")",
             "maxLength": 5000,
-            "example": "A cat playing piano"
+            "example": "Ein kleines Kätzchen läuft im Mondlicht"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "Negativer Prompt, beschreibt unerwünschte Inhalte im Video, maximale Länge 500 Zeichen",
+            "description": "Negativprompt zur Beschreibung von Inhalten, die im Video vermieden werden sollen. Unterstützt Chinesisch und Englisch. Maximale Länge 500 Zeichen; Überschuss wird automatisch gekürzt",
             "maxLength": 500,
-            "example": "Blurry, low quality"
+            "example": "Unscharf, geringe Qualität"
           },
-          "audio_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Audio-Datei-URL (driving_audio)\n\n**Formatanforderungen:**\n- Unterstützte Formate: `wav`, `mp3`\n- Dauer: `2~30` Sekunden\n- Dateigröße: Bis zu `15MB`\n\n**Überlaufbehandlung:**\n- Wenn die Audiolänge den `duration`-Wert überschreitet, werden die ersten N Sekunden automatisch extrahiert und der Rest verworfen\n- Wenn die Audiolänge kürzer als die Videodauer ist, ist der Teil, der die Audiolänge überschreitet, stumm. Wenn das Audio beispielsweise 3 Sekunden und die Videodauer 5 Sekunden beträgt, hat das Ausgabevideo in den ersten 3 Sekunden Ton und ist in den letzten 2 Sekunden stumm",
-            "example": "https://example.com/audio.mp3"
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Treibende Audio-URL-Liste (optional). **Derzeit wird nur 1 Element unterstützt**\n\n**Verhalten:**\n- Bereitgestellt: das Modell verwendet dieses Audio als treibende Quelle\n- Weggelassen: das Modell erzeugt automatisch passende Hintergrundmusik oder Soundeffekte zum Bildinhalt\n\n**Formatanforderungen:**\n- Unterstützte Formate: `wav`, `mp3`\n- Dauer: `2 ~ 30` Sekunden\n- Dateigröße: max. `15MB`\n\n**Kürzungsverhalten:**\n- Wenn die Audiolänge `duration` überschreitet, werden die ersten N Sekunden verwendet, der Rest wird verworfen\n- Wenn die Audiolänge kürzer als die Videodauer ist, ist der Restteil stumm. Beispiel: bei 3s Audio und 5s Video sind die ersten 3s mit Ton, die letzten 2s ohne Ton",
+            "example": ["https://example.com/audio.mp3"]
           },
           "quality": {
             "type": "string",
-            "description": "Videoqualität, Standard ist `720p`\n\n**Optionen:**\n- `720p`: Standardauflösung, Standardpreis, dies ist die Voreinstellung\n- `1080p`: Hohe Auflösung, höherer Preis",
+            "description": "Videoqualität, Standard: `720p`\n\n**Optionen:**\n- `720p`: Standardqualität, Standardpreis (Standard)\n- `1080p`: Hohe Qualität, höherer Preis",
             "enum": [
               "720p",
               "1080p"
@@ -211,7 +244,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video-Seitenverhältnis, Standard ist `16:9`\n\n**Optionen:**\n- `720p`: Unterstützt `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`\n- `1080p`: Unterstützt `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`",
+            "description": "Seitenverhältnis des Videos, Standard: `16:9`\n\n**Ausgabeauflösung pro Qualitätsstufe:**\n\n| Qualität | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -224,7 +257,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "Videodauer (Sekunden), Bereich 2-15\n\n**Hinweis:**\n- Unterstützt beliebige ganzzahlige Werte zwischen `2~15` Sekunden\n- Jede Anfrage wird basierend auf dem `duration`-Wert vorab berechnet, die tatsächliche Abrechnung erfolgt anhand der generierten Videodauer",
+            "description": "Videodauer in Sekunden, Bereich 2-15\n\n**Hinweis:**\n- Jeder ganzzahlige Wert zwischen `2~15` Sekunden wird unterstützt\n- Die endgültige Abrechnung erfolgt anhand der tatsächlich generierten Videodauer",
             "minimum": 2,
             "maximum": 15,
             "default": 5,
@@ -232,18 +265,20 @@
           },
           "seed": {
             "type": "integer",
-            "description": "Zufalls-Seed, zur Reproduktion der Generierungsergebnisse",
+            "description": "Zufallsseed, standardmäßig zufällig\n\n**Hinweise:**\n- Bereich: `1` ~ `2147483647`\n- Ein fester Seed reduziert beim Iterieren am Prompt die Variation und verbessert die Reproduzierbarkeit",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Ob intelligentes Prompt-Umschreiben aktiviert werden soll. Wenn aktiviert, optimiert ein großes Modell den Prompt, was die Ergebnisse bei einfachen oder unzureichend beschreibenden Prompts erheblich verbessert. Standard ist `true`",
-            "default": true,
+            "description": "Ob die intelligente Prompt-Umschreibung aktiviert werden soll. Wenn aktiviert, optimiert ein großes Modell den Prompt, was die Ergebnisse für einfache oder unzureichend beschreibende Prompts deutlich verbessert.\n\n**Hinweis:** Standard ist `false` — wird der Parameter weggelassen oder `false` gesendet, erfolgt keine Umschreibung. Senden Sie explizit `true`, um die Umschreibung zu aktivieren.",
+            "default": false,
             "example": true
           },
           "callback_url": {
             "type": "string",
-            "description": "HTTPS-Callback-URL für Aufgabenabschluss\n\n**Callback-Zeitpunkt:**\n- Wird ausgelöst, wenn die Aufgabe abgeschlossen, fehlgeschlagen oder abgebrochen wurde\n- Wird nach Abrechnungsbestätigung gesendet\n\n**Sicherheitsbeschränkungen:**\n- Nur HTTPS-Protokoll wird unterstützt\n- Callbacks an interne IP-Adressen sind untersagt (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, usw.)\n- URL-Länge darf `2048` Zeichen nicht überschreiten\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Bis zu `3` Wiederholungsversuche nach Fehlschlag (Wiederholung nach `1`/`2`/`4` Sekunden nach Fehlschlag)\n- Das Callback-Antwortformat entspricht der Antwort der Aufgabenabfrage-API\n- 2xx-Statuscodes gelten als erfolgreich, andere Statuscodes lösen Wiederholungsversuche aus",
+            "description": "HTTPS-Callback-URL für den Aufgabenabschluss\n\n**Callback-Zeitpunkt:**\n- Wird ausgelöst, wenn die Aufgabe abgeschlossen, fehlgeschlagen oder abgebrochen wurde\n- Wird nach Abrechnungsbestätigung gesendet\n\n**Sicherheitseinschränkungen:**\n- Nur HTTPS wird unterstützt\n- Callbacks an interne IP-Adressen sind verboten (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x usw.)\n- URL-Länge max. `2048` Zeichen\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Bis zu `3` Wiederholungen nach Fehlschlag (jeweils nach `1`/`2`/`4` Sekunden)\n- Callback-Antwortformat ist identisch mit der Task-Query-API\n- 2xx-Statuscodes gelten als erfolgreich, andere lösen Wiederholungen aus",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -272,7 +307,7 @@
             "enum": [
               "video.generation.task"
             ],
-            "description": "Aufgabentyp"
+            "description": "Spezifischer Aufgabentyp"
           },
           "progress": {
             "type": "integer",
@@ -294,7 +329,7 @@
           },
           "task_info": {
             "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Details zur Videoaufgabe"
+            "description": "Detaillierte Informationen zur Video-Aufgabe"
           },
           "type": {
             "type": "string",
@@ -304,7 +339,7 @@
               "audio",
               "video"
             ],
-            "description": "Aufgaben-Ausgabetyp",
+            "description": "Ausgabetyp der Aufgabe",
             "example": "video"
           },
           "usage": {
@@ -323,7 +358,7 @@
           },
           "estimated_time": {
             "type": "integer",
-            "description": "Geschätzte Abschlusszeit (Sekunden)",
+            "description": "Geschätzte Fertigstellungszeit (Sekunden)",
             "minimum": 0,
             "example": 120
           }
@@ -345,13 +380,13 @@
           },
           "credits_reserved": {
             "type": "number",
-            "description": "Geschätzter Credit-Verbrauch",
+            "description": "Geschätzt zu verbrauchende Credits",
             "minimum": 0,
             "example": 5
           },
           "user_group": {
             "type": "string",
-            "description": "Benutzergruppenkategorie",
+            "description": "Benutzergruppen-Kategorie",
             "enum": [
               "default",
               "vip"
@@ -368,7 +403,7 @@
             "properties": {
               "code": {
                 "type": "string",
-                "description": "Fehlercode-Bezeichner"
+                "description": "Fehlercode-Identifikator"
               },
               "message": {
                 "type": "string",
@@ -387,7 +422,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## Alle APIs erfordern Bearer-Token-Authentifizierung ##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüssel-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## Alle APIs erfordern Bearer-Token-Authentifizierung ##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüssel-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Im Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }

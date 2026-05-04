@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-video-edit接口",
-        "description": "- WAN2.7 (wan2.7-video-edit) 模型支持视频编辑模式\n- 必须上传1个视频，可选上传最多4张参考图片\n- 支持保留原视频声音或自动处理音频\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存\n- **计费说明**：采用「输入视频时长 + 输出视频时长」联合计费，仅成功生成视频后计费，失败不收费",
+        "description": "- WAN2.7 (wan2.7-video-edit) 模型支持视频编辑模式，可完成**指令编辑**和**视频迁移**任务\n- **必须**上传 1 个视频（`video_urls`），可选上传最多 4 张参考图片（`image_urls`）\n- 两种使用方式：\n  - **纯指令编辑**：仅传 `video_urls` + `prompt`（如修改风格、为人物换衣）\n  - **指令 + 参考图编辑**：传 `video_urls` + `image_urls` + `prompt`（如局部替换为参考图中的元素）\n- 音频处理：通过 `keep_original_sound` 控制（`true` 保留原声 / `false` 智能处理）\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存\n- **计费说明**：采用「输入视频时长 + 输出视频时长」联合计费，仅成功生成视频后计费，失败不收费",
         "operationId": "createWan27VideoEditGeneration",
         "tags": [
           "视频生成"
@@ -36,14 +36,21 @@
                 "$ref": "#/components/schemas/Wan27VideoEditRequest"
               },
               "examples": {
-                "video_edit": {
-                  "summary": "视频编辑",
+                "instruction_edit": {
+                  "summary": "纯指令编辑（修改视频风格）",
                   "value": {
                     "model": "wan2.7-video-edit",
-                    "prompt": "将视频中的人物换成卡通风格",
-                    "video_urls": [
-                      "https://example.com/source.mp4"
-                    ]
+                    "prompt": "将整个画面转换为黏土风格",
+                    "video_urls": ["https://example.com/source.mp4"]
+                  }
+                },
+                "instruction_with_reference": {
+                  "summary": "指令 + 参考图编辑（局部替换）",
+                  "value": {
+                    "model": "wan2.7-video-edit",
+                    "prompt": "将视频中女孩的衣服替换为图片中的衣服",
+                    "video_urls": ["https://example.com/source.mp4"],
+                    "image_urls": ["https://example.com/clothes.png"]
                   }
                 }
               }
@@ -186,12 +193,13 @@
           },
           "prompt": {
             "type": "string",
-            "description": "视频编辑的文本提示词，描述期望的编辑效果",
-            "example": "将视频中的人物换成卡通风格"
+            "description": "视频编辑的文本提示词，描述期望的编辑效果。支持中英文，每个汉字/字母占 1 个字符，超过部分会自动截断，最大长度 5000 字符",
+            "maxLength": 5000,
+            "example": "为人物换上酷闪的衣服，再戴参考图里的帽子"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "负面提示词，描述不希望在视频中出现的内容，最大长度500字",
+            "description": "负面提示词，描述不希望在视频画面中出现的内容。支持中英文，最大长度 500 字符，超过部分会自动截断",
             "maxLength": 500,
             "example": "模糊, 低质量"
           },
@@ -201,7 +209,7 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "源视频URL数组，必须传入1个视频\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`2~10`秒\n- 分辨率：宽和高的范围为`[240, 4096]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`100MB`",
+            "description": "待编辑视频 URL 数组。**必须传入且仅 1 个**\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`2 ~ 10` 秒\n- 分辨率：宽和高的范围为 `[240, 4096]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `100MB`",
             "minItems": 1,
             "maxItems": 1,
             "example": ["https://example.com/source.mp4"]
@@ -212,13 +220,13 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "参考图片URL数组，最多4张。注意：如果传了 image 字段，也会计入这4张的限制\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为`[240, 8000]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`20MB`",
+            "description": "参考图片 URL 数组，最多 4 张。可用于「指令 + 参考图编辑」场景，例如将视频中的服饰、道具替换为参考图中的元素\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为 `[240, 8000]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `20MB`",
             "maxItems": 4,
             "example": ["https://example.com/ref.jpg"]
           },
           "keep_original_sound": {
             "type": "boolean",
-            "description": "是否保留原视频声音。`true` 保留原声，`false` 自动处理音频",
+            "description": "视频声音处理方式，默认 `false`\n\n- `false`：智能模式。模型根据 `prompt` 内容自动判断——若提示词涉及声音描述，可能重新生成音频；否则可能保留输入视频的原声\n- `true`：强制保留输入视频的原声，不重新生成",
             "default": false,
             "example": true
           },
@@ -234,7 +242,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "视频宽高比（可选，不传则沿用原视频比例）\n\n**说明：**\n- `720p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`\n- `1080p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`",
+            "description": "视频宽高比（可选）\n\n**生效逻辑：**\n- 不传：以输入视频的宽高比生成近似比例的视频\n- 传入：按指定 `aspect_ratio` 生成视频\n\n**不同档位输出分辨率：**\n\n| 分辨率档位 | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -246,21 +254,24 @@
           },
           "duration": {
             "type": "number",
-            "description": "视频时长（秒）。设为 `0` 表示沿用原视频时长；显式指定时范围为 2-10",
+            "description": "视频时长（秒）\n\n**使用规则：**\n- 默认值为 `0`：沿用输入视频时长，**不进行截断**（仅在希望显式截断视频时才需要配置本字段）\n- 显式指定时范围为 `2 ~ 10`：系统会从原视频的 0 秒起，截取至 `duration` 设置的长度",
             "minimum": 0,
             "maximum": 10,
+            "default": 0,
             "example": 0
           },
           "seed": {
             "type": "integer",
-            "description": "随机种子，用于复现生成结果",
+            "description": "随机种子，默认随机\n\n**说明：**\n- 取值范围：`1` ~ `2147483647`\n- 固定 seed 可在调试 prompt 时降低参数变化的干扰，提升结果可复现性",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。默认值为`true`",
-            "default": true,
-            "example": true
+            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。\n\n**注意：** 默认值为 `false`，不传或传 `false` 时不会触发改写，如需开启请显式传 `true`",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",

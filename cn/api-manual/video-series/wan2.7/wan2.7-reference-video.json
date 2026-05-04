@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-reference-video接口",
-        "description": "- WAN2.7 (wan2.7-reference-video) 模型支持参考视频生成视频模式\n- 支持上传首帧图、多张参考图片、多个参考视频及参考音频\n- **必须**至少提供一个参考图片（`image_urls`）或参考视频（`video_urls`），仅传 `image_start` 不满足此要求\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存\n- **计费说明**：采用「输入视频时长 + 输出视频时长」联合计费，仅成功生成视频后计费，失败不收费",
+        "description": "- WAN2.7 (wan2.7-reference-video) 模型支持参考生视频模式，可将人或物体作为主角，生成单角色表演或多角色互动视频\n- 支持多模态输入：首帧图（`image_start`）、多张参考图片（`image_urls`）、多个参考视频（`video_urls`）以及多角色音色绑定\n- **必须**至少提供一个参考图片（`image_urls`）或参考视频（`video_urls`），仅传 `image_start` 不满足此要求；`image_urls` + `video_urls` 合计 ≤ 5\n- **prompt 中角色指代规则：** 中文用「图1、图2 / 视频1、视频2」指代（与 `image_urls` / `video_urls` 数组顺序一一对应，1-based）；英文用 \"Image 1\"、\"Video 1\"。图片与视频分别计数，可同时存在「图1」「视频1」\n- **多角色音色绑定：** 推荐使用 `model_params.voice_bindings`（精确绑定），兼容旧协议 `audio_urls`（按顺序对齐）\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存\n- **计费说明**：采用「输入视频时长 + 输出视频时长」联合计费，仅成功生成视频后计费，失败不收费",
         "operationId": "createWan27ReferenceVideoGeneration",
         "tags": [
           "视频生成"
@@ -36,14 +36,39 @@
                 "$ref": "#/components/schemas/Wan27ReferenceVideoRequest"
               },
               "examples": {
-                "reference_video": {
-                  "summary": "参考视频生成视频",
+                "single_reference_video": {
+                  "summary": "单条参考视频",
                   "value": {
                     "model": "wan2.7-reference-video",
-                    "prompt": "一个人在跳舞",
-                    "video_urls": [
-                      "https://example.com/reference.mp4"
-                    ]
+                    "prompt": "参考视频中的人物在草地上跳舞",
+                    "video_urls": ["https://example.com/reference.mp4"]
+                  }
+                },
+                "multi_subject_with_voice_bindings": {
+                  "summary": "多主体参考 + 精确音色绑定（推荐）",
+                  "value": {
+                    "model": "wan2.7-reference-video",
+                    "prompt": "图1抱着图2，在图3的椅子上弹奏一支舒缓的乡村民谣，并说道：\"今天的阳光真好\"",
+                    "image_urls": [
+                      "https://example.com/girl.jpg",
+                      "https://example.com/object.png",
+                      "https://example.com/chair.png"
+                    ],
+                    "model_params": {
+                      "voice_bindings": {
+                        "image1": "https://example.com/girl_voice.mp3"
+                      }
+                    },
+                    "duration": 10
+                  }
+                },
+                "multi_grid_storyboard": {
+                  "summary": "单图参考（多宫格故事板）",
+                  "value": {
+                    "model": "wan2.7-reference-video",
+                    "prompt": "参考图片，3D 卡通冒险电影风。分镜：1. 全景奇幻森林；2. 男孩拨开藤蔓探路；3. 小机器人扫描前方；4. 藏宝图特写；5. 男孩兴奋表情；6. 跳过树根继续深入",
+                    "image_urls": ["https://example.com/storyboard.png"],
+                    "duration": 10
                   }
                 }
               }
@@ -186,19 +211,20 @@
           },
           "prompt": {
             "type": "string",
-            "description": "视频生成的文本提示词",
-            "example": "一个人在跳舞"
+            "description": "视频生成的文本提示词。支持中英文，每个汉字/字母/标点占 1 个字符，超过部分会自动截断，最大长度 5000 字符\n\n**角色指代规则：**\n- 中文：用「图1、图2 / 视频1、视频2」指代参考素材，与 `image_urls` / `video_urls` 数组顺序一一对应（1-based）\n- 英文：用 \"Image 1\"、\"Video 1\"（首字母大写，字母数字之间空格）\n- 图片与视频分别计数，即可同时存在「图1」与「视频1」\n- 若仅有一张参考图或一个参考视频，可简化为「参考图片」或「参考视频」\n\n**多宫格图像（故事板）：** 当传入一张多宫格图像时，提示词建议按多分镜形式描述关键画面，模型会自动识别宫格逻辑并补全镜头",
+            "maxLength": 5000,
+            "example": "视频1抱着图3，在图4的椅子上弹奏一支舒缓的乡村民谣"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "负面提示词，描述不希望在视频中出现的内容，最大长度500字",
+            "description": "负面提示词，描述不希望在视频画面中出现的内容。支持中英文，最大长度 500 字符，超过部分会自动截断",
             "maxLength": 500,
             "example": "模糊, 低质量"
           },
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "首帧图片URL，作为视频的起始画面。不计入 image_urls + video_urls 的5个参考媒体限制\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为`[240, 8000]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`20MB`",
+            "description": "首帧图片 URL，作为视频的起始画面。**不计入** `image_urls` + `video_urls` 合计 ≤ 5 的参考媒体上限。**不接受音色绑定**（首帧图本身不参与多角色音色分配）\n\n**搭配场景：**\n- 首帧中已出现待参考主体：可与参考素材联合控制，强化主体一致性\n- 首帧中未出现待参考主体：可用参考素材定义视频动态过程中新出现的主体\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为 `[240, 8000]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `20MB`",
             "example": "https://example.com/first_frame.jpg"
           },
           "image_urls": {
@@ -207,7 +233,7 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "参考图片URL数组（reference_image），image_urls + video_urls 合计不超过 5 个\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为`[240, 8000]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`20MB`",
+            "description": "参考图片 URL 数组。可提供主体角色（人物/动物/物体）或场景背景；当包含主体时，建议每张图仅含**单一**角色\n\n**数量限制：**\n- `image_urls` + `video_urls` 合计 ≤ 5\n- 必须与 `video_urls` 至少二选一传入（仅传 `image_start` 不满足要求）\n\n**图像限制：**\n- 格式：JPEG、JPG、PNG（不支持透明通道）、BMP、WEBP\n- 分辨率：宽和高的范围为 `[240, 8000]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `20MB`",
             "example": ["https://example.com/ref1.jpg", "https://example.com/ref2.jpg"]
           },
           "video_urls": {
@@ -216,7 +242,7 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "参考视频URL数组（reference_video），image_urls + video_urls 合计不超过 5 个\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`2~10`秒\n- 分辨率：宽和高的范围为`[240, 4096]`像素\n- 宽高比：1:8～8:1\n- 文件大小：不超过`100MB`",
+            "description": "参考视频 URL 数组。视频内容建议包含主体（人物/动物/物体），不建议使用空镜或纯背景视频；当包含主体时，建议每个视频仅含**单一**角色。若视频自带声音，可作为音色参考\n\n**数量限制：**\n- `image_urls` + `video_urls` 合计 ≤ 5\n- 必须与 `image_urls` 至少二选一传入\n\n**视频限制：**\n- 格式：mp4、mov\n- 时长：`1 ~ 30` 秒\n- 分辨率：宽和高的范围为 `[240, 4096]` 像素\n- 宽高比：1:8 ～ 8:1\n- 文件大小：不超过 `100MB`\n\n**注意：** 当请求中传入了 `video_urls` 时，`duration` 上限收紧到 10 秒",
             "example": ["https://example.com/reference.mp4"]
           },
           "audio_urls": {
@@ -226,8 +252,27 @@
               "format": "uri"
             },
             "maxItems": 5,
-            "description": "参考音频 URL 数组（reference_voice），按顺序与参考素材（image_urls/video_urls）一一绑定，第一个音频绑定第一个参考素材，第二个绑定第二个，依此类推。优先级高于参考视频自带音频。最多 5 个元素。\n\n**格式要求：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`2~30`秒\n- 文件大小：不超过`15MB`",
+            "description": "**【兼容字段，推荐改用 `model_params.voice_bindings`】**\n\n参考音色音频 URL 数组，按顺序与参考素材绑定——先匹配 `video_urls` 数组、再匹配 `image_urls` 数组（按出现顺序一一对齐）。最多 5 个元素\n\n**优先级：**\n- 同时传入 `model_params.voice_bindings` 与 `audio_urls` 时，仅使用 `voice_bindings`，本字段被忽略\n- 若 `video_urls` 中的视频自带音频且未指定音色绑定，则使用视频原声；指定音色绑定后覆盖原声\n\n**音频限制：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`1 ~ 10` 秒\n- 文件大小：不超过 `15MB`",
             "example": ["https://example.com/voice1.mp3", "https://example.com/voice2.mp3"]
+          },
+          "model_params": {
+            "type": "object",
+            "description": "高级参数容器（推荐使用）",
+            "properties": {
+              "voice_bindings": {
+                "type": "object",
+                "description": "**多角色音色精确绑定（推荐）。** 优先级高于 `audio_urls`\n\n**绑定规则：**\n- key 形如 `image{N}` 或 `video{N}`（1-based，不允许前导零，如 `image1`、`video2`）\n- key 中的 N 对应 prompt 中「图N」或「视频N」标识，与 `image_urls[N-1]` / `video_urls[N-1]` 一一对应\n- value 为对应角色的音色音频 URL\n- 总绑定数 ≤ 5\n- `image_start`（首帧图）**不接受**音色绑定\n- 可跳过部分角色（如仅绑定 image1 与 image3，image2 不绑定）\n\n**音频限制：**\n- 支持格式：`wav`、`mp3`\n- 时长范围：`1 ~ 10` 秒\n- 文件大小：不超过 `15MB`\n\n**校验失败示例：**\n- key 格式错误：`voice_bindings key \"img1\"/\"image01\" invalid`\n- 索引越界：`voice_bindings.image5 out of range`\n- value 为空字符串、重复绑定、绑定总数超过 5",
+                "additionalProperties": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "example": {
+                  "image1": "https://example.com/voice_a.mp3",
+                  "image3": "https://example.com/voice_c.mp3",
+                  "video1": "https://example.com/voice_v.mp3"
+                }
+              }
+            }
           },
           "quality": {
             "type": "string",
@@ -241,7 +286,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "视频宽高比，默认为`16:9`\n\n**说明：**\n- `720p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`\n- `1080p`: 支持`16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`",
+            "description": "视频宽高比，默认为 `16:9`\n\n**生效逻辑：**\n- 未传入 `image_start`：按指定的 `aspect_ratio` 生成视频\n- 已传入 `image_start`：本字段**被忽略**，自动以首帧图像的宽高比生成近似比例的视频\n\n**不同档位输出分辨率：**\n\n| 分辨率档位 | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -254,21 +299,24 @@
           },
           "duration": {
             "type": "number",
-            "description": "视频时长（秒），取值范围 2-15。参考视频模式下，单条参考视频时长上限为 10 秒；预扣费按 `duration` 计算，实际扣费以生成视频秒数为准",
+            "description": "视频时长（秒），整数\n\n**取值范围：**\n- 未传 `video_urls`：`2 ~ 15`，默认 `5`\n- 已传 `video_urls`：`2 ~ 10`（上限收紧到 10 秒）\n\n**计费说明：** 实际扣费以生成视频秒数为准",
             "minimum": 2,
             "maximum": 15,
+            "default": 5,
             "example": 5
           },
           "seed": {
             "type": "integer",
-            "description": "随机种子，用于复现生成结果",
+            "description": "随机种子，默认随机\n\n**说明：**\n- 取值范围：`1` ~ `2147483647`\n- 固定 seed 可在调试 prompt 时降低参数变化的干扰，提升结果可复现性",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。默认值为`true`",
-            "default": true,
-            "example": true
+            "description": "是否开启prompt智能改写，开启后将使用大模型优化正向提示词，对描述性不足、较为简单的prompt提升效果较明显。\n\n**注意：** 默认值为 `false`，不传或传 `false` 时不会触发改写，如需开启请显式传 `true`",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",

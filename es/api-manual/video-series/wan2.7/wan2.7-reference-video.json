@@ -2,48 +2,46 @@
   "openapi": "3.1.0",
   "info": {
     "title": "wan2.7-reference-video API",
-    "description": "Genera videos utilizando el modelo WAN2.7 con videos de referencia, admite la carga de imágenes de primer fotograma, múltiples imágenes de referencia, múltiples videos de referencia y audio de referencia",
-    "license": {
-      "name": "MIT"
-    },
+    "description": "Genera videos utilizando el modelo WAN2.7 con imágenes de referencia, videos de referencia y entradas de audio",
+    "license": {"name": "MIT"},
     "version": "1.0.0"
   },
-  "servers": [
-    {
-      "url": "https://api.evolink.ai",
-      "description": "Entorno de producción"
-    }
-  ],
-  "security": [
-    {
-      "bearerAuth": []
-    }
-  ],
+  "servers": [{"url": "https://api.evolink.ai", "description": "Entorno de Producción"}],
+  "security": [{"bearerAuth": []}],
   "paths": {
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-reference-video API",
-        "description": "- El modelo WAN2.7 (wan2.7-reference-video) admite la generación de video con video de referencia\n- Admite la carga de imagen de primer fotograma, múltiples imágenes de referencia, múltiples videos de referencia y audio de referencia\n- **Debe** proporcionar al menos una imagen de referencia (`image_urls`) o un video de referencia (`video_urls`), solo proporcionar `image_start` no cumple este requisito\n- Modo de procesamiento asíncrono, utilice el ID de tarea devuelto para [consultar el estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de video generados son válidos durante 24 horas, guárdelos de inmediato\n- **Facturación**: Facturación combinada basada en la duración del video de entrada + salida, solo se cobra después de una generación exitosa, sin cargos por fallos",
+        "description": "- El modelo WAN2.7 (wan2.7-reference-video) admite generación de referencia a video, usando personas u objetos como protagonistas para producir actuaciones de un solo personaje o interacciones multipersonaje\n- Entradas multimodales: fotograma inicial (`image_start`), múltiples imágenes de referencia (`image_urls`), múltiples videos de referencia (`video_urls`) y vínculos de voz por personaje\n- **Al menos uno** de imagen de referencia (`image_urls`) o video de referencia (`video_urls`) debe proporcionarse; pasar solo `image_start` no es suficiente. El total de `image_urls` + `video_urls` debe ser ≤ 5\n- **Indexación de personajes en el prompt:** en chino use \"图1, 图2 / 视频1, 视频2\"; en inglés use \"Image 1\", \"Video 1\" — corresponden 1-based al orden de `image_urls` / `video_urls`. Imágenes y videos se cuentan por separado, así que pueden coexistir \"Image 1\" y \"Video 1\"\n- **Vinculación de voz multipersonaje:** se prefiere `model_params.voice_bindings` (vinculación precisa); también se admite el campo legado `audio_urls` (alineación posicional)\n- Modo de procesamiento asíncrono, use el ID de tarea devuelto para [consultar el estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de video generados son válidos durante 24 horas, guárdelos cuanto antes\n- **Facturación:** se cobra según \"duración del video de entrada + duración del video de salida\"; solo se facturan generaciones exitosas, las tareas fallidas son gratuitas",
         "operationId": "createWan27ReferenceVideoGeneration",
-        "tags": [
-          "Generación de video"
-        ],
+        "tags": ["Generación de Video"],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Wan27ReferenceVideoRequest"
-              },
+              "schema": {"$ref": "#/components/schemas/Wan27ReferenceVideoRequest"},
               "examples": {
-                "reference_video": {
-                  "summary": "Video de Referencia a Video",
+                "single_reference_video": {
+                  "summary": "Video de referencia único",
+                  "value": {"model": "wan2.7-reference-video", "prompt": "El personaje del video de referencia bailando en una pradera", "video_urls": ["https://example.com/reference.mp4"]}
+                },
+                "multi_subject_with_voice_bindings": {
+                  "summary": "Referencia multi-sujeto + vinculación de voz precisa (recomendado)",
                   "value": {
                     "model": "wan2.7-reference-video",
-                    "prompt": "A cat playing piano",
-                    "video_urls": [
-                      "https://example.com/reference.mp4"
-                    ]
+                    "prompt": "Image 1 sostiene Image 2 y toca un suave folk country en la silla de Image 3, diciendo: \"Qué hermoso sol hace hoy\"",
+                    "image_urls": ["https://example.com/girl.jpg", "https://example.com/object.png", "https://example.com/chair.png"],
+                    "model_params": {"voice_bindings": {"image1": "https://example.com/girl_voice.mp3"}},
+                    "duration": 10
+                  }
+                },
+                "multi_grid_storyboard": {
+                  "summary": "Imagen de referencia única (storyboard de múltiples celdas)",
+                  "value": {
+                    "model": "wan2.7-reference-video",
+                    "prompt": "Imagen de referencia, estilo de película de aventuras 3D estilo cartoon. Storyboard: 1. Plano general del bosque fantástico; 2. El niño aparta lianas para explorar; 3. El pequeño robot escanea hacia adelante; 4. Primer plano del mapa del tesoro; 5. Cara emocionada del niño; 6. Saltan sobre raíces y se adentran más",
+                    "image_urls": ["https://example.com/storyboard.png"],
+                    "duration": 10
                   }
                 }
               }
@@ -51,118 +49,13 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Tarea de video creada exitosamente",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VideoGenerationResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Parámetros de solicitud inválidos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "invalid_request",
-                    "message": "Invalid request parameters",
-                    "type": "invalid_request_error"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No autenticado, token inválido o expirado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "unauthorized",
-                    "message": "Invalid or expired token",
-                    "type": "authentication_error"
-                  }
-                }
-              }
-            }
-          },
-          "402": {
-            "description": "Cuota insuficiente, se requiere recarga",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "insufficient_quota",
-                    "message": "Insufficient quota. Please top up your account.",
-                    "type": "insufficient_quota"
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acceso denegado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "model_access_denied",
-                    "message": "Token does not have access to model: wan2.7-reference-video",
-                    "type": "invalid_request_error"
-                  }
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Límite de velocidad excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "rate_limit_exceeded",
-                    "message": "Too many requests, please try again later",
-                    "type": "rate_limit_error"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error interno del servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "internal_error",
-                    "message": "Internal server error",
-                    "type": "api_error"
-                  }
-                }
-              }
-            }
-          }
+          "200": {"description": "Tarea de video creada con éxito", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoGenerationResponse"}}}},
+          "400": {"description": "Parámetros de solicitud inválidos", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"error": {"code": "invalid_request", "message": "Invalid request parameters", "type": "invalid_request_error"}}}}},
+          "401": {"description": "No autenticado, token inválido o caducado", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"error": {"code": "unauthorized", "message": "Invalid or expired token", "type": "authentication_error"}}}}},
+          "402": {"description": "Cuota insuficiente, se requiere recarga", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"error": {"code": "insufficient_quota", "message": "Insufficient quota. Please top up your account.", "type": "insufficient_quota"}}}}},
+          "403": {"description": "Sin permiso de acceso", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"error": {"code": "model_access_denied", "message": "Token does not have access to model: wan2.7-reference-video", "type": "invalid_request_error"}}}}},
+          "429": {"description": "Límite de tasa de solicitudes excedido", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"error": {"code": "rate_limit_exceeded", "message": "Too many requests, please try again later", "type": "rate_limit_error"}}}}},
+          "500": {"description": "Error interno del servidor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"error": {"code": "internal_error", "message": "Internal server error", "type": "api_error"}}}}}
         }
       }
     }
@@ -170,109 +63,92 @@
   "components": {
     "schemas": {
       "Wan27ReferenceVideoRequest": {
-        "required": [
-          "model",
-          "prompt"
-        ],
+        "required": ["model", "prompt"],
         "type": "object",
         "properties": {
-          "model": {
-            "type": "string",
-            "description": "Nombre del modelo, fijo como `wan2.7-reference-video`",
-            "enum": [
-              "wan2.7-reference-video"
-            ],
-            "example": "wan2.7-reference-video"
-          },
+          "model": {"type": "string", "description": "Nombre del modelo, debe ser `wan2.7-reference-video`", "enum": ["wan2.7-reference-video"], "example": "wan2.7-reference-video"},
           "prompt": {
             "type": "string",
-            "description": "Prompt de texto para la generación de video",
-            "example": "A cat playing piano"
+            "description": "Prompt textual para la generación de video. Admite chino e inglés; cada carácter / letra / signo de puntuación cuenta como 1, el exceso se trunca automáticamente. Longitud máxima 5000 caracteres\n\n**Reglas de indexación de personajes:**\n- Chino: use \"图1, 图2 / 视频1, 视频2\" — corresponden 1-based al orden de `image_urls` / `video_urls`\n- Inglés: use \"Image 1\", \"Video 1\" (mayúscula inicial, espacio entre palabra y dígito)\n- Imágenes y videos se cuentan por separado, así que pueden coexistir \"Image 1\" y \"Video 1\"\n- Si solo se proporciona una imagen o un video de referencia, también puede escribir \"la imagen de referencia\" o \"el video de referencia\"\n\n**Imagen multi-cuadrícula (storyboard):** cuando se proporciona una imagen multi-cuadrícula, describa los planos clave en forma de storyboard; el modelo reconoce el diseño de la cuadrícula y completa las transiciones",
+            "maxLength": 5000,
+            "example": "Video 1 sostiene Image 3 y toca un suave folk country en la silla de Image 4"
           },
-          "negative_prompt": {
-            "type": "string",
-            "description": "Prompt negativo, describe el contenido que no desea que aparezca en el video, longitud máxima de 500 caracteres",
-            "maxLength": 500,
-            "example": "Blurry, low quality"
-          },
+          "negative_prompt": {"type": "string", "description": "Prompt negativo que describe lo que no debe aparecer en el video. Admite chino e inglés. Longitud máxima 500 caracteres; el exceso se trunca automáticamente", "maxLength": 500, "example": "Borroso, baja calidad"},
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "URL de la imagen del primer fotograma, como imagen inicial del video. No se cuenta en el límite de 5 medios de referencia de image_urls + video_urls\n\n**Límites de imagen:**\n- Formato: JPEG, JPG, PNG (canal transparente no admitido), BMP, WEBP\n- Resolución: el rango de ancho y alto es `[240, 8000]` píxeles\n- Relación de aspecto: 1:8～8:1\n- Tamaño de archivo: no más de `20MB`",
+            "description": "URL de la imagen del fotograma inicial, usada como primer fotograma del video generado. **No cuenta** para el límite `image_urls` + `video_urls` ≤ 5. **No acepta vinculación de voz** (el fotograma inicial no participa en la asignación de voces multipersonaje)\n\n**Casos de uso:**\n- El sujeto ya aparece en el fotograma inicial: combine con materiales de referencia para reforzar la consistencia de identidad\n- El sujeto no está en el fotograma inicial: los materiales de referencia definen nuevos sujetos que aparecen al avanzar el video\n\n**Límites de imagen:**\n- Formatos: JPEG, JPG, PNG (sin transparencia), BMP, WEBP\n- Resolución: ancho y alto en `[240, 8000]` píxeles\n- Relación de aspecto: 1:8 ~ 8:1\n- Tamaño de archivo: hasta `20MB`",
             "example": "https://example.com/first_frame.jpg"
           },
           "image_urls": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "Array de URLs de imágenes de referencia (reference_image), image_urls + video_urls no deben exceder 5 en total\n\n**Límites de imagen:**\n- Formato: JPEG, JPG, PNG (canal transparente no admitido), BMP, WEBP\n- Resolución: el rango de ancho y alto es `[240, 8000]` píxeles\n- Relación de aspecto: 1:8～8:1\n- Tamaño de archivo: no más de `20MB`",
+            "items": {"type": "string", "format": "uri"},
+            "description": "Lista de URLs de imágenes de referencia. Puede aportar sujetos (personas / animales / objetos) o fondos de escena; cuando incluya un sujeto, cada imagen debería contener un **único** personaje\n\n**Límites de cantidad:**\n- `image_urls` + `video_urls` total ≤ 5\n- Al menos uno de `image_urls` / `video_urls` debe proporcionarse (pasar solo `image_start` no es suficiente)\n\n**Límites de imagen:**\n- Formatos: JPEG, JPG, PNG (sin transparencia), BMP, WEBP\n- Resolución: ancho y alto en `[240, 8000]` píxeles\n- Relación de aspecto: 1:8 ~ 8:1\n- Tamaño de archivo: hasta `20MB`",
             "example": ["https://example.com/ref1.jpg", "https://example.com/ref2.jpg"]
           },
           "video_urls": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "Array de URLs de videos de referencia (reference_video), image_urls + video_urls no deben exceder 5 en total\n\n**Límites de video:**\n- Formato: mp4, mov\n- Duración: `2~10` segundos\n- Resolución: el rango de ancho y alto es `[240, 4096]` píxeles\n- Relación de aspecto: 1:8～8:1\n- Tamaño de archivo: no más de `100MB`",
+            "items": {"type": "string", "format": "uri"},
+            "description": "Lista de URLs de videos de referencia. El video debería contener un sujeto (persona / animal / objeto); no se recomiendan tomas vacías o de fondo puro. Cuando incluya un sujeto, cada video debería contener un **único** personaje. El audio del video puede usarse como referencia de voz\n\n**Límites de cantidad:**\n- `image_urls` + `video_urls` total ≤ 5\n- Al menos uno de `image_urls` / `video_urls` debe proporcionarse\n\n**Límites de video:**\n- Formatos: mp4, mov\n- Duración: `1 ~ 30` segundos\n- Resolución: ancho y alto en `[240, 4096]` píxeles\n- Relación de aspecto: 1:8 ~ 8:1\n- Tamaño de archivo: hasta `100MB`\n\n**Nota:** cuando se proporciona `video_urls`, `duration` se limita a 10 segundos",
             "example": ["https://example.com/reference.mp4"]
           },
           "audio_urls": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
+            "items": {"type": "string", "format": "uri"},
             "maxItems": 5,
-            "description": "Array de URLs de audio de referencia (reference_voice), cada audio se vincula en orden con los medios de referencia (image_urls/video_urls). El primer audio se vincula al primer medio de referencia, el segundo al segundo, y así sucesivamente. Tiene prioridad sobre el audio incluido en el video de referencia. Máximo 5 elementos.\n\n**Requisitos de formato:**\n- Formatos admitidos: `wav`, `mp3`\n- Rango de duración: `2~30` segundos\n- Tamaño de archivo: no más de `15MB`",
+            "description": "**[Campo de compatibilidad — preferir `model_params.voice_bindings`]**\n\nLista de URLs de voces de referencia. Se vinculan posicionalmente a los materiales de referencia en este orden: primero contra `video_urls`, luego contra `image_urls` (en el orden de sus listas, uno a uno). Hasta 5 elementos\n\n**Prioridad:**\n- Cuando se proporcionan tanto `model_params.voice_bindings` como `audio_urls`, solo se usa `voice_bindings` y este campo se ignora\n- Si un video en `video_urls` lleva audio y no se establece vinculación de voz, se usa el audio original; una vinculación de voz explícita anula el audio original\n\n**Límites de audio:**\n- Formatos admitidos: `wav`, `mp3`\n- Duración: `1 ~ 10` segundos\n- Tamaño de archivo: hasta `15MB`",
             "example": ["https://example.com/voice1.mp3", "https://example.com/voice2.mp3"]
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Contenedor de parámetros avanzados (recomendado)",
+            "properties": {
+              "voice_bindings": {
+                "type": "object",
+                "description": "**Vinculación precisa de voz para múltiples personajes (recomendado).** Tiene prioridad sobre `audio_urls`\n\n**Reglas de vinculación:**\n- Las claves tienen el formato `image{N}` o `video{N}` (1-based, sin ceros a la izquierda, p. ej. `image1`, `video2`)\n- El N en la clave coincide con \"图N / Image N\" o \"视频N / Video N\" en el prompt y corresponde a `image_urls[N-1]` / `video_urls[N-1]`\n- Cada valor es la URL del audio de voz para ese personaje\n- Total de vinculaciones ≤ 5\n- `image_start` (fotograma inicial) **no acepta** vinculaciones de voz\n- Puede omitir algunos personajes (p. ej. vincular solo image1 e image3, dejando image2 sin vincular)\n\n**Límites de audio:**\n- Formatos admitidos: `wav`, `mp3`\n- Duración: `1 ~ 10` segundos\n- Tamaño de archivo: hasta `15MB`\n\n**Errores de validación:**\n- Formato de clave incorrecto: `voice_bindings key \"img1\"/\"image01\" invalid`\n- Índice fuera de rango: `voice_bindings.image5 out of range`\n- Valor vacío, vinculación duplicada o más de 5 vinculaciones",
+                "additionalProperties": {"type": "string", "format": "uri"},
+                "example": {"image1": "https://example.com/voice_a.mp3", "image3": "https://example.com/voice_c.mp3", "video1": "https://example.com/voice_v.mp3"}
+              }
+            }
           },
           "quality": {
             "type": "string",
-            "description": "Calidad de video, por defecto `720p`\n\n**Opciones:**\n- `720p`: Definición estándar, precio estándar, este es el valor por defecto\n- `1080p`: Alta definición, precio más alto",
-            "enum": [
-              "720p",
-              "1080p"
-            ],
+            "description": "Calidad del video, predeterminada `720p`\n\n**Opciones:**\n- `720p`: Definición estándar, precio estándar (predeterminado)\n- `1080p`: Alta definición, precio mayor",
+            "enum": ["720p", "1080p"],
             "default": "720p",
             "example": "720p"
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Relación de aspecto del video, por defecto `16:9`\n\n**Opciones:**\n- `720p`: Admite `16:9` (horizontal), `9:16` (vertical), `1:1` (cuadrado), `4:3`, `3:4`\n- `1080p`: Admite `16:9` (horizontal), `9:16` (vertical), `1:1` (cuadrado), `4:3`, `3:4`",
-            "enum": [
-              "16:9",
-              "9:16",
-              "1:1",
-              "4:3",
-              "3:4"
-            ],
+            "description": "Relación de aspecto del video, predeterminada `16:9`\n\n**Comportamiento:**\n- `image_start` no proporcionado: el video se genera con el `aspect_ratio` especificado\n- `image_start` proporcionado: este campo se **ignora**; el video usa una relación de aspecto cercana a la imagen del fotograma inicial\n\n**Resolución de salida por nivel de calidad:**\n\n| Calidad | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
+            "enum": ["16:9", "9:16", "1:1", "4:3", "3:4"],
             "default": "16:9",
             "example": "16:9"
           },
           "duration": {
             "type": "number",
-            "description": "Duración del video en segundos, rango válido 2-15. En el modo de video de referencia, cada video de referencia puede durar como máximo 10 segundos. El prepago se calcula según `duration`; el cobro final se determina por la duración real del video generado.",
+            "description": "Duración del video en segundos (entero)\n\n**Rango:**\n- Sin `video_urls`: `2 ~ 15`, predeterminado `5`\n- Con `video_urls`: `2 ~ 10` (limitado a 10 segundos)\n\n**Facturación:** basada en la duración real del video generado",
             "minimum": 2,
             "maximum": 15,
+            "default": 5,
             "example": 5
           },
           "seed": {
             "type": "integer",
-            "description": "Semilla aleatoria, utilizada para reproducir resultados de generación",
+            "description": "Semilla aleatoria, aleatoria por defecto\n\n**Notas:**\n- Rango: `1` ~ `2147483647`\n- Fijar la semilla reduce la variación al iterar prompts y mejora la reproducibilidad",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Si se debe habilitar la reescritura inteligente de prompts. Cuando está habilitado, un modelo grande optimizará el prompt, lo que mejora significativamente los resultados para prompts simples o insuficientemente descriptivos. Por defecto es `true`",
-            "default": true,
-            "example": true
+            "description": "Si activar la reescritura inteligente del prompt. Cuando se activa, un modelo grande optimiza el prompt, mejorando notablemente los resultados con prompts simples o poco descriptivos.\n\n**Nota:** El valor predeterminado es `false`. Omitir el campo o enviar `false` no activará la reescritura; envíe `true` explícitamente para habilitarla.",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",
-            "description": "URL de callback HTTPS para la finalización de tareas\n\n**Momento del Callback:**\n- Se activa cuando la tarea se completa (completed), falla (failed) o se cancela (cancelled)\n- Se envía después de la confirmación de facturación\n\n**Restricciones de Seguridad:**\n- Solo se admite el protocolo HTTPS\n- Los callbacks a direcciones IP internas están prohibidos (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longitud de la URL no debe exceder `2048` caracteres\n\n**Mecanismo de Callback:**\n- Tiempo de espera: `10` segundos\n- Hasta `3` reintentos después de un fallo (reintentos a `1`/`2`/`4` segundos después del fallo)\n- El formato de respuesta del callback es consistente con la respuesta de la API de consulta de tareas\n- Los códigos de estado 2xx se consideran exitosos, otros códigos de estado activan reintentos",
+            "description": "URL de callback HTTPS para la finalización de la tarea\n\n**Momento del callback:**\n- Se dispara cuando la tarea se completa, falla o se cancela\n- Se envía tras la confirmación de facturación\n\n**Restricciones de seguridad:**\n- Solo se admite HTTPS\n- Los callbacks a direcciones IP internas están prohibidos (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La URL no debe superar `2048` caracteres\n\n**Mecanismo de callback:**\n- Tiempo de espera: `10` segundos\n- Hasta `3` reintentos tras fallo (a `1`/`2`/`4` segundos)\n- El formato de respuesta del callback es idéntico al de la API de consulta de tareas\n- Códigos 2xx se consideran exitosos; otros códigos disparan reintentos",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -281,112 +157,31 @@
       "VideoGenerationResponse": {
         "type": "object",
         "properties": {
-          "created": {
-            "type": "integer",
-            "description": "Marca de tiempo de creación de la tarea",
-            "example": 1757169743
-          },
-          "id": {
-            "type": "string",
-            "description": "ID de tarea",
-            "example": "task-unified-1757169743-7cvnl5zw"
-          },
-          "model": {
-            "type": "string",
-            "description": "Nombre del modelo real utilizado",
-            "example": "wan2.7-reference-video"
-          },
-          "object": {
-            "type": "string",
-            "enum": [
-              "video.generation.task"
-            ],
-            "description": "Tipo de tarea"
-          },
-          "progress": {
-            "type": "integer",
-            "description": "Porcentaje de progreso de la tarea (0-100)",
-            "minimum": 0,
-            "maximum": 100,
-            "example": 0
-          },
-          "status": {
-            "type": "string",
-            "description": "Estado de la tarea",
-            "enum": [
-              "pending",
-              "processing",
-              "completed",
-              "failed"
-            ],
-            "example": "pending"
-          },
-          "task_info": {
-            "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Detalles de la tarea de video"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "text",
-              "image",
-              "audio",
-              "video"
-            ],
-            "description": "Tipo de salida de la tarea",
-            "example": "video"
-          },
-          "usage": {
-            "$ref": "#/components/schemas/Usage",
-            "description": "Información de uso y facturación"
-          }
+          "created": {"type": "integer", "description": "Marca de tiempo de creación de la tarea", "example": 1757169743},
+          "id": {"type": "string", "description": "ID de la tarea", "example": "task-unified-1757169743-7cvnl5zw"},
+          "model": {"type": "string", "description": "Nombre del modelo realmente usado", "example": "wan2.7-reference-video"},
+          "object": {"type": "string", "enum": ["video.generation.task"], "description": "Tipo específico de tarea"},
+          "progress": {"type": "integer", "description": "Progreso de la tarea en porcentaje (0-100)", "minimum": 0, "maximum": 100, "example": 0},
+          "status": {"type": "string", "description": "Estado de la tarea", "enum": ["pending", "processing", "completed", "failed"], "example": "pending"},
+          "task_info": {"$ref": "#/components/schemas/VideoTaskInfo", "description": "Información detallada de la tarea de video"},
+          "type": {"type": "string", "enum": ["text", "image", "audio", "video"], "description": "Tipo de salida de la tarea", "example": "video"},
+          "usage": {"$ref": "#/components/schemas/Usage", "description": "Información de uso y facturación"}
         }
       },
       "VideoTaskInfo": {
         "type": "object",
         "properties": {
-          "can_cancel": {
-            "type": "boolean",
-            "description": "Si la tarea puede ser cancelada",
-            "example": true
-          },
-          "estimated_time": {
-            "type": "integer",
-            "description": "Tiempo estimado de finalización (segundos)",
-            "minimum": 0,
-            "example": 120
-          }
+          "can_cancel": {"type": "boolean", "description": "Si la tarea puede cancelarse", "example": true},
+          "estimated_time": {"type": "integer", "description": "Tiempo estimado de finalización (segundos)", "minimum": 0, "example": 120}
         }
       },
       "Usage": {
         "type": "object",
         "description": "Información de uso y facturación",
         "properties": {
-          "billing_rule": {
-            "type": "string",
-            "description": "Regla de facturación",
-            "enum": [
-              "per_call",
-              "per_token",
-              "per_second"
-            ],
-            "example": "per_call"
-          },
-          "credits_reserved": {
-            "type": "number",
-            "description": "Créditos estimados a consumir",
-            "minimum": 0,
-            "example": 5
-          },
-          "user_group": {
-            "type": "string",
-            "description": "Categoría de grupo de usuario",
-            "enum": [
-              "default",
-              "vip"
-            ],
-            "example": "default"
-          }
+          "billing_rule": {"type": "string", "description": "Regla de facturación", "enum": ["per_call", "per_token", "per_second"], "example": "per_call"},
+          "credits_reserved": {"type": "number", "description": "Créditos estimados a consumir", "minimum": 0, "example": 5},
+          "user_group": {"type": "string", "description": "Categoría de grupo de usuario", "enum": ["default", "vip"], "example": "default"}
         }
       },
       "ErrorResponse": {
@@ -395,18 +190,9 @@
           "error": {
             "type": "object",
             "properties": {
-              "code": {
-                "type": "string",
-                "description": "Identificador del código de error"
-              },
-              "message": {
-                "type": "string",
-                "description": "Descripción del error"
-              },
-              "type": {
-                "type": "string",
-                "description": "Tipo de error"
-              }
+              "code": {"type": "string", "description": "Identificador del código de error"},
+              "message": {"type": "string", "description": "Descripción del error"},
+              "type": {"type": "string", "description": "Tipo de error"}
             }
           }
         }
@@ -416,7 +202,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## Todas las APIs requieren autenticación Bearer Token ##\n\n**Obtener API Key:**\n\nVisita la [Página de gestión de API Key](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Agregar al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## Todas las APIs requieren autenticación con Bearer Token ##\n\n**Obtenga su API Key:**\n\nVisite la [página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener su API Key\n\n**Añada al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }

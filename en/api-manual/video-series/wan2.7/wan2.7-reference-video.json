@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-reference-video API",
-        "description": "- WAN2.7 (wan2.7-reference-video) model supports reference video generation\n- Supports uploading first frame images, multiple reference images, multiple reference videos, and reference audio\n- **Must** provide at least one reference image (`image_urls`) or reference video (`video_urls`); providing only `image_start` does not satisfy this requirement\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly\n- **Billing:** Based on combined input video duration + output video duration. Only charged upon successful generation; no charge for failures",
+        "description": "- WAN2.7 (wan2.7-reference-video) model supports reference-to-video generation, using people or objects as protagonists to produce single-character performances or multi-character interactions\n- Multimodal inputs: starting frame (`image_start`), multiple reference images (`image_urls`), multiple reference videos (`video_urls`), and per-character voice bindings\n- **At least one** reference image (`image_urls`) or reference video (`video_urls`) must be provided; passing only `image_start` does not satisfy this. The total of `image_urls` + `video_urls` must be ≤ 5\n- **Character indexing in prompt:** in Chinese use \"图1, 图2 / 视频1, 视频2\"; in English use \"Image 1\", \"Video 1\" — these correspond 1-based to the order of `image_urls` / `video_urls`. Images and videos are counted independently, so \"Image 1\" and \"Video 1\" can coexist\n- **Multi-character voice binding:** prefer `model_params.voice_bindings` (precise binding); the legacy `audio_urls` (positional alignment) is also supported\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly\n- **Billing:** charged based on \"input video duration + output video duration\"; only successful generations are billed, failed tasks are free",
         "operationId": "createWan27ReferenceVideoGeneration",
         "tags": [
           "Video Generation"
@@ -36,14 +36,43 @@
                 "$ref": "#/components/schemas/Wan27ReferenceVideoRequest"
               },
               "examples": {
-                "reference_video": {
-                  "summary": "Reference Video Generation",
+                "single_reference_video": {
+                  "summary": "Single reference video",
                   "value": {
                     "model": "wan2.7-reference-video",
-                    "prompt": "A cat playing piano",
+                    "prompt": "The character from the reference video dancing on a meadow",
                     "video_urls": [
                       "https://example.com/reference.mp4"
                     ]
+                  }
+                },
+                "multi_subject_with_voice_bindings": {
+                  "summary": "Multi-subject reference + precise voice binding (recommended)",
+                  "value": {
+                    "model": "wan2.7-reference-video",
+                    "prompt": "Image 1 holds Image 2 and plays a soft country folk song on the chair in Image 3, saying: \"What lovely sunshine today\"",
+                    "image_urls": [
+                      "https://example.com/girl.jpg",
+                      "https://example.com/object.png",
+                      "https://example.com/chair.png"
+                    ],
+                    "model_params": {
+                      "voice_bindings": {
+                        "image1": "https://example.com/girl_voice.mp3"
+                      }
+                    },
+                    "duration": 10
+                  }
+                },
+                "multi_grid_storyboard": {
+                  "summary": "Single reference image (multi-grid storyboard)",
+                  "value": {
+                    "model": "wan2.7-reference-video",
+                    "prompt": "Reference image, 3D cartoon adventure film style. Storyboard: 1. Wide shot of the fantasy forest; 2. The boy parts vines to scout; 3. The little robot scans ahead; 4. Close-up of treasure map; 5. The boy's excited face; 6. They leap over roots and venture deeper",
+                    "image_urls": [
+                      "https://example.com/storyboard.png"
+                    ],
+                    "duration": 10
                   }
                 }
               }
@@ -113,7 +142,7 @@
             }
           },
           "403": {
-            "description": "Access denied",
+            "description": "No access permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -186,19 +215,20 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Text prompt describing the video content to generate",
-            "example": "A cat playing piano"
+            "description": "Text prompt for video generation. Supports Chinese and English; each character / letter / punctuation counts as 1, with overflow auto-truncated. Maximum length 5000 characters\n\n**Character indexing rules:**\n- Chinese: use \"图1, 图2 / 视频1, 视频2\" — corresponds 1-based to the order of `image_urls` / `video_urls`\n- English: use \"Image 1\", \"Video 1\" (capitalised, with a space between word and digit)\n- Images and videos are counted independently, so \"Image 1\" and \"Video 1\" can coexist\n- If only one reference image or one reference video is provided, you can simply write \"the reference image\" or \"the reference video\"\n\n**Multi-grid (storyboard) image:** when one multi-grid image is provided, describe key shots in storyboard form; the model recognises the grid layout and fills in the missing transitions",
+            "maxLength": 5000,
+            "example": "Video 1 holds Image 3 and plays a soft country folk tune on the chair in Image 4"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "Negative prompt describing content to avoid in the video, limited to 500 characters",
+            "description": "Negative prompt describing what should not appear in the video. Supports both Chinese and English. Maximum length 500 characters; overflow is auto-truncated",
             "maxLength": 500,
             "example": "Blurry, low quality"
           },
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "First frame image URL, used as the starting frame of the video. Does not count toward the 5 reference media limit of image_urls + video_urls\n\n**Image Restrictions:**\n- Formats: JPEG, JPG, PNG (transparent channels not supported), BMP, WEBP\n- Resolution: Width and height range `[240, 8000]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `20MB`",
+            "description": "Starting-frame image URL, used as the first frame of the generated video. **Does not count** toward the `image_urls` + `video_urls` ≤ 5 limit. **Does not accept voice binding** (the starting frame itself is not assigned a voice)\n\n**Use cases:**\n- Subject already appears in the starting frame: combine with reference materials to reinforce identity consistency\n- Subject not in the starting frame: reference materials define new subjects appearing as the video progresses\n\n**Image limits:**\n- Formats: JPEG, JPG, PNG (transparency not supported), BMP, WEBP\n- Resolution: width and height in `[240, 8000]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `20MB`",
             "example": "https://example.com/first_frame.jpg"
           },
           "image_urls": {
@@ -207,8 +237,11 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "Reference image URL array (reference_image), image_urls + video_urls combined must not exceed 5\n\n**Image Restrictions:**\n- Formats: JPEG, JPG, PNG (transparent channels not supported), BMP, WEBP\n- Resolution: Width and height range `[240, 8000]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `20MB`",
-            "example": ["https://example.com/ref1.jpg", "https://example.com/ref2.jpg"]
+            "description": "Reference image URL array. Can supply subjects (people / animals / objects) or scene backgrounds; when a subject is included, each image should contain a **single** character\n\n**Quantity limits:**\n- `image_urls` + `video_urls` total ≤ 5\n- At least one of `image_urls` / `video_urls` must be provided (passing only `image_start` is not enough)\n\n**Image limits:**\n- Formats: JPEG, JPG, PNG (transparency not supported), BMP, WEBP\n- Resolution: width and height in `[240, 8000]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `20MB`",
+            "example": [
+              "https://example.com/ref1.jpg",
+              "https://example.com/ref2.jpg"
+            ]
           },
           "video_urls": {
             "type": "array",
@@ -216,8 +249,10 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "Reference video URL array (reference_video), image_urls + video_urls combined must not exceed 5\n\n**Video Restrictions:**\n- Formats: mp4, mov\n- Duration: `2~10` seconds\n- Resolution: Width and height range `[240, 4096]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `100MB`",
-            "example": ["https://example.com/reference.mp4"]
+            "description": "Reference video URL array. The video should ideally feature a subject (person / animal / object); empty or pure-background footage is discouraged. When a subject is included, each video should contain a **single** character. Audio in the video can be used as a voice reference\n\n**Quantity limits:**\n- `image_urls` + `video_urls` total ≤ 5\n- At least one of `image_urls` / `video_urls` must be provided\n\n**Video limits:**\n- Formats: mp4, mov\n- Duration: `1 ~ 30` seconds\n- Resolution: width and height in `[240, 4096]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `100MB`\n\n**Note:** when `video_urls` is provided, `duration` is capped at 10 seconds",
+            "example": [
+              "https://example.com/reference.mp4"
+            ]
           },
           "audio_urls": {
             "type": "array",
@@ -226,8 +261,30 @@
               "format": "uri"
             },
             "maxItems": 5,
-            "description": "Reference audio URL array (reference_voice), each audio is linked in order with the reference media (image_urls/video_urls). The first audio is linked to the first reference media, the second to the second, and so on. It takes priority over audio from reference videos. Maximum 5 elements.\n\n**Format Requirements:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `2~30` seconds\n- File size: Up to `15MB`",
-            "example": ["https://example.com/voice1.mp3", "https://example.com/voice2.mp3"]
+            "description": "**[Compatibility field — prefer `model_params.voice_bindings`]**\n\nReference voice URL array. Bound positionally to reference materials in this order: first match against `video_urls`, then against `image_urls` (in their array order, one-to-one). Up to 5 elements\n\n**Priority:**\n- When both `model_params.voice_bindings` and `audio_urls` are supplied, only `voice_bindings` is used and this field is ignored\n- If a video in `video_urls` carries audio and no voice binding is set for it, the original audio is used; an explicit voice binding overrides the original audio\n\n**Audio limits:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `1 ~ 10` seconds\n- File size: up to `15MB`",
+            "example": [
+              "https://example.com/voice1.mp3",
+              "https://example.com/voice2.mp3"
+            ]
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Advanced parameter container (recommended)",
+            "properties": {
+              "voice_bindings": {
+                "type": "object",
+                "description": "**Precise voice binding for multiple characters (recommended).** Has priority over `audio_urls`\n\n**Binding rules:**\n- Keys are of the form `image{N}` or `video{N}` (1-based, no leading zeros, e.g. `image1`, `video2`)\n- The N in the key matches \"图N / Image N\" or \"视频N / Video N\" in the prompt and corresponds to `image_urls[N-1]` / `video_urls[N-1]`\n- Each value is the voice audio URL for that character\n- Total bindings ≤ 5\n- `image_start` (starting frame) **does not accept** voice bindings\n- You may skip some characters (e.g. bind only image1 and image3, leaving image2 unbound)\n\n**Audio limits:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `1 ~ 10` seconds\n- File size: up to `15MB`\n\n**Validation errors:**\n- Bad key format: `voice_bindings key \"img1\"/\"image01\" invalid`\n- Index out of range: `voice_bindings.image5 out of range`\n- Empty value, duplicate binding, or more than 5 bindings",
+                "additionalProperties": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "example": {
+                  "image1": "https://example.com/voice_a.mp3",
+                  "image3": "https://example.com/voice_c.mp3",
+                  "video1": "https://example.com/voice_v.mp3"
+                }
+              }
+            }
           },
           "quality": {
             "type": "string",
@@ -241,7 +298,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video aspect ratio, defaults to `16:9`\n\n**Options:**\n- `720p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`\n- `1080p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`",
+            "description": "Video aspect ratio, defaults to `16:9`\n\n**Behavior:**\n- `image_start` not provided: video is generated using the specified `aspect_ratio`\n- `image_start` provided: this field is **ignored**; the video uses an aspect ratio close to the starting-frame image\n\n**Output resolution per quality tier:**\n\n| Quality | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -254,21 +311,24 @@
           },
           "duration": {
             "type": "number",
-            "description": "Video duration (seconds), valid range 2-15. In reference-video mode, each reference video can be up to 10 seconds long. Pre-charging is based on `duration`; the final charge follows the actual generated video length.",
+            "description": "Video duration in seconds (integer)\n\n**Range:**\n- Without `video_urls`: `2 ~ 15`, default `5`\n- With `video_urls`: `2 ~ 10` (capped at 10 seconds)\n\n**Billing:** based on the actual generated video duration",
             "minimum": 2,
             "maximum": 15,
+            "default": 5,
             "example": 5
           },
           "seed": {
             "type": "integer",
-            "description": "Random seed for reproducible generation results",
+            "description": "Random seed, defaults to random\n\n**Notes:**\n- Range: `1` ~ `2147483647`\n- Fixing the seed reduces variation when iterating on prompts and improves reproducibility",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts. Default is `true`",
-            "default": true,
-            "example": true
+            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts.\n\n**Note:** Default is `false`. Omitting the field or sending `false` will not trigger rewriting; explicitly send `true` to enable.",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",
@@ -301,7 +361,7 @@
             "enum": [
               "video.generation.task"
             ],
-            "description": "Task type"
+            "description": "Specific task type"
           },
           "progress": {
             "type": "integer",
@@ -323,7 +383,7 @@
           },
           "task_info": {
             "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Video task details"
+            "description": "Detailed video task information"
           },
           "type": {
             "type": "string",
@@ -374,7 +434,7 @@
           },
           "credits_reserved": {
             "type": "number",
-            "description": "Estimated credits consumption",
+            "description": "Estimated credits to be consumed",
             "minimum": 0,
             "example": 5
           },
@@ -416,7 +476,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## All APIs require Bearer Token authentication ##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## All APIs require Bearer Token authentication ##\n\n**Get your API Key:**\n\nVisit the [API Key management page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request headers:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }

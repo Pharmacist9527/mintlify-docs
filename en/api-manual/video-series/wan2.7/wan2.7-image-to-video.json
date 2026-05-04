@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "wan2.7-image-to-video API",
-    "description": "Generate videos from images using the WAN2.7 model, supporting first/last frame images, reference video clips, and audio-driven generation",
+    "description": "Generate videos from images using the WAN2.7 model. Supports first-frame / last-frame images, video continuation clips, and audio-driven generation",
     "license": {
       "name": "MIT"
     },
@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-image-to-video API",
-        "description": "- WAN2.7 (wan2.7-image-to-video) model supports image-to-video generation\n- Supports the following 6 material combinations, invalid combinations will return an error:\n  1. First frame image (`image_start`)\n  2. First frame image + audio (`image_start` + `audio_url`)\n  3. First frame image + last frame image (`image_start` + `image_end`)\n  4. First frame image + last frame image + audio (`image_start` + `image_end` + `audio_url`)\n  5. Video continuation (`video_urls`)\n  6. Video continuation + last frame image (`video_urls` + `image_end`)\n- Note: `image_start` and `video_urls` are mutually exclusive; `video_urls` cannot be used with `audio_url` simultaneously\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "description": "- WAN2.7 (wan2.7-image-to-video) model supports image-to-video generation with multimodal inputs (image / audio / video)\n- Choose one of three generation modes via the `generation_mode` parameter:\n  - `first_frame`: **First-frame to video** — generate a video starting from the given first frame, optional driving audio\n  - `first_last_frame`: **First-and-last-frame to video** — generate a video by interpolating between the first and last frames, optional driving audio\n  - `video_continuation`: **Video continuation** — continue an input video clip; an optional ending frame is allowed (no driving audio)\n- `generation_mode` is optional (backward compatible); if omitted, an appropriate mode will be selected automatically based on the materials in the request\n- Valid material combinations (any other combination will be rejected):\n  1. `image_start` (first frame)\n  2. `image_start` + `audio_urls` (first frame + driving audio)\n  3. `image_start` + `image_end` (first + last frame)\n  4. `image_start` + `image_end` + `audio_urls` (first + last frame + driving audio)\n  5. `video_urls` (video continuation)\n  6. `video_urls` + `image_end` (video continuation + last frame)\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
         "operationId": "createWan27ImageToVideoGeneration",
         "tags": [
           "Video Generation"
@@ -36,12 +36,46 @@
                 "$ref": "#/components/schemas/Wan27ImageToVideoRequest"
               },
               "examples": {
-                "image_to_video": {
-                  "summary": "First Frame Image to Video",
+                "first_frame": {
+                  "summary": "First-frame to video",
                   "value": {
                     "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_frame",
                     "prompt": "A cat playing piano",
                     "image_start": "https://example.com/first_frame.jpg"
+                  }
+                },
+                "first_frame_with_audio": {
+                  "summary": "First frame + driving audio",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_frame",
+                    "prompt": "A young man performing an English rap",
+                    "image_start": "https://example.com/first_frame.jpg",
+                    "audio_urls": [
+                      "https://example.com/rap.mp3"
+                    ]
+                  }
+                },
+                "first_last_frame": {
+                  "summary": "First-and-last-frame to video",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "first_last_frame",
+                    "prompt": "Camera gradually rises from eye level to a top-down view",
+                    "image_start": "https://example.com/first_frame.png",
+                    "image_end": "https://example.com/last_frame.png"
+                  }
+                },
+                "video_continuation": {
+                  "summary": "Video continuation",
+                  "value": {
+                    "model": "wan2.7-image-to-video",
+                    "generation_mode": "video_continuation",
+                    "prompt": "A girl takes a selfie in front of a mirror, then leaves home with her backpack",
+                    "video_urls": [
+                      "https://example.com/clip.mp4"
+                    ]
                   }
                 }
               }
@@ -111,7 +145,7 @@
             }
           },
           "403": {
-            "description": "Access denied",
+            "description": "No access permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -181,28 +215,38 @@
             ],
             "example": "wan2.7-image-to-video"
           },
+          "generation_mode": {
+            "type": "string",
+            "description": "Generation mode that determines which material combinations are valid. **Explicitly specifying it is recommended**\n\n**Values:**\n- `first_frame`: First-frame to video. Required: `image_start`. Optional: `audio_urls`. Not accepted: `image_end`, `video_urls`\n- `first_last_frame`: First-and-last-frame to video. Required: `image_start` + `image_end`. Optional: `audio_urls`. Not accepted: `video_urls`\n- `video_continuation`: Video continuation. Required: `video_urls[0]`. Optional: `image_end` (used as ending frame). Not accepted: `image_start`, `audio_urls`\n\n**Backward-compatible behavior:** when `generation_mode` is omitted, an appropriate mode will be selected automatically based on the materials in the request; explicit specification is recommended to avoid ambiguity",
+            "enum": [
+              "first_frame",
+              "first_last_frame",
+              "video_continuation"
+            ],
+            "example": "first_frame"
+          },
           "prompt": {
             "type": "string",
-            "description": "Text prompt describing the video content to generate, limited to 5000 characters",
+            "description": "Text prompt for video generation. Supports both Chinese and English; each character/letter counts as 1, with overflow auto-truncated. Maximum length: 5000 characters",
             "maxLength": 5000,
             "example": "A cat playing piano"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "Negative prompt describing content to avoid in the video, limited to 500 characters",
+            "description": "Negative prompt describing what should not appear in the video. Supports both Chinese and English. Maximum length 500 characters; overflow is auto-truncated",
             "maxLength": 500,
             "example": "Blurry, low quality"
           },
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "First frame image URL (first_frame), mutually exclusive with video_urls\n\n**Image Restrictions:**\n- Formats: JPEG, JPG, PNG (transparent channels not supported), BMP, WEBP\n- Resolution: Width and height range `[240, 8000]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `20MB`",
+            "description": "First-frame image URL\n\n**Mode constraints:**\n- `first_frame` mode: **required**\n- `first_last_frame` mode: **required**\n- `video_continuation` mode: **not allowed**\n\n**Image limits:**\n- Formats: JPEG, JPG, PNG (transparency not supported), BMP, WEBP\n- Resolution: width and height in `[240, 8000]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `20MB`",
             "example": "https://example.com/first_frame.jpg"
           },
           "image_end": {
             "type": "string",
             "format": "uri",
-            "description": "Last frame image URL (last_frame), can be used with image_start or video_urls, cannot be used alone\n\n**Image Restrictions:**\n- Formats: JPEG, JPG, PNG (transparent channels not supported), BMP, WEBP\n- Resolution: Width and height range `[240, 8000]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `20MB`",
+            "description": "Ending-frame image URL\n\n**Mode constraints:**\n- `first_last_frame` mode: **required**\n- `video_continuation` mode: optional (acts as the ending frame for the continuation)\n- `first_frame` mode: **not allowed** (use `first_last_frame` if both first and last frames are needed)\n\n**Image limits:**\n- Formats: JPEG, JPG, PNG (transparency not supported), BMP, WEBP\n- Resolution: width and height in `[240, 8000]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `20MB`",
             "example": "https://example.com/last_frame.jpg"
           },
           "video_urls": {
@@ -211,14 +255,23 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "Video continuation URL array (first_clip), only video_urls[0] is used. Mutually exclusive with image_start, cannot be used with audio_url simultaneously\n\n**Video Restrictions:**\n- Formats: mp4, mov\n- Duration: `2~10` seconds\n- Resolution: Width and height range `[240, 4096]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `100MB`\n\n**Continuation Details:**\n- The model will continue generating based on the video content, with the continuation duration upper limit controlled by the duration parameter\n- For example: when duration=15, if the input video is 3 seconds, the model will generate 12 additional seconds, resulting in a total output video of 15 seconds, billed at 15 seconds",
-            "example": ["https://example.com/clip.mp4"]
+            "description": "Video continuation URL array. **Only 1 element is supported**\n\n**Mode constraints:**\n- `video_continuation` mode: **required**\n- `first_frame` / `first_last_frame` mode: **not allowed**\n- Cannot be combined with `audio_urls`\n\n**Video limits:**\n- Formats: mp4, mov\n- Duration: `2 ~ 10` seconds (length of the input clip itself)\n- Resolution: width and height in `[240, 4096]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `100MB`\n\n**Continuation duration rules:**\n- `duration` represents the **total final output video length** (input clip + model-generated continuation)\n- Generated continuation length = `duration` − input video length\n- `duration` must be ≥ input video length\n- Billing is based on the total final output length (i.e. `duration`)\n\n**Examples:**\n\n| Input clip length | duration | Continuation generated | Final output | Billed |\n| --- | --- | --- | --- | --- |\n| 3s | 15 | 12s | 15s | 15s |\n| 5s | 10 | 5s | 10s | 10s |\n| 8s | 8 | 0s (input only) | 8s | 8s |",
+            "example": [
+              "https://example.com/clip.mp4"
+            ]
           },
-          "audio_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Audio file URL (driving_audio), only available in first frame image mode, cannot be used with video_urls simultaneously\n\n**Format Requirements:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `2~30` seconds\n- File size: Up to `15MB`\n\n**Overflow Handling:**\n- If the audio length exceeds the `duration` value, the first N seconds will be automatically extracted, and the rest will be discarded\n- If the audio length is shorter than the video duration, the portion exceeding the audio length will be silent. For example, if the audio is 3 seconds and the video duration is 5 seconds, the output video will have sound for the first 3 seconds and be silent for the last 2 seconds",
-            "example": "https://example.com/audio.mp3"
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Driving audio URL array. **Currently supports only 1 element**. The model will use this audio as the driving source for video generation (e.g. lip sync, motion alignment)\n\n**Mode constraints:**\n- `first_frame` mode: optional\n- `first_last_frame` mode: optional\n- `video_continuation` mode: **not allowed** (cannot be combined with `video_urls`)\n\n**Format requirements:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `2 ~ 30` seconds\n- File size: up to `15MB`\n\n**Truncation handling:**\n- If audio length exceeds `duration`, the first N seconds are extracted and the rest discarded\n- If audio length is shorter than the video duration, the remaining portion is silent. For example: if audio is 3s and video duration is 5s, the first 3s have sound and the last 2s are silent",
+            "example": [
+              "https://example.com/audio.mp3"
+            ]
           },
           "quality": {
             "type": "string",
@@ -232,7 +285,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "Video duration (seconds), range 2-15\n\n**Note:**\n- Supports any integer value between `2~15` seconds\n- Each request will be pre-charged based on the `duration` value, actual charge is based on the generated video duration",
+            "description": "Video duration in seconds (integer). Range `2 ~ 15`, default `5`\n\n**Meaning:**\n- `first_frame` / `first_last_frame` modes: total length of the generated video\n- `video_continuation` mode: total length of the final output video (= original input clip + model-generated continuation)\n\n**Additional constraints in `video_continuation` mode:**\n- `duration` must be **≥ input video length** (otherwise an error is returned)\n- Generated continuation length = `duration` − input video length\n- When `duration` equals the input video length, no continuation is generated and the input clip is returned as-is\n- See the continuation duration rules and examples in the `video_urls` field for details\n\n**Billing:** based on the actual generated video duration",
             "minimum": 2,
             "maximum": 15,
             "default": 5,
@@ -240,14 +293,16 @@
           },
           "seed": {
             "type": "integer",
-            "description": "Random seed for reproducible generation results",
+            "description": "Random seed, defaults to random\n\n**Notes:**\n- Range: `1` ~ `2147483647`\n- Fixing the seed reduces variation when iterating on prompts and improves reproducibility",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts. Default is `true`",
-            "default": true,
-            "example": true
+            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts.\n\n**Note:** Default is `false`. Omitting the field or sending `false` will not trigger rewriting; explicitly send `true` to enable.",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",
@@ -280,7 +335,7 @@
             "enum": [
               "video.generation.task"
             ],
-            "description": "Task type"
+            "description": "Specific task type"
           },
           "progress": {
             "type": "integer",
@@ -302,7 +357,7 @@
           },
           "task_info": {
             "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Video task details"
+            "description": "Detailed video task information"
           },
           "type": {
             "type": "string",
@@ -353,7 +408,7 @@
           },
           "credits_reserved": {
             "type": "number",
-            "description": "Estimated credits consumption",
+            "description": "Estimated credits to be consumed",
             "minimum": 0,
             "example": 5
           },
@@ -395,7 +450,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## All APIs require Bearer Token authentication ##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## All APIs require Bearer Token authentication ##\n\n**Get your API Key:**\n\nVisit the [API Key management page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request headers:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }

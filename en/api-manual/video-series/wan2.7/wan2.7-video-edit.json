@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-video-edit API",
-        "description": "- WAN2.7 (wan2.7-video-edit) model supports video editing mode\n- Must upload 1 video, optionally upload up to 4 reference images\n- Supports preserving original video audio or automatic audio processing\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly\n- **Billing:** Based on combined input video duration + output video duration. Only charged upon successful generation; no charge for failures",
+        "description": "- WAN2.7 (wan2.7-video-edit) model supports video editing for **instruction-based editing** and **video transfer** tasks\n- **Required:** upload exactly 1 video (`video_urls`); optionally upload up to 4 reference images (`image_urls`)\n- Two usage patterns:\n  - **Instruction-only editing:** provide `video_urls` + `prompt` (e.g. style change, replacing clothing)\n  - **Instruction + reference images:** provide `video_urls` + `image_urls` + `prompt` (e.g. region replacement using elements from reference images)\n- Audio handling: controlled via `keep_original_sound` (`true` keeps original audio; `false` lets the model handle audio intelligently)\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly\n- **Billing:** charged based on \"input video duration + output video duration\"; only successful generations are billed, failed tasks are free",
         "operationId": "createWan27VideoEditGeneration",
         "tags": [
           "Video Generation"
@@ -36,13 +36,26 @@
                 "$ref": "#/components/schemas/Wan27VideoEditRequest"
               },
               "examples": {
-                "video_edit": {
-                  "summary": "Video Edit",
+                "instruction_edit": {
+                  "summary": "Instruction-only editing (style change)",
                   "value": {
                     "model": "wan2.7-video-edit",
-                    "prompt": "A cat playing piano",
+                    "prompt": "Convert the entire scene to a clay-style look",
                     "video_urls": [
                       "https://example.com/source.mp4"
+                    ]
+                  }
+                },
+                "instruction_with_reference": {
+                  "summary": "Instruction + reference image (region replacement)",
+                  "value": {
+                    "model": "wan2.7-video-edit",
+                    "prompt": "Replace the girl's clothes in the video with the clothes from the reference image",
+                    "video_urls": [
+                      "https://example.com/source.mp4"
+                    ],
+                    "image_urls": [
+                      "https://example.com/clothes.png"
                     ]
                   }
                 }
@@ -113,7 +126,7 @@
             }
           },
           "403": {
-            "description": "Access denied",
+            "description": "No access permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -186,12 +199,13 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Text prompt describing the desired video editing effect",
-            "example": "A cat playing piano"
+            "description": "Text prompt describing the desired editing effect. Supports Chinese and English; each character/letter counts as 1, with overflow auto-truncated. Maximum length 5000 characters",
+            "maxLength": 5000,
+            "example": "Dress the character in flashy clothes and put on the hat from the reference image"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "Negative prompt describing content to avoid in the video, limited to 500 characters",
+            "description": "Negative prompt describing what should not appear in the video. Supports both Chinese and English. Maximum length 500 characters; overflow is auto-truncated",
             "maxLength": 500,
             "example": "Blurry, low quality"
           },
@@ -201,10 +215,12 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "Source video URL array, must provide exactly 1 video\n\n**Video Restrictions:**\n- Formats: mp4, mov\n- Duration: `2~10` seconds\n- Resolution: Width and height range `[240, 4096]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `100MB`",
+            "description": "Source video URL array. **Exactly 1 video is required**\n\n**Video limits:**\n- Formats: mp4, mov\n- Duration: `2 ~ 10` seconds\n- Resolution: width and height in `[240, 4096]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `100MB`",
             "minItems": 1,
             "maxItems": 1,
-            "example": ["https://example.com/source.mp4"]
+            "example": [
+              "https://example.com/source.mp4"
+            ]
           },
           "image_urls": {
             "type": "array",
@@ -212,13 +228,15 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "Reference image URL array, up to 4 images. Note: if the image field is also provided, it counts toward the 4-image limit\n\n**Image Restrictions:**\n- Formats: JPEG, JPG, PNG (transparent channels not supported), BMP, WEBP\n- Resolution: Width and height range `[240, 8000]` pixels\n- Aspect ratio: 1:8 to 8:1\n- File size: Up to `20MB`",
+            "description": "Reference image URL array, up to 4 images. Used for the \"instruction + reference image\" pattern, e.g. replacing clothing or props with elements from a reference image\n\n**Image limits:**\n- Formats: JPEG, JPG, PNG (transparency not supported), BMP, WEBP\n- Resolution: width and height in `[240, 8000]` pixels\n- Aspect ratio: 1:8 ~ 8:1\n- File size: up to `20MB`",
             "maxItems": 4,
-            "example": ["https://example.com/ref.jpg"]
+            "example": [
+              "https://example.com/ref.jpg"
+            ]
           },
           "keep_original_sound": {
             "type": "boolean",
-            "description": "Whether to preserve the original video audio. `true` preserves the original audio, `false` auto-processes the audio",
+            "description": "Audio handling for the edited video. Default: `false`\n\n- `false`: Smart mode. The model decides based on `prompt` content — if the prompt mentions audio elements, it may regenerate audio; otherwise it may preserve the original audio of the input video\n- `true`: Force-preserve the original audio of the input video; do not regenerate",
             "default": false,
             "example": true
           },
@@ -234,7 +252,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video aspect ratio (optional, uses original video ratio if not specified)\n\n**Options:**\n- `720p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`\n- `1080p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`",
+            "description": "Video aspect ratio (optional)\n\n**Behavior:**\n- Not provided: video is generated using an aspect ratio close to the input video\n- Provided: video is generated using the specified `aspect_ratio`\n\n**Output resolution per quality tier:**\n\n| Quality | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -246,21 +264,24 @@
           },
           "duration": {
             "type": "number",
-            "description": "Video duration (seconds). Set to `0` to use the original video duration; when explicitly specified, range is 2-10",
+            "description": "Video duration in seconds\n\n**Rules:**\n- Default `0`: keep the input video duration; **no truncation** (only set this field when you want to truncate the input video)\n- When set explicitly, range is `2 ~ 10`: the system truncates the input video starting at 0s up to the specified `duration`",
             "minimum": 0,
             "maximum": 10,
+            "default": 0,
             "example": 0
           },
           "seed": {
             "type": "integer",
-            "description": "Random seed for reproducible generation results",
+            "description": "Random seed, defaults to random\n\n**Notes:**\n- Range: `1` ~ `2147483647`\n- Fixing the seed reduces variation when iterating on prompts and improves reproducibility",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts. Default is `true`",
-            "default": true,
-            "example": true
+            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts.\n\n**Note:** Default is `false`. Omitting the field or sending `false` will not trigger rewriting; explicitly send `true` to enable.",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",
@@ -293,7 +314,7 @@
             "enum": [
               "video.generation.task"
             ],
-            "description": "Task type"
+            "description": "Specific task type"
           },
           "progress": {
             "type": "integer",
@@ -315,7 +336,7 @@
           },
           "task_info": {
             "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Video task details"
+            "description": "Detailed video task information"
           },
           "type": {
             "type": "string",
@@ -366,7 +387,7 @@
           },
           "credits_reserved": {
             "type": "number",
-            "description": "Estimated credits consumption",
+            "description": "Estimated credits to be consumed",
             "minimum": 0,
             "example": 5
           },
@@ -408,7 +429,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## All APIs require Bearer Token authentication ##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## All APIs require Bearer Token authentication ##\n\n**Get your API Key:**\n\nVisit the [API Key management page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request headers:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }

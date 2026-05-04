@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "wan2.7-text-to-video API",
-        "description": "- WAN2.7 (wan2.7-text-to-video) model supports text-to-video generation\n- Supports audio-driven generation via the audio_url parameter\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "description": "- WAN2.7 (wan2.7-text-to-video) model supports text-to-video generation, producing fluent videos from textual prompts\n- **Multi-shot narrative:** Control shot structure via natural language in `prompt`\n  - Single shot: state \"generate a single-shot video\" in the prompt\n  - Multi shot: use \"generate a multi-shot video\" or timestamped shot lists (e.g. \"Shot 1 [0-3s] wide angle: rainy night street\")\n  - Default: when unspecified, the model interprets `prompt` content on its own\n- **Audio handling:**\n  - With `audio_urls`: the model uses the provided audio as the driving source\n  - Without `audio_urls`: the model auto-generates background music or sound effects matching the visual content\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
         "operationId": "createWan27TextToVideoGeneration",
         "tags": [
           "Video Generation"
@@ -36,11 +36,41 @@
                 "$ref": "#/components/schemas/Wan27TextToVideoRequest"
               },
               "examples": {
-                "text_to_video": {
-                  "summary": "Text to Video",
+                "single_shot": {
+                  "summary": "Single-shot text-to-video",
                   "value": {
                     "model": "wan2.7-text-to-video",
-                    "prompt": "A cat playing piano"
+                    "prompt": "A small kitten running under the moonlight",
+                    "aspect_ratio": "16:9",
+                    "duration": 5
+                  }
+                },
+                "multi_shot_storyboard": {
+                  "summary": "Multi-shot storyboard narrative",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "A tense detective chase story. Shot 1 [0-3s] wide angle: rainy night street, neon lights flickering. Shot 2 [3-6s] medium: detective enters an old building. Shot 3 [6-9s] close-up: detective's determined eyes, distant sirens. Shot 4 [9-12s] medium: cautious advance through dim corridor. Shot 5 [12-15s] close-up: discovers key clue, sudden realization.",
+                    "aspect_ratio": "16:9",
+                    "duration": 15
+                  }
+                },
+                "with_audio": {
+                  "summary": "With driving audio",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "A tiny cute cartoon kitten general in golden armor riding a war horse, reciting a classical poem",
+                    "audio_urls": [
+                      "https://example.com/recital.mp3"
+                    ],
+                    "duration": 10
+                  }
+                },
+                "with_negative_prompt": {
+                  "summary": "Using negative prompt",
+                  "value": {
+                    "model": "wan2.7-text-to-video",
+                    "prompt": "A small kitten running under the moonlight",
+                    "negative_prompt": "flowers"
                   }
                 }
               }
@@ -110,7 +140,7 @@
             }
           },
           "403": {
-            "description": "Access denied",
+            "description": "No access permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -183,21 +213,28 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Text prompt describing the video content to generate, limited to 5000 characters",
+            "description": "Text prompt for video generation. Supports both Chinese and English; each character/letter counts as 1, with overflow auto-truncated. Maximum length: 5000 characters\n\n**Multi-shot narrative:** Control shot structure via natural language\n- Single shot: state \"generate a single-shot video\" in the prompt\n- Multi shot: use \"generate a multi-shot video\" or timestamped shot lists (e.g. \"Shot 1 [0-3s]\")",
             "maxLength": 5000,
-            "example": "A cat playing piano"
+            "example": "A small kitten running under the moonlight"
           },
           "negative_prompt": {
             "type": "string",
-            "description": "Negative prompt describing content to avoid in the video, limited to 500 characters",
+            "description": "Negative prompt describing what should not appear in the video. Supports both Chinese and English. Maximum length 500 characters; overflow is auto-truncated",
             "maxLength": 500,
             "example": "Blurry, low quality"
           },
-          "audio_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Audio file URL (driving_audio)\n\n**Format Requirements:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `2~30` seconds\n- File size: Up to `15MB`\n\n**Overflow Handling:**\n- If the audio length exceeds the `duration` value, the first N seconds will be automatically extracted, and the rest will be discarded\n- If the audio length is shorter than the video duration, the portion exceeding the audio length will be silent. For example, if the audio is 3 seconds and the video duration is 5 seconds, the output video will have sound for the first 3 seconds and be silent for the last 2 seconds",
-            "example": "https://example.com/audio.mp3"
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Driving audio URL array (optional). **Currently supports only 1 element**\n\n**Behavior:**\n- Provided: the model uses this audio as the driving source\n- Omitted: the model auto-generates background music or sound effects matching the visual content\n\n**Format requirements:**\n- Supported formats: `wav`, `mp3`\n- Duration range: `2 ~ 30` seconds\n- File size: up to `15MB`\n\n**Truncation handling:**\n- If audio length exceeds `duration`, the first N seconds are extracted and the rest discarded\n- If audio length is shorter than the video duration, the remaining portion is silent. For example: if audio is 3s and video duration is 5s, the first 3s have sound and the last 2s are silent",
+            "example": [
+              "https://example.com/audio.mp3"
+            ]
           },
           "quality": {
             "type": "string",
@@ -211,7 +248,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video aspect ratio, defaults to `16:9`\n\n**Options:**\n- `720p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`\n- `1080p`: Supports `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`",
+            "description": "Video aspect ratio, defaults to `16:9`\n\n**Output resolution per quality tier:**\n\n| Quality | 16:9 | 9:16 | 1:1 | 4:3 | 3:4 |\n| --- | --- | --- | --- | --- | --- |\n| 720p | 1280×720 | 720×1280 | 960×960 | 1104×832 | 832×1104 |\n| 1080p | 1920×1080 | 1080×1920 | 1440×1440 | 1648×1248 | 1248×1648 |",
             "enum": [
               "16:9",
               "9:16",
@@ -224,7 +261,7 @@
           },
           "duration": {
             "type": "number",
-            "description": "Video duration (seconds), range 2-15\n\n**Note:**\n- Supports any integer value between `2~15` seconds\n- Each request will be pre-charged based on the `duration` value, actual charge is based on the generated video duration",
+            "description": "Video duration in seconds, range 2-15\n\n**Note:**\n- Any integer value between `2~15` seconds is supported\n- Final billing is based on the actual generated video duration",
             "minimum": 2,
             "maximum": 15,
             "default": 5,
@@ -232,14 +269,16 @@
           },
           "seed": {
             "type": "integer",
-            "description": "Random seed for reproducible generation results",
+            "description": "Random seed, defaults to random\n\n**Notes:**\n- Range: `1` ~ `2147483647`\n- Fixing the seed reduces variation when iterating on prompts and improves reproducibility",
+            "minimum": 1,
+            "maximum": 2147483647,
             "example": 42
           },
           "prompt_extend": {
             "type": "boolean",
-            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts. Default is `true`",
-            "default": true,
-            "example": true
+            "description": "Whether to enable intelligent prompt rewriting. When enabled, a large model will optimize the prompt, which significantly improves results for simple or insufficiently descriptive prompts.\n\n**Note:** Default is `false`. Omitting the field or sending `false` will not trigger rewriting; explicitly send `true` to enable.",
+            "default": false,
+            "example": false
           },
           "callback_url": {
             "type": "string",
@@ -272,7 +311,7 @@
             "enum": [
               "video.generation.task"
             ],
-            "description": "Task type"
+            "description": "Specific task type"
           },
           "progress": {
             "type": "integer",
@@ -294,7 +333,7 @@
           },
           "task_info": {
             "$ref": "#/components/schemas/VideoTaskInfo",
-            "description": "Video task details"
+            "description": "Detailed video task information"
           },
           "type": {
             "type": "string",
@@ -345,7 +384,7 @@
           },
           "credits_reserved": {
             "type": "number",
-            "description": "Estimated credits consumption",
+            "description": "Estimated credits to be consumed",
             "minimum": 0,
             "example": 5
           },
@@ -387,7 +426,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "## All APIs require Bearer Token authentication ##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+        "description": "## All APIs require Bearer Token authentication ##\n\n**Get your API Key:**\n\nVisit the [API Key management page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request headers:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
       }
     }
   }
