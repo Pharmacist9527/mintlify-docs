@@ -1,0 +1,862 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MiniMax-M3 Anthropic 兼容接口",
+    "description": "MiniMax-M3 通过 Anthropic Messages 协议调用的完整 API 参考。\n\n**兼容说明**：\n- 路径：`/v1/messages`（Anthropic 标准路径）\n- 请求 / 响应结构与 Anthropic Messages API 一致\n- 已支持字段：`model` `messages`（必填）`system` `max_tokens` `temperature` `top_p` `stream` `thinking` `tools` `tool_choice` `metadata`\n\n**模型能力**：\n- 最大输出：**524,288 tokens**（512K），推荐 **131,072 tokens**（128K）\n- 思考模式：`thinking` 默认 `adaptive`，思考内容通过 `content[type=thinking]` block 返回\n- 多模态输入：支持文本与图像内容块",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "MiniMax-M3 Messages 接口（Anthropic 兼容）",
+        "description": "- 使用 Anthropic Messages 协议调用 MiniMax-M3 模型\n- 请求 / 响应结构与 Anthropic API 对齐\n- **多模态对话**：`content` 支持文本与图像内容块\n- **系统提示词**：通过顶层 `system` 传入\n- **思考模式**：`thinking` 对象控制；思考内容通过 `content[type=thinking]` block 返回\n- **流式输出**：SSE 事件流\n- **工具调用**：兼容 Anthropic `tool_use` / `tool_result` 流程",
+        "operationId": "createMessageMiniMaxM3",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小可运行请求",
+                  "value": {
+                    "model": "MiniMax-M3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "你好，世界"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "含 system 提示词 + 多轮",
+                  "value": {
+                    "model": "MiniMax-M3",
+                    "max_tokens": 2048,
+                    "system": "你是一名资深中文技术编辑。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "用三句话介绍 MiniMax-M3。"
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "图像理解（多模态内容块）",
+                  "value": {
+                    "model": "MiniMax-M3",
+                    "max_tokens": 500,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "这张图片里有什么？"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "关闭思考模式",
+                  "value": {
+                    "model": "MiniMax-M3",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一句话：日本首都是？"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "工具调用（Anthropic tool_use 风格）",
+                  "value": {
+                    "model": "MiniMax-M3",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "查询旧金山的天气并告诉我"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "查询指定地点的当前天气",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "城市与州 / 国家，例如：San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "流式输出（SSE）",
+                  "value": {
+                    "model": "MiniMax-M3",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "写一首关于春天的短诗"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "消息对象",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_adaptive": {
+                    "summary": "thinking 自适应（含 thinking content block）",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "用户问的是日本首都，这是基础地理知识问题，答案是东京，直接给出即可。",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "日本的首都是**东京**。"
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 7,
+                        "output_tokens": 77,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "触发工具调用（stop_reason=tool_use）",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e8",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "好的，我来为您查询旧金山的天气情况。"
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "location": "San Francisco, US"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 35,
+                        "output_tokens": 68,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "身份验证错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模型或资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "速率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "网关错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "要调用的模型",
+            "enum": [
+              "MiniMax-M3"
+            ],
+            "example": "MiniMax-M3"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "指定生成内容长度的上限（Token 数）\n\n**说明**：\n- MiniMax-M3 推荐 **131,072**（128K），上限 **524,288**（512K）\n- thinking 产生的 token 也计入该上限\n- 超过上限的内容会被截断；如果生成因 `length` 原因中断，请尝试调高此值",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "对话消息列表，按轮次 user / assistant 交替\n\n**说明**：\n- 至少包含 1 条消息\n- 最后一条消息通常为 `role=user`",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "系统提示词，用于设定 AI 角色与行为\n\n**说明**：\n- 支持字符串或字符串数组\n- 不同于 OpenAI 端点的 `system` 消息，Anthropic 端点使用顶层 `system` 字段",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "内容块数组格式的系统提示词。text 块可携带 cache_control",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "采样温度\n\n**说明**：\n- 范围 `[0, 2]`\n- 默认 1；值越高越发散，越低越确定",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核采样阈值\n\n**说明**：\n- 范围 `[0, 1]`，MiniMax-M3 默认 0.95\n- 建议不要同时调整 temperature 与 top_p",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否以 SSE 流式返回\n\n- `true`：Server-Sent Events 流式返回\n- `false`：完整响应后一次性返回（默认）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "控制深度思考。启用 thinking 后，多轮对话中需要原样回带 thinking 块\n\n**说明**：\n- **默认 `adaptive`**：模型根据问题难度自适应决定是否深度思考\n- 启用时响应 `content` 数组中会出现 `type=\"thinking\"` 的推理过程 block（按输出 token 计费）",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "adaptive"
+                ],
+                "description": "- `adaptive`：模型自主判断是否需要思考（推荐默认值）\n- `disabled`：关闭思考，直接回答",
+                "default": "adaptive"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "工具定义列表\n\n**说明**：\n- 遵循 Anthropic tool 定义规范\n- `input_schema` 使用 JSON Schema 对象",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "工具选择策略。仅支持 auto 和 none",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`：模型自动决定是否调用工具（默认，当提供 tools 时）\n- `none`：禁止调用工具"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "请求元数据",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "代表终端用户的唯一标识符，可用于按用户维度做监控与滥用检测（建议使用散列后的 ID）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "user_system",
+              "group",
+              "sample_message_user",
+              "sample_message_ai"
+            ],
+            "description": "消息发送方角色。MiniMax-M3 使用 user / assistant 交替消息\n\n- `user`：用户消息（也用于回传 `tool_result` block）\n- `assistant`：助手历史回复（可含 `text` / `thinking` / `tool_use` blocks）\n\n⚠️ **不接受 `system`**：系统提示请走顶层 `system` 字段。"
+          },
+          "content": {
+            "description": "消息内容\n\n**说明**：\n- 纯文本时直接传字符串\n- 结构化时传 content block 数组（`text` / `image` / `video` / `tool_use` / `tool_result` / `thinking`）",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "消息内容块\n\n**支持 type**：\n- `text`：文本内容\n- `image`：图片输入（仅 MiniMax-M3）\n- `video`：视频输入（仅 MiniMax-M3）\n- `tool_use`：回带上一轮 assistant 工具调用\n- `tool_result`：工具执行结果\n- `thinking`：回带上一轮 assistant 思考内容\n- `mid_conv_system`：对话中途插入的系统指令",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "tool_use",
+              "tool_result",
+              "thinking",
+              "mid_conv_system"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "当 type=`text` 时的文本内容"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaSource",
+            "description": "图片或视频来源，type=`image` 或 type=`video` 时使用（仅 MiniMax-M3）"
+          },
+          "id": {
+            "type": "string",
+            "description": "工具调用 ID（tool_use 时必填）"
+          },
+          "name": {
+            "type": "string",
+            "description": "工具名（tool_use 时必填）"
+          },
+          "input": {
+            "type": "object",
+            "description": "工具入参（tool_use 时，JSON 对象）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "对应的工具调用 ID（tool_result 时必填，回填到 tool_use.id）"
+          },
+          "content": {
+            "description": "工具执行结果（tool_result），字符串或 content block 数组",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "回带的 assistant 思考过程内容（type=`thinking` 时使用）"
+          },
+          "signature": {
+            "type": "string",
+            "description": "回带的 thinking 内容签名，多轮续写时需原样回带"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "工具名称\n\n**说明**：\n- 只允许 `a-zA-Z0-9_-`\n- 最大 64 字符"
+          },
+          "description": {
+            "type": "string",
+            "description": "工具功能描述，供模型判断何时调用"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "工具入参的 JSON Schema 对象\n\n**说明**：\n- `type` 必须为 `object`\n- 应声明 `properties` 与 `required`"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "提示词缓存标记",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "缓存标记类型"
+          }
+        }
+      },
+      "MediaSource": {
+        "type": "object",
+        "description": "图片或视频内容块的媒体来源\n\n- 图片支持 JPEG / PNG / GIF / WEBP，单张最大 10 MB\n- 视频支持 MP4 / AVI / MOV / MKV，URL / Base64 最大 50 MB",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "url"
+            ],
+            "description": "媒体来源类型"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "base64 输入时必填，例如 `image/png` 或 `video/mp4`"
+          },
+          "data": {
+            "type": "string",
+            "description": "base64 编码后的媒体字节"
+          },
+          "url": {
+            "type": "string",
+            "description": "公网 URL；视频还可使用形如 `mm_file://{file_id}` 的文件引用"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "low",
+              "default",
+              "high"
+            ],
+            "default": "default",
+            "description": "理解精细度，默认 default。分辨率越高 token 消耗越多"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0.2,
+            "maximum": 5,
+            "default": 1,
+            "description": "视频抽帧频率，默认 1，范围 [0.2, 5]。取值越高对画面变化越敏感、token 花费越高"
+          },
+          "max_long_side_pixel": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "图片或视频帧最长边像素约束"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic 风格的消息响应",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "消息唯一 ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "响应对象类型"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型",
+            "example": "MiniMax-M3"
+          },
+          "content": {
+            "type": "array",
+            "description": "响应内容块列表\n\n**可能包含的 block type**：\n- `thinking`：推理过程（仅 thinking 生效时）\n- `text`：最终回答文本\n- `tool_use`：模型发起的工具调用",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止原因\n\n- `end_turn`：自然结束\n- `max_tokens`：达到 max_tokens 上限\n- `tool_use`：模型触发工具调用",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "响应中的内容块",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` 时的文本"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` 时的推理过程文本"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` 时的完整性签名，用于多轮上下文校验"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` 时的工具调用 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` 时的工具名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` 时模型生成的 JSON 入参"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用统计（Anthropic 规范）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "输入 token 数（未命中缓存部分）",
+            "example": 7
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "输出 token 数（含 thinking）",
+            "example": 77
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "缓存创建的输入 token 数",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "缓存命中的输入 token 数",
+            "example": 0
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "错误类型（如 invalid_request_error / authentication_error / billing_error 等）"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "请求追踪 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**备注**：虽然 Anthropic 原生 API 使用 `x-api-key` 头，EvoLink 对 `/v1/messages` 统一采用 Bearer Token 鉴权。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 协议接口"
+    }
+  ]
+}
