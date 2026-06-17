@@ -1,0 +1,1290 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GLM-5.2 完整参数文档 (OpenAI 兼容)",
+    "description": "GLM-5.2 对话接口的完整 API 参考。\n\n**模型能力**：\n- 最新旗舰模型，具备复杂推理、超长上下文与极致推理速度\n- 最大输出：**131,072 tokens**（128K），建议不小于 **1,024 tokens**\n- 深度思考：通过 `thinking` 字段开关思维链，`reasoning_effort` 调节推理强度（GLM-5.2 专属）\n- 工具调用：支持 Function Calling、知识库检索、网络搜索、MCP（最多 128 个工具）\n- 流式输出：支持 SSE 流式返回\n- 结构化输出：支持 `text` / `json_object` 两种响应格式",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "GLM-5.2 对话接口（OpenAI 兼容）",
+        "description": "- 使用 OpenAI Chat Completions 协议调用 GLM-5.2 模型\n- 同步处理模式，实时返回对话内容\n- **纯文本对话**：单轮或多轮上下文对话\n- **系统提示词**：通过 `role=system` 消息自定义 AI 的角色和行为\n- **深度思考**：通过 `thinking.type` 开关思维链，`reasoning_effort` 调节推理强度；推理过程通过 `reasoning_content` 返回\n- **流式输出**：支持 SSE 流式返回（`stream=true`）\n- **工具调用**：支持 Function Calling、知识库检索（retrieval）、网络搜索（web_search）、MCP（最多 128 个工具）\n- **结构化输出**：通过 `response_format` 启用 JSON 模式\n\n**流式响应说明**：当 `stream=true` 时，通过 Server-Sent Events 返回，每条消息格式为 `data: {JSON}`，结束时返回 `data: [DONE]`。每个数据块（`ChatCompletionChunk`）包含 `id`、`created`、`model`、`choices`、可选 `usage` 与 `content_filter`；其中 `choices[].delta` 增量返回 `role` / `content` / `reasoning_content` / `tool_calls`，`choices[].finish_reason` 在最后一块给出终止原因。",
+        "operationId": "createChatCompletionGLM52",
+        "tags": [
+          "对话生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "单轮文本对话",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "请介绍一下你自己"
+                      }
+                    ]
+                  }
+                },
+                "multi_turn": {
+                  "summary": "多轮对话（上下文理解）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "什么是 Python？"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Python 是一种高级编程语言……"
+                      },
+                      {
+                        "role": "user",
+                        "content": "它有什么优点？"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "使用系统提示词",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "你是一个专业的 Python 编程助手，用简洁的语言回答问题。"
+                      },
+                      {
+                        "role": "user",
+                        "content": "如何读取文件？"
+                      }
+                    ]
+                  }
+                },
+                "deep_thinking": {
+                  "summary": "开启深度思考并调节推理强度",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一个农夫要带狼、羊和白菜过河，每次只能带一样，如何安全过河？"
+                      }
+                    ],
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "reasoning_effort": "max"
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "关闭深度思考（直接回答）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "用一句话总结相对论。"
+                      }
+                    ],
+                    "thinking": {
+                      "type": "disabled"
+                    }
+                  }
+                },
+                "function_calling": {
+                  "summary": "工具调用（Function Calling）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "北京今天天气怎么样？"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "get_weather",
+                          "description": "查询指定城市的实时天气",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "city": {
+                                "type": "string",
+                                "description": "城市名称，例如：北京"
+                              }
+                            },
+                            "required": [
+                              "city"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "web_search": {
+                  "summary": "启用网络搜索工具",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "帮我查一下最近一周的人工智能新闻"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "web_search",
+                        "web_search": {
+                          "enable": true,
+                          "search_engine": "search_pro",
+                          "count": 10,
+                          "search_recency_filter": "oneWeek"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "json_mode": {
+                  "summary": "JSON 结构化输出",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "请以 JSON 格式输出，包含 name 和 age 两个字段。"
+                      },
+                      {
+                        "role": "user",
+                        "content": "张三，今年 28 岁"
+                      }
+                    ],
+                    "response_format": {
+                      "type": "json_object"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "流式输出（SSE）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "写一首关于春天的短诗"
+                      }
+                    ],
+                    "stream": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "对话生成成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Specified model not found",
+                    "type": "not_found_error",
+                    "param": "model",
+                    "fallback_suggestion": "glm-5.2"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游服务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Upstream AI service unavailable",
+                    "type": "upstream_error",
+                    "fallback_suggestion": "try different model"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "调用的模型代码\n\n- `glm-5.2`：最新旗舰模型，提供复杂推理、超长上下文与极致推理速度",
+            "enum": [
+              "glm-5.2"
+            ],
+            "default": "glm-5.2",
+            "example": "glm-5.2"
+          },
+          "messages": {
+            "type": "array",
+            "description": "对话消息列表，包含当前对话的完整上下文信息\n\n支持四种角色：`system`、`user`、`assistant`、`tool`。不同角色的消息具有不同的字段结构，请选择对应角色查看。至少包含 1 条消息，且不能只包含系统消息或助手消息。",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/AssistantRequestMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessage"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "role",
+                "mapping": {
+                  "system": "#/components/schemas/SystemMessage",
+                  "user": "#/components/schemas/UserMessage",
+                  "assistant": "#/components/schemas/AssistantRequestMessage",
+                  "tool": "#/components/schemas/ToolMessage"
+                }
+              }
+            },
+            "minItems": 1
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否启用流式输出模式\n\n- `false`：模型生成完整响应后一次性返回（默认），适合短文本与批处理\n- `true`：通过 Server-Sent Events（SSE）实时逐块返回，适合聊天与长文本；流式结束时返回 `data: [DONE]`",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "控制是否开启思维链（Chain of Thought）",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "思维链开关\n\n- `enabled`：开启深度思考（默认）\n- `disabled`：关闭深度思考，模型直接回答",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "default": "enabled"
+              },
+              "clear_thinking": {
+                "type": "boolean",
+                "description": "是否清除历史对话轮次中的 `reasoning_content`\n\n- `true`（默认）：忽略/移除历史轮次的 `reasoning_content`，仅用非推理内容（用户/助手可见文本、工具调用与结果等）作为上下文，可降低上下文长度与成本\n- `false`：保留历史轮次的 `reasoning_content` 并随上下文提供给模型（Preserved Thinking）；此时必须在 `messages` 中**完整、未修改、按原顺序**透传历史 `reasoning_content`，缺失、裁剪、改写或重排会导致效果下降或无法生效\n- 注意：该参数只影响跨轮次的历史思考，不改变当前轮是否产生思考",
+                "default": true,
+                "example": true
+              }
+            }
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "description": "控制模型的推理程度（GLM-5.2 专属能力）\n\n**说明**：\n- 仅在 `thinking` 开启时生效，默认 `max`\n- 取值由强到弱：`max` > `xhigh` > `high` > `medium` > `low` > `minimal` > `none`\n\n**GLM-5.2 映射规则**（为与其他协议兼容）：\n- `xhigh` → 等价 `max`\n- `low` / `medium` → 等价 `high`\n- `none` / `minimal` → 放弃思考（不进行深度推理）",
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "minimal",
+              "none"
+            ],
+            "default": "max",
+            "example": "max"
+          },
+          "do_sample": {
+            "type": "boolean",
+            "description": "是否启用采样策略\n\n- `true`（默认）：使用 `temperature` / `top_p` 进行随机采样，输出更多样\n- `false`：总是选择概率最高的词汇（贪心解码），输出更确定，此时 `temperature` 与 `top_p` 被忽略\n\n对需要一致性、可重复性的任务（如代码生成、翻译），建议设置为 `false`",
+            "default": true,
+            "example": true
+          },
+          "temperature": {
+            "type": "number",
+            "format": "float",
+            "description": "采样温度，控制输出的随机性和创造性\n\n**说明**：\n- 取值范围：`[0.0, 1.0]`，限两位小数\n- 较高值（如 0.8）：更随机、更有创意，适合创意写作\n- 较低值（如 0.2）：更稳定、更确定，适合事实问答与代码生成\n- GLM-5.2 默认值：`1.0`\n\n**建议**：不要同时调整 `temperature` 和 `top_p`",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1.0,
+            "example": 1.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "float",
+            "description": "核采样（Nucleus Sampling）参数，是 `temperature` 采样的替代方法\n\n**说明**：\n- 取值范围：`[0.01, 1.0]`，限两位小数\n- 模型只考虑累积概率达到 `top_p` 的候选词汇，例如 0.1 表示只考虑前 10% 概率的词汇\n- 较小值产生更集中、更一致的输出；较大值增加多样性\n- GLM-5.2 默认值：`0.95`\n\n**建议**：不要同时调整 `temperature` 和 `top_p`",
+            "minimum": 0.01,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "模型输出的最大 token 数量限制\n\n**说明**：\n- GLM-5.2 最大支持 **131,072 tokens**（128K）输出长度，建议设置不小于 `1024`\n- 开启 `thinking` 时，思维链 token 也计入该上限\n- 若生成因 `length` 原因被截断，请尝试调高此值",
+            "minimum": 1,
+            "maximum": 131072,
+            "example": 1024
+          },
+          "tools": {
+            "type": "array",
+            "description": "模型可以调用的工具列表\n\n**说明**：\n- 支持函数调用（`function`）、知识库检索（`retrieval`）、网络搜索（`web_search`）、MCP（`mcp`）\n- 最多支持 128 个函数",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FunctionTool"
+                },
+                {
+                  "$ref": "#/components/schemas/RetrievalTool"
+                },
+                {
+                  "$ref": "#/components/schemas/WebSearchTool"
+                },
+                {
+                  "$ref": "#/components/schemas/McpTool"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "function": "#/components/schemas/FunctionTool",
+                  "retrieval": "#/components/schemas/RetrievalTool",
+                  "web_search": "#/components/schemas/WebSearchTool",
+                  "mcp": "#/components/schemas/McpTool"
+                }
+              }
+            },
+            "maxItems": 128
+          },
+          "tool_choice": {
+            "type": "string",
+            "description": "控制模型选择调用哪个函数的方式\n\n**说明**：仅在工具类型为 `function` 时生效，默认且仅支持 `auto`（由模型自动决定是否调用工具）",
+            "enum": [
+              "auto"
+            ],
+            "default": "auto",
+            "example": "auto"
+          },
+          "stop": {
+            "type": "array",
+            "description": "停止词列表\n\n**说明**：\n- 当模型生成文本遇到指定字符串时立即停止生成（停止词本身不包含在返回文本中）\n- 目前仅支持单个停止词，格式为 `[\"stop_word1\"]`，例如 `[\"Human:\"]`",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "example": [
+              "Human:"
+            ]
+          },
+          "response_format": {
+            "type": "object",
+            "description": "指定模型响应输出格式，默认为 `text`\n\n**说明**：\n- `{ \"type\": \"json_object\" }` 启用 JSON 模式，模型返回有效的 JSON 格式数据，适用于结构化数据提取等场景\n- 使用 JSON 模式时，建议在 `system` 或 `user` 消息中明确要求输出 JSON",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "输出格式类型\n\n- `text`：普通文本输出（默认）\n- `json_object`：JSON 格式输出",
+                "enum": [
+                  "text",
+                  "json_object"
+                ],
+                "default": "text"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "请求唯一标识符\n\n**说明**：\n- 由用户端传递，长度 6-64 字符，建议使用 UUID 格式确保唯一性\n- 若未提供，平台将自动生成",
+            "minLength": 6,
+            "maxLength": 64,
+            "example": "req-7f3a2c1e8b9d4f0a"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "终端用户的唯一标识符\n\n**说明**：长度 6-128 字符，建议使用不包含敏感信息的唯一标识，可帮助平台监控和检测滥用行为",
+            "minLength": 6,
+            "maxLength": 128,
+            "example": "user-abc123456"
+          }
+        }
+      },
+      "SystemMessage": {
+        "title": "System Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system"
+            ],
+            "description": "角色标识，固定为 `system`"
+          },
+          "content": {
+            "type": "string",
+            "description": "系统提示词内容，用于设定 AI 的角色和行为"
+          }
+        }
+      },
+      "UserMessage": {
+        "title": "User Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "角色标识，固定为 `user`"
+          },
+          "content": {
+            "type": "string",
+            "description": "用户消息内容（纯文本字符串）"
+          }
+        }
+      },
+      "AssistantRequestMessage": {
+        "title": "Assistant Message",
+        "type": "object",
+        "description": "助手消息，可包含工具调用",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "description": "角色标识，固定为 `assistant`"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "助手消息内容\n\n**说明**：用于多轮对话中传递历史助手回复；当存在 `tool_calls` 时通常为 `null`"
+          },
+          "reasoning_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "历史思维链内容\n\n**说明**：仅当 `thinking.clear_thinking=false`（Preserved Thinking）时需要，将上一轮响应的 `reasoning_content` 原样回传；默认（`clear_thinking=true`）无需回传"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "工具调用列表\n\n用于在多轮对话中传递历史的工具调用信息；提供此字段时 `content` 通常为空",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "工具调用 ID"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "function",
+                    "web_search",
+                    "retrieval"
+                  ],
+                  "description": "工具类型"
+                },
+                "function": {
+                  "type": "object",
+                  "description": "函数调用信息，当 `type` 为 `function` 时不为空",
+                  "required": [
+                    "name",
+                    "arguments"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "函数名称"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "函数参数（JSON 格式字符串）"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ToolMessage": {
+        "title": "Tool Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "tool"
+            ],
+            "description": "角色标识，固定为 `tool`"
+          },
+          "content": {
+            "type": "string",
+            "description": "工具调用的返回结果内容"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "指示此消息对应的工具调用 `ID`（对应 assistant 消息 `tool_calls` 返回的 `id`）"
+          }
+        }
+      },
+      "FunctionTool": {
+        "title": "Function 工具",
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "default": "function",
+            "description": "工具类型，固定为 `function`"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name",
+              "description",
+              "parameters"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "要调用的函数名称\n\n**说明**：必须由 `a-z`、`A-Z`、`0-9` 字符组成，或包含下划线和破折号；最大长度 64 字符",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "description": {
+                "type": "string",
+                "description": "函数功能的描述，供模型选择何时以及如何调用函数"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "函数的输入参数，以 JSON Schema 对象描述"
+              }
+            }
+          }
+        }
+      },
+      "RetrievalTool": {
+        "title": "Retrieval 工具（知识库检索）",
+        "type": "object",
+        "required": [
+          "type",
+          "retrieval"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "retrieval"
+            ],
+            "default": "retrieval",
+            "description": "工具类型，固定为 `retrieval`"
+          },
+          "retrieval": {
+            "type": "object",
+            "required": [
+              "knowledge_id"
+            ],
+            "properties": {
+              "knowledge_id": {
+                "type": "string",
+                "description": "知识库 `ID`，从平台创建或获取"
+              },
+              "prompt_template": {
+                "type": "string",
+                "description": "请求模型的提示模板，包含占位符 `{{ knowledge }}` 和 `{{ question }}` 的自定义模板；不传时使用默认模板"
+              }
+            }
+          }
+        }
+      },
+      "WebSearchTool": {
+        "title": "Web Search 工具（网络搜索）",
+        "type": "object",
+        "required": [
+          "type",
+          "web_search"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search"
+            ],
+            "default": "web_search",
+            "description": "工具类型，固定为 `web_search`"
+          },
+          "web_search": {
+            "type": "object",
+            "required": [
+              "search_engine"
+            ],
+            "properties": {
+              "enable": {
+                "type": "boolean",
+                "description": "是否启用搜索功能，启用时设置为 `true`",
+                "default": false
+              },
+              "search_engine": {
+                "type": "string",
+                "description": "搜索引擎类型，默认 `search_std`",
+                "enum": [
+                  "search_std",
+                  "search_pro",
+                  "search_pro_sogou",
+                  "search_pro_quark"
+                ]
+              },
+              "search_query": {
+                "type": "string",
+                "description": "强制触发搜索的自定义关键词"
+              },
+              "search_intent": {
+                "type": "string",
+                "description": "是否进行搜索意图识别，默认执行\n\n- `true`：执行搜索意图识别，有搜索意图后执行搜索\n- `false`：跳过意图识别，直接执行搜索"
+              },
+              "count": {
+                "type": "integer",
+                "description": "返回结果的条数，范围 `1-50`，默认 `10`（支持 `search_std` / `search_pro` / `search_pro_sogou`）",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 10
+              },
+              "search_domain_filter": {
+                "type": "string",
+                "description": "限定搜索结果的域名白名单（如 `www.example.com`）"
+              },
+              "search_recency_filter": {
+                "type": "string",
+                "description": "限定搜索结果的时间范围，默认 `noLimit`",
+                "enum": [
+                  "oneDay",
+                  "oneWeek",
+                  "oneMonth",
+                  "oneYear",
+                  "noLimit"
+                ],
+                "default": "noLimit"
+              },
+              "content_size": {
+                "type": "string",
+                "description": "控制网页摘要的字数，默认 `medium`\n\n- `medium`：返回摘要信息，满足基础推理需求\n- `high`：最大化上下文，信息更详细",
+                "enum": [
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              },
+              "result_sequence": {
+                "type": "string",
+                "description": "搜索结果返回的位置（在模型回复之前或之后），默认 `after`",
+                "enum": [
+                  "before",
+                  "after"
+                ],
+                "default": "after"
+              },
+              "search_result": {
+                "type": "boolean",
+                "description": "是否返回搜索来源的详细信息，默认 `false`",
+                "default": false
+              },
+              "require_search": {
+                "type": "boolean",
+                "description": "是否强制基于搜索结果才返回回答，默认 `false`",
+                "default": false
+              },
+              "search_prompt": {
+                "type": "string",
+                "description": "用于定制搜索结果处理的 `Prompt`，不传时使用默认模板"
+              }
+            }
+          }
+        }
+      },
+      "McpTool": {
+        "title": "MCP 工具",
+        "type": "object",
+        "required": [
+          "type",
+          "mcp"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "mcp"
+            ],
+            "default": "mcp",
+            "description": "工具类型，固定为 `mcp`"
+          },
+          "mcp": {
+            "type": "object",
+            "required": [
+              "server_label"
+            ],
+            "properties": {
+              "server_label": {
+                "type": "string",
+                "description": "MCP server 标识；连接平台内置 MCP server 时填入对应的 mcp code，且无需填写 `server_url`"
+              },
+              "server_url": {
+                "type": "string",
+                "description": "MCP server 地址"
+              },
+              "transport_type": {
+                "type": "string",
+                "description": "传输类型",
+                "enum": [
+                  "sse",
+                  "streamable-http"
+                ],
+                "default": "streamable-http"
+              },
+              "allowed_tools": {
+                "type": "array",
+                "description": "允许调用的工具集合",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "headers": {
+                "type": "object",
+                "description": "MCP server 需要的鉴权信息"
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "任务 `ID`",
+            "example": "chatcmpl-a6613b56-c61c-94ba-9a9f-43d4cdc7d77a"
+          },
+          "object": {
+            "type": "string",
+            "description": "响应类型",
+            "enum": [
+              "chat.completion"
+            ],
+            "example": "chat.completion"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "请求 `ID`（在请求中提供 `request_id` 时回传）",
+            "example": "req-7f3a2c1e8b9d4f0a"
+          },
+          "created": {
+            "type": "integer",
+            "description": "请求创建时间，`Unix` 时间戳（秒）",
+            "example": 1777021417
+          },
+          "model": {
+            "type": "string",
+            "description": "模型名称",
+            "example": "glm-5.2"
+          },
+          "choices": {
+            "type": "array",
+            "description": "模型响应列表",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "web_search": {
+            "type": "array",
+            "description": "网页搜索相关信息，使用 `web_search` 工具且命中搜索时返回",
+            "items": {
+              "$ref": "#/components/schemas/WebSearchResult"
+            }
+          },
+          "content_filter": {
+            "type": "array",
+            "description": "内容安全相关信息",
+            "items": {
+              "$ref": "#/components/schemas/ContentFilter"
+            }
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "结果索引",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "推理终止原因\n\n- `stop`：自然结束或触发停止词\n- `tool_calls`：模型命中函数（工具调用）\n- `length`：达到 token 长度限制\n- `sensitive`：内容被安全审核拦截（请判断并决定是否撤回公开内容）\n- `network_error`：模型推理异常\n- `model_context_window_exceeded`：超出模型上下文窗口",
+            "enum": [
+              "stop",
+              "tool_calls",
+              "length",
+              "sensitive",
+              "network_error",
+              "model_context_window_exceeded"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "当前对话角色，默认 `assistant`",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "对话文本内容\n\n**说明**：调用工具（`tool_calls`）时可能为 `null`，否则返回模型回复内容",
+            "example": "你好！我是 GLM-5.2，可以帮你完成对话、推理、写作、代码等多种任务。"
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "思维链内容\n\n**说明**：在 `thinking` 开启时返回，记录模型的推理过程",
+            "example": "让我先分析这个问题……"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "生成的工具调用信息（当模型决定调用工具时返回）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "工具调用的唯一标识符"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "工具调用类型",
+                  "enum": [
+                    "function",
+                    "mcp"
+                  ]
+                },
+                "function": {
+                  "type": "object",
+                  "description": "函数调用信息（包含生成的函数名称和 JSON 格式参数）",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "生成的函数名称"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "函数调用参数的 JSON 格式字符串，调用函数前请验证参数"
+                    }
+                  }
+                },
+                "mcp": {
+                  "type": "object",
+                  "description": "MCP 工具调用参数（当 `type=mcp` 时返回）",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "MCP 工具调用唯一标识"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "MCP 调用类型",
+                      "enum": [
+                        "mcp_list_tools",
+                        "mcp_call"
+                      ]
+                    },
+                    "server_label": {
+                      "type": "string",
+                      "description": "MCP server 标签"
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "错误信息"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "调用结束时返回的 Token 使用统计",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "用户输入的 token 数量",
+            "example": 24
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "输出的 token 数量（含思维链 `reasoning_tokens` 部分）",
+            "example": 346
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "token 总数 = prompt_tokens + completion_tokens",
+            "example": 370
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "输入 token 详细分项",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "命中缓存的 token 数量",
+                "example": 0
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "description": "输出 token 详细分项",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "思维链（深度思考）产生的 token 数量，计入 `completion_tokens`",
+                "example": 321
+              }
+            }
+          }
+        }
+      },
+      "WebSearchResult": {
+        "type": "object",
+        "description": "单条网页搜索结果",
+        "properties": {
+          "icon": {
+            "type": "string",
+            "description": "来源网站的图标"
+          },
+          "title": {
+            "type": "string",
+            "description": "搜索结果的标题"
+          },
+          "link": {
+            "type": "string",
+            "description": "搜索结果的网页链接"
+          },
+          "media": {
+            "type": "string",
+            "description": "搜索结果网页的媒体来源名称"
+          },
+          "publish_date": {
+            "type": "string",
+            "description": "网站发布时间"
+          },
+          "content": {
+            "type": "string",
+            "description": "搜索结果网页引用的文本内容"
+          },
+          "refer": {
+            "type": "string",
+            "description": "角标序号"
+          }
+        }
+      },
+      "ContentFilter": {
+        "type": "object",
+        "description": "内容安全信息",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "安全生效环节\n\n- `assistant`：模型推理\n- `user`：用户输入\n- `history`：历史上下文",
+            "enum": [
+              "assistant",
+              "user",
+              "history"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "description": "严重程度 `0-3`，`0` 表示最严重，`3` 表示轻微",
+            "minimum": 0,
+            "maximum": 3
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 状态错误代码"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": "string",
+                "description": "相关参数名称"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "错误时的建议"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "对话生成",
+      "description": "AI 对话生成相关接口"
+    }
+  ]
+}
