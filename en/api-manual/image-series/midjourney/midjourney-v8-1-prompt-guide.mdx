@@ -1,0 +1,292 @@
+---
+title: "Midjourney V8.1 Prompt Parameter Guide"
+description: "All available parameters for the Midjourney V8.1 model in prompts, including value ranges, defaults, dependencies, and conflicts"
+---
+
+## Parameter Overview
+
+| Parameter | Syntax | Type | Range | Default | Description |
+|-----------|--------|------|-------|---------|-------------|
+| Aspect Ratio | `--ar W:H` | Integer ratio | Any positive integer ratio | 1:1 | Image aspect ratio |
+| Chaos | `--c N` | int | 0 - 100 | 0 | Diversity of generated results |
+| Seed | `--seed N` | int | 0 - 4294967295 | Random | Fix seed for reproducible results |
+| Stylize | `--s N` | int | 0 - 1000 | 100 | Artistic style intensity |
+| Experimental | `--exp N` | int | 0 - 100 | 0 | Aesthetic effect, stackable with stylize |
+| Raw Mode | `--raw` | Flag | — | Off | Disable default beautification |
+| Image Weight | `--iw N` | float | 0 - 3 | 1 | Image prompt influence |
+| Style Reference | `--sref [URL]` | URL | — | — | Match visual style |
+| Style Weight | `--sw N` | int | 0 - 1000 | 100 | Style reference strength |
+| Object Reference | `--oref [URL]` | URL | — | — | Place a character/object into the scene |
+| Object Reference Weight | `--ow N` | int | 1 - 1000 | 100 | Object reference strength |
+
+<Note>
+Two settings are **not** written into the prompt — they are controlled through the API instead (writing them in the prompt has no effect):
+
+- **Speed** (`draft` / `fast` / `turbo`) → `model_params.speed`
+- **Output quality** (`standard` / `hd`) → top-level `quality` parameter
+
+`--v` / `--version` is locked to V8.1 and `--niji` is not supported. See [Speed Modes](#speed-modes) and [Output Quality](#output-quality) below.
+</Note>
+
+---
+
+## Basic Parameters
+
+### Aspect Ratio `--ar`
+
+Sets the image aspect ratio. Only integer ratios are supported.
+
+```
+a cat --ar 16:9
+```
+
+Common values: `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `2:3`. Extreme ratios may produce unpredictable results.
+
+### Chaos `--chaos` / `--c`
+
+Controls the diversity of generated results. Higher values produce greater differences among the 4 images.
+
+```
+a cat --c 50
+```
+
+| Range | Effect |
+|-------|--------|
+| 0 | 4 images are very similar (default) |
+| 1-50 | Moderate diversity |
+| 50-100 | Highly random, suitable for creative exploration |
+
+### Stylize `--stylize` / `--s`
+
+Adjusts the balance between realism and artistic style.
+
+```
+a cat --s 500
+```
+
+| Range | Effect |
+|-------|--------|
+| 0-250 | Realistic style, faithful to the prompt |
+| 250-750 | Balanced |
+| 750-1000 | Strong artistic expression, bold colors and composition |
+
+### Experimental `--exp`
+
+Similar to `--stylize` but stackable, generating more detailed, dynamic, and creative images.
+
+```
+a cat --exp 25
+```
+
+- Recommended values: 5, 10, 25, 50, 100
+- Noticeable effect changes from 5-50, diminishing returns from 50-100
+- May override `--stylize` effects above 25-50
+
+### Raw Mode `--raw`
+
+Disables default beautification for stricter adherence to prompt details. Suitable for photorealism or precise control scenarios.
+
+```
+product photo --raw
+```
+
+### Seed `--seed`
+
+Fixes the initial random state for comparison testing.
+
+```
+a cat --seed 23453422
+```
+
+- Range: 0 - 4294967295
+- Same seed + same prompt → similar (not identical) results
+- Not applicable in turbo speed mode
+
+---
+
+## Image Reference Parameters
+
+### Image Prompt
+
+Place image URLs at the **beginning** of the prompt to influence the generated content.
+
+```
+https://example.com/ref.jpg text description --iw 1.5
+```
+
+**Valid combination rules:**
+
+| Combination | Valid? |
+|-------------|--------|
+| 1 image + no text | ❌ Invalid (will error) |
+| 1 image + text description | ✅ Valid |
+| 2+ images + no text | ✅ Valid |
+| 2+ images + text description | ✅ Valid |
+
+- Maximum 20 image prompts
+- Supported formats: `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg`
+- Not available with `draft` speed (use `fast`)
+
+### Image Weight `--iw`
+
+Controls the influence of image prompts on the result. Range 0 - 3, default 1. Higher values produce results closer to the reference image.
+
+```
+https://example.com/ref.jpg watercolor landscape --iw 2.0
+```
+
+### Style Reference `--sref`
+
+Matches the visual style (colors, textures, lighting) of the reference image without copying content. **Must be used with a text prompt**.
+
+```
+a cat --sref https://example.com/style.jpg
+```
+
+- Multiple supported: `--sref URL1 URL2`
+- Random style supported: `--sref random` (returns a numeric code after generation, reusable)
+- Maximum 20 srefs
+
+### Style Weight `--sw`
+
+Controls the influence of the style reference. Range 0 - 1000, default 100.
+
+```
+a cat --sref https://example.com/style.jpg --sw 500
+```
+
+### Object Reference `--oref`
+
+Places characters, objects, vehicles, or non-human creatures from the reference image into a new image. **Must be used with a text prompt**.
+
+```
+a duckling holding a magic wand --oref https://example.com/duck.jpg
+```
+
+<Warning>
+Only one object reference image can be used, and generation takes longer when it is active.
+</Warning>
+
+### Object Reference Weight `--ow`
+
+Range 1 - 1000, default 100. Recommended to keep below 400, otherwise results may be unpredictable. High `--stylize` values may require higher `--ow` to compensate.
+
+```
+duckling --oref https://example.com/duck.jpg --ow 300
+```
+
+---
+
+## Speed Modes
+
+Speed mode is controlled via the API's `model_params.speed` field (do not write `--draft` / `--fast` / `--turbo` in the prompt).
+
+| Mode | Description | Cost |
+|------|-------------|------|
+| `draft` | Returns 24 lightweight 0.5K sketch images in a single run. Image generation endpoint only. | Same multiplier as fast |
+| `fast` | Standard mode (default), 4 images per generation | Standard |
+| `turbo` | Priority / maximum speed, 4 images per generation | ~2x fast |
+
+<Note>
+Unlike V7, V8.1 `draft` mode is **not** half price — it uses the same multiplier as `fast`. Draft returns 24 small sketches in one run; pick the ones you like and re-run them at full quality. Draft cannot be combined with `hd` quality.
+</Note>
+
+---
+
+## Output Quality
+
+Output resolution is controlled via the top-level `quality` parameter, **not** a prompt flag. Do not write `--hd` in the prompt.
+
+| Value | Resolution | Cost |
+|-------|-----------|------|
+| `standard` | Standard resolution (default) | 1x |
+| `hd` | Native 2K HD output | 1.5x |
+
+- The quality multiplier is **combined (multiplied)** with the speed multiplier — e.g. `turbo` + `hd` = 2 × 1.5 = 3x the base.
+- `hd` is **incompatible** with `draft` speed.
+
+---
+
+## Dependencies
+
+The following parameters require other parameters to take effect:
+
+| Parameter | Prerequisite |
+|-----------|-------------|
+| `--sw` | Requires `--sref` |
+| `--ow` | Requires `--oref` |
+| `--iw` | Requires image prompt |
+| `--sref`, `--oref` | Requires text prompt |
+| Single image prompt | Requires text prompt |
+
+---
+
+## Conflicts
+
+| Parameter A | Parameter B | Description |
+|-------------|-------------|-------------|
+| `draft` speed | `hd` quality | Draft mode cannot be combined with HD |
+| `draft` speed | Image prompt / `--sref` / `--oref` | Image references require `fast` (or `turbo`) |
+| Image-only prompt | `--stylize` / `--exp` | Incompatible without text |
+| `--exp` > 25 | `--stylize` | High `--exp` may suppress `--stylize`; lower `--exp` when combining |
+
+---
+
+## Unsupported Parameters in V8.1
+
+| Parameter | Description |
+|-----------|-------------|
+| `--q` / `--quality` | Detail-level flag not exposed on this route (use the top-level `quality` parameter for resolution instead) |
+| `--no` | Negative prompt not exposed on this route |
+| `--weird` / `--w` | Not supported |
+| `--tile` | Not supported |
+| `--sv` | Style version is locked; not exposed |
+| `--stop` | Not supported |
+| `--cref` / `--cw` | Use `--oref` object reference instead |
+| `--relax` | Not supported |
+| `--repeat` / `--r` | Not supported via API |
+| `--p` (personalize) | Not supported via API |
+| `{}` permutations | Not supported via API |
+| `--stealth` / `--public` | Not supported by API (images are not publicly accessible) |
+| `--niji` | A different model, not V8.1 |
+| Multi-prompt `::` | Not supported |
+
+---
+
+## Prompt Format Guidelines
+
+### Basic Structure
+
+```
+[image URL] text description --param1 value1 --param2 value2
+```
+
+### Writing Rules
+
+- Parameters go at the **end** of the text prompt
+- A **space** is required before `--`
+- Do not use punctuation in parameters
+- No text can follow after parameters
+
+### Examples
+
+<CodeGroup>
+```text Correct
+a yellow Persian cat --ar 1:2 --s 500
+```
+
+```text Incorrect
+a yellow Persian cat--ar 2:3          ← missing space before --
+a yellow Persian cat - - ar 2:3       ← space between --
+a yellow Persian cat --ar 2:3, --s 50 ← punctuation in parameters
+a yellow Persian cat --ar 2:3 more description ← text after parameters
+```
+</CodeGroup>
+
+---
+
+## Content Moderation Notice
+
+<Note>
+Midjourney has a built-in content moderation system. If some generated images are filtered by moderation, credits consumed for that request will not be refunded. Please ensure your prompts comply with content guidelines.
+</Note>
