@@ -1,0 +1,415 @@
+---
+title: "Hermes Agent"
+description: "将 Hermes Agent 连接到 EvoLink.AI"
+---
+
+## 概述
+
+![Hermes Agent 界面](/images/integration-guide/hermes/hermes-agent-overview.png)
+
+Hermes Agent 是 [Nous Research](https://nousresearch.com) 推出的开源、终端原生的自主式 AI Agent（命令行工具）。它具备持久记忆、可自创建技能（skills）以及支持 21+ 平台（Telegram、Discord、Slack、WhatsApp、Signal、Matrix 等）的消息网关，可运行在本地、Docker、SSH、Modal 等多种后端环境。
+
+Hermes Agent 支持多种大模型供应商，并且支持**自定义 OpenAI 兼容接口**。通过将 Hermes Agent 与 **EvoLink API** 进行配置集成，您可以在终端中直接使用 EvoLink 提供的 Claude、GPT、Gemini 等系列模型能力，实现统一 Key 的多模型接入。
+
+<Note>
+**注意区分：** Hermes **Agent** 是一个开源的命令行应用（MIT 许可），与 Nous Research 的 Hermes 3 / Hermes 4 **模型**不是同一种工具。本指南介绍的是 Hermes Agent 这个工具。
+</Note>
+
+## 使用前准备
+
+在开始配置之前，请确保已完成以下准备工作：
+
+### 1. 系统与模型要求
+
+- **终端环境**：Hermes Agent 在 macOS、Linux、Windows（原生或 WSL2）的命令行中运行。
+- **模型上下文要求**：Hermes Agent 要求所使用的模型**至少具备 64K（64,000）tokens 的上下文长度**，否则会在启动时被拒绝。这是因为系统提示词和工具定义本身就会占用较大上下文。请选用满足该要求的模型（EvoLink 的 Claude / Gemini 系列均满足）。
+
+### 2. 获取 EvoLink API Key
+
+- 登录 [EvoLink 控制台](https://evolink.ai/dashboard)
+- 在控制台中找到 API Keys，点击"创建新Key"按钮，然后复制生成的 Key
+- API Key 通常以 `sk-` 开头，请妥善保存
+
+## 第一步：安装 Hermes Agent
+
+<Note>
+**提示：** 如果不知道如何打开命令行终端，请查看 [常见问题 - 如何打开命令行终端](#11-如何打开命令行终端？)
+</Note>
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    在终端中执行一键安装脚本：
+
+    ```bash
+    curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+    ```
+
+    <Frame>
+    ![执行 Hermes Agent 一键安装脚本](/images/integration-guide/hermes/hermes-agent-install.png)
+    </Frame>
+
+    安装完成后，重新加载终端配置使命令生效：
+
+    ```bash
+    source ~/.zshrc   # 或 source ~/.bashrc
+    ```
+
+    **首次运行：选择安装方式（Quick 或 Full）**
+
+    首次运行 `hermes` 会进入交互式安装向导，首先询问你希望以哪种方式设置 Hermes：
+
+    <Frame>
+    ![首次启动：选择 Quick Setup 或 Full setup](/images/integration-guide/hermes/hermes-agent-setup.png)
+    </Frame>
+
+    - **Quick Setup（Nous Portal）** —— 通过免费的 Nous OAuth 登录，**无需 API Key**，自动配置模型与工具，最快上手。但它默认使用 Nous Portal 的模型，**并非 EvoLink**；想接入 EvoLink 需在安装完成后再执行 `hermes model` 单独配置（见[第二步](#第二步：配置-evolink-api（quick-用户或重新配置）)）。
+    - **Full setup** —— 由你自己逐项配置供应商、工具与选项（使用自己的 Key）。**想直接接入 EvoLink 的用户推荐这一项**，可在安装过程中一步到位填入 EvoLink 的接口地址与 Key。
+
+    下面演示选择 **Full setup** 接入 EvoLink 的几个关键步骤：
+
+    <Steps>
+      <Step title="选择 Full setup">
+        用方向键选中 **Full setup — configure every provider, tool & option yourself（bring your own keys）**，按回车确认。
+      </Step>
+      <Step title="选择供应商：Custom endpoint">
+        在供应商列表中，向下找到并选择 **custom endpoint（enter URL manually）**。因为 EvoLink 提供的是 **OpenAI 兼容接口**，所以这里走「自定义端点」接入。
+
+        <Frame>
+        ![在供应商列表中选择 custom endpoint](/images/integration-guide/hermes/hermes-agent-full-provider.png)
+        </Frame>
+      </Step>
+      <Step title="填写 EvoLink 接口地址与 API Key">
+        向导会依次提示输入端点信息：
+
+        - **API base URL** 填入：`https://direct.evolink.ai/v1`
+        - **API key** 填入你的 EvoLink API Key（以 `sk-` 开头）
+
+        填写后向导会自动校验端点。若看到类似 `Verified endpoint via https://direct.evolink.ai/v1/models (154 model(s) visible)` 的提示，说明接口连通、Key 有效。随后按提示继续选择默认模型与工具即可。
+
+        <Frame>
+        ![填入 EvoLink 接口地址与 Key 并通过端点校验](/images/integration-guide/hermes/hermes-agent-full-custom-endpoint.png)
+        </Frame>
+      </Step>
+    </Steps>
+
+    **预期结果：** 完成向导后会显示 **Installation Complete（安装完成）** 页面，并列出配置文件位置与常用命令。
+
+    <Frame>
+    ![Hermes Agent 安装完成提示](/images/integration-guide/hermes/hermes-agent-install-complete.png)
+    </Frame>
+
+    <Note>
+    WSL2、以及 Android（Termux）环境同样使用上面的 `install.sh` 脚本安装。
+    </Note>
+  </Tab>
+  <Tab title="Windows">
+    在 **PowerShell** 中执行一键安装命令：
+
+    ```powershell
+    iex (irm https://hermes-agent.nousresearch.com/install.ps1)
+    ```
+
+    **预期结果：** 会看到下载和安装信息，最后显示安装成功提示。
+
+    **如果出错：** 如提示执行策略限制，请以管理员身份打开 PowerShell，或先执行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 后重试。
+
+    安装后首次运行 `hermes` 同样会进入 **Quick / Full** 安装向导，接入 EvoLink 的步骤与 macOS / Linux 标签页一致（推荐选择 **Full setup**，在向导中填入 EvoLink 接口地址与 Key）。
+
+    <Tip>
+    macOS 与 Windows 用户也可以从 [Hermes 官网](https://hermes-agent.nousresearch.com) 下载 Hermes Desktop 桌面安装包，双击安装。
+    </Tip>
+  </Tab>
+</Tabs>
+
+### 检验安装
+
+执行诊断命令检查安装状态：
+
+```bash
+hermes doctor
+```
+
+<Frame>
+![hermes doctor 环境检查结果](/images/integration-guide/hermes/hermes-agent-doctor.png)
+</Frame>
+
+**成功标志：** 显示环境检查结果，未报告安装相关的致命错误。
+
+如需更新到最新版本，可执行 `hermes update`。
+
+## 第二步：配置 EvoLink API（Quick 用户或重新配置）
+
+<Note>
+如果你已经在第一步通过 **Full setup** 完成了 EvoLink 接入并通过端点校验，可以直接跳到[第三步](#第三步：开始使用并验证)。本步骤主要面向选择了 **Quick Setup** 的用户，或需要重新配置 / 切换模型的场景。
+</Note>
+
+Hermes Agent 通过 `~/.hermes/` 目录下的配置文件进行配置，其中：
+
+- `~/.hermes/.env` —— 存放 API Key 等密钥
+- `~/.hermes/config.yaml` —— 存放模型、供应商等非密钥配置
+
+由于 EvoLink 提供 **OpenAI 兼容接口**，我们将 Hermes 的供应商设置为 `custom`（自定义端点），接口地址指向 `https://direct.evolink.ai/v1`。
+
+<Tabs>
+  <Tab title="配置向导（推荐）">
+    Hermes 提供交互式配置向导，适合新用户（尤其是选择了 Quick Setup 的用户）。在终端执行：
+
+    ```bash
+    hermes model
+    ```
+
+    <Steps>
+      <Step title="选择供应商：Custom endpoint">
+        在供应商列表中向下找到并选择 **custom endpoint（enter URL manually）**，以接入 EvoLink 的 OpenAI 兼容端点。
+
+        <Frame>
+        ![hermes model 向导中选择 custom endpoint](/images/integration-guide/hermes/hermes-agent-quick-provider.png)
+        </Frame>
+      </Step>
+      <Step title="填写接口地址、Key 并选择兼容模式">
+        依次填入端点信息，并在校验通过后选择 API 兼容模式：
+
+        - **API base URL** 填入：`https://direct.evolink.ai/v1`
+        - **API key** 填入你的 EvoLink API Key（以 `sk-` 开头）
+        - **API compatibility mode** 选择 **Chat Completions（standard OpenAI-compatible endpoints）**
+
+        看到类似 `Verified endpoint via https://direct.evolink.ai/v1/models (163 model(s) visible)` 即表示接口连通、Key 有效。
+
+        <Frame>
+        ![填入 EvoLink 接口地址与 Key 并选择 Chat Completions 模式](/images/integration-guide/hermes/hermes-agent-quick-custom-endpoint.png)
+        </Frame>
+      </Step>
+      <Step title="选择默认模型">
+        最后填入要作为默认模型的模型名（如 `claude-sonnet-4-6`、`claude-opus-4-8` 等），按回车确认。
+
+        <Frame>
+        ![为 Hermes 选择默认模型](/images/integration-guide/hermes/hermes-agent-quick-custom-endpoint2.png)
+        </Frame>
+      </Step>
+    </Steps>
+
+    向导会自动把 API Key 写入 `~/.hermes/.env`，把模型与端点配置写入 `~/.hermes/config.yaml`，无需手动编辑文件。
+
+    <Tip>
+    `hermes model` 是 Quick 用户接入 EvoLink 最关键的一步。完成后即可直接进入下一步开始使用。
+    </Tip>
+  </Tab>
+  <Tab title="命令行配置">
+    如果你已经拿到了 EvoLink API Key，可以直接用命令行写入配置。
+
+    ### 1. 设置 API Key（写入 .env）
+
+    ```bash
+    hermes config set OPENAI_API_KEY 你的EvoLink_API_Key
+    ```
+
+    ### 2. 设置接口地址与模型（写入 config.yaml）
+
+    ```bash
+    hermes config set OPENAI_BASE_URL https://direct.evolink.ai/v1
+    hermes config set model claude-sonnet-4-6
+    ```
+
+    <Note>
+    `hermes config set` 会自动把 API Key 类的密钥写入 `.env`，把其余配置写入 `config.yaml`，你不需要关心写到哪个文件。
+    </Note>
+
+    完成后可执行 `hermes config` 查看当前配置是否正确。
+  </Tab>
+  <Tab title="手动编辑配置文件">
+    <Note>
+    **进阶用户：** 以下方式直接编辑配置文件。大多数用户推荐使用上面的"配置向导"。
+    </Note>
+
+    ### 1. 编辑 ~/.hermes/.env
+
+    打开（或新建）`~/.hermes/.env`，写入 API Key 与接口地址：
+
+    ```bash
+    OPENAI_API_KEY=你的EvoLink_API_Key
+    OPENAI_BASE_URL=https://direct.evolink.ai/v1
+    ```
+
+    ### 2. 编辑 ~/.hermes/config.yaml
+
+    打开（或新建）`~/.hermes/config.yaml`，配置主模型为自定义端点：
+
+    ```yaml
+    model:
+      provider: custom
+      default: claude-sonnet-4-6
+      base_url: https://direct.evolink.ai/v1
+      api_mode: chat_completions
+    ```
+
+    **⚠️ 重要提示：**
+    - 将 `你的EvoLink_API_Key` 替换为实际的 API Key
+    - `base_url` 必须为 `https://direct.evolink.ai/v1`（EvoLink 的 OpenAI 兼容接口地址）
+    - 不要用中文输入法输入标点符号（如中文冒号 `：`）
+
+    **配置项说明：**
+    - `provider: custom`：使用自定义 OpenAI 兼容端点（即 EvoLink）
+    - `base_url`：EvoLink API 接口地址
+    - `api_mode: chat_completions`：使用标准的 Chat Completions 接口
+    - `default`：默认使用的模型名
+  </Tab>
+</Tabs>
+
+## 第三步：开始使用并验证
+
+### 1. 启动 Hermes Agent
+
+```bash
+hermes          # 经典命令行模式
+```
+
+或使用现代 TUI 界面（推荐）：
+
+```bash
+hermes --tui    # 现代终端界面
+```
+
+### 2. 验证配置
+
+启动后，输入一个简单的提示进行验证，例如：
+
+```
+你是谁
+```
+
+<Frame>
+![Hermes Agent 正常回复验证配置成功](/images/integration-guide/hermes/hermes-agent-cn-who.png)
+</Frame>
+
+**成功标志：**
+- 看到 AI 的回复内容（几行文字）
+- **没有**出现 `401`、`403`、`API key` 无效，或 `context length`（上下文长度）等错误
+
+**如果看到错误：**
+- `401 Unauthorized`：API Key 未设置或无效 → 检查 `~/.hermes/.env` 中的 `OPENAI_API_KEY`
+- `403 Forbidden`：API Key 权限不足或已过期 → 检查 API Key
+- `context length` 相关错误：所选模型上下文不足 64K → 换用满足要求的模型
+- `No API key` / provider not found：未找到 Key → 重新执行 `hermes config set OPENAI_API_KEY ...`
+
+### 3. 恢复历史会话
+
+```bash
+hermes --continue    # 恢复最近一次会话
+hermes -c            # 简写形式
+```
+
+## 进阶配置（可选）
+
+以下配置均编辑 `~/.hermes/config.yaml`，按需使用。
+
+### 备用模型（Fallback）
+
+当主模型请求失败时，Hermes 可自动切换到备用模型，且不丢失当前会话。可配置一条都走 EvoLink 的备用链：
+
+```yaml
+fallback_providers:
+  - provider: custom
+    model: claude-sonnet-4-6
+    base_url: https://direct.evolink.ai/v1
+  - provider: custom
+    model: claude-haiku-4-5-20251001
+    base_url: https://direct.evolink.ai/v1
+```
+
+### 辅助模型（Auxiliary）
+
+Hermes 会用"辅助模型"处理一些次要任务（如上下文压缩、会话标题、网页摘要等）。默认使用主模型，你可以把它们路由到更便宜/更快的模型以节省成本：
+
+```yaml
+auxiliary:
+  title:
+    provider: custom
+    model: claude-haiku-4-5-20251001
+    base_url: https://direct.evolink.ai/v1
+    api_key: 你的EvoLink_API_Key
+  compression:
+    provider: custom
+    model: claude-haiku-4-5-20251001
+    base_url: https://direct.evolink.ai/v1
+    api_key: 你的EvoLink_API_Key
+```
+
+这样主模型专注于复杂推理，轻量任务交给更便宜的模型处理。
+
+## 常见问题
+
+### 1. Hermes Agent 是什么？主要用来做什么？
+Hermes Agent 是 Nous Research 推出的开源、终端原生的自主式 AI Agent。它具备持久记忆和自创建技能能力，可在命令行中完成代码辅助、任务自动化、问答对话等工作，并支持通过消息网关接入多种聊天平台。
+
+### 2. Hermes Agent 和 Hermes 3 / Hermes 4 模型是一回事吗？
+不是。Hermes **Agent** 是一个开源命令行工具；Hermes 3 / Hermes 4 是 Nous Research 的大语言**模型**系列。本指南介绍的是 Hermes Agent 这个工具，它可以接入包括 EvoLink 在内的多种模型供应商。
+
+### 3. 为什么要使用 `provider: custom` 接入 EvoLink？
+因为 EvoLink 提供标准的 **OpenAI 兼容接口**。Hermes 支持多种供应商，其中 `custom`（自定义 OpenAI 兼容端点）正是用于接入这类兼容接口的方式。因此在 Hermes 中以 `provider: custom` 接入 EvoLink，接口地址填写为 `https://direct.evolink.ai/v1` 即可。
+
+### 4. 启动时提示上下文长度（context length）不足怎么办？
+Hermes Agent 要求模型至少具备 64K tokens 上下文，否则会在启动时拒绝。请换用满足该要求的模型（如 EvoLink 的 Claude 系列）。
+
+### 5. 出现 401 / 403 错误一般是什么原因？
+- **401 错误**：`OPENAI_API_KEY` 未设置或 API Key 无效
+- **403 错误**：API Key 权限不足或已过期
+- 请检查 `~/.hermes/.env` 中的 Key，以及 `base_url` 是否为 `https://direct.evolink.ai/v1`
+
+### 6. 修改了配置后为什么没有生效？
+- 确认配置写入了正确的文件：API Key 在 `~/.hermes/.env`，模型/端点在 `~/.hermes/config.yaml`
+- 可执行 `hermes config` 查看当前实际生效的配置
+- 检查 `config.yaml` 的缩进与语法是否正确（YAML 对缩进敏感）
+- 重新启动 Hermes
+
+### 7. 如何切换模型？
+- 交互式：执行 `hermes model` 重新选择
+- 命令行：执行 `hermes config set model 模型名`
+- 直接编辑 `~/.hermes/config.yaml` 中 `model.default` 的值
+
+### 8. EvoLink 支持哪些常用模型？
+EvoLink 支持以下 Claude 模型（同时也支持 GPT、Gemini 等系列，可在控制台查看）：
+
+| 模型名称 | 说明 |
+|---------|------|
+| `claude-haiku-4-5-20251001` | 快速响应 |
+| `claude-sonnet-4-5-20250929` | 平衡性能 |
+| `claude-opus-4-5-20251101` | 高级版本 |
+| `claude-sonnet-4-6` | 最新版本 |
+| `claude-opus-4-8` | 最新版本 |
+| `claude-opus-4-7` | 最新版本 |
+
+### 9. 如何查看用量？
+登录 [EvoLink 控制台](https://evolink.ai/dashboard) 即可查看请求量、消耗与 Token 使用情况。
+
+### 10. 配置文件和密钥文件分别在哪里？
+- 密钥（API Key）：`~/.hermes/.env`
+- 模型与供应商配置：`~/.hermes/config.yaml`
+- 可执行 `hermes config edit` 直接打开配置文件编辑。
+
+### 11. 如何打开命令行终端？
+
+<Tabs>
+  <Tab title="Windows">
+    - 方法一：按 `Win + R` 键，输入 `powershell`，按回车
+    - 方法二：在开始菜单搜索"PowerShell"
+    - 方法三：在文件夹中按住 Shift 键，右键点击空白处，选择"在此处打开 PowerShell 窗口"
+  </Tab>
+  <Tab title="macOS">
+    - 方法一：按 `Command + 空格` 打开 Spotlight，输入 `Terminal`，按回车
+    - 方法二：在"应用程序" → "实用工具" → "终端"
+  </Tab>
+  <Tab title="Linux">
+    - 方法一：按 `Ctrl + Alt + T` 快捷键
+    - 方法二：在应用程序菜单中搜索"终端"或"Terminal"
+  </Tab>
+</Tabs>
+
+## 注意
+
+<Warning>
+建议在专门的项目文件夹内启动 Hermes Agent，避免在敏感目录（如系统目录、包含密钥的目录）中运行。Hermes Agent 是自主式 Agent，会以当前工作目录为起点进行文件操作。
+</Warning>
+
+<Tip>
+更多用法与配置可参考 [Hermes Agent 官方文档](https://hermes-agent.nousresearch.com/docs) 与 [GitHub 仓库](https://github.com/NousResearch/hermes-agent)。
+</Tip>
