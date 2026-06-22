@@ -1,0 +1,819 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GLM-5.2 Anthropic 互換インターフェース",
+    "description": "Anthropic Messages プロトコルで GLM-5.2 を呼び出すための完全な API リファレンス。\n\n**互換性の説明**：\n- パス：`/v1/messages`（Anthropic 標準パス）\n- リクエスト / レスポンス構造は Anthropic Messages API と一致します\n- 対応フィールド：`model` `messages`（必須）`system` `max_tokens` `temperature` `top_p` `top_k` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `metadata`\n\n**モデル能力**：\n- 思考モード：GLM-5.2 は推論モデルであり、**デフォルトで思考が有効**です。思考内容は `content[type=thinking]` block で返却され、output tokens に計上されます。不要な場合は `thinking.type=disabled` を明示的に渡して無効化し、token を節約してください\n- **プレーンテキストモデル**：⚠️ 画像 / 動画などのマルチモーダル入力には対応していません（渡された画像コンテンツブロックは無視されます）\n- プロンプトキャッシュ：暗黙的キャッシュに対応し、同じプレフィックスのリクエストは自動的にキャッシュにヒットします（ヒットは `cache_read_input_tokens` に反映され、手動で `cache_control` を設定する必要はありません）。キャッシュはウォームアップが必要で、同じプレフィックスで複数回リクエストするとヒットがより安定します。`cache_creation_input_tokens` は常に 0 です",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨、テキストモデルへの対応が優れています）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "GLM-5.2 Messages インターフェース（Anthropic 互換）",
+        "description": "- Anthropic Messages プロトコルを使用して GLM-5.2 モデルを呼び出します\n- リクエスト / レスポンス構造は Anthropic API と一致します\n- **システムプロンプト**：トップレベルの `system` で渡します\n- **思考モード**：GLM-5.2 はデフォルトで思考が有効で、思考内容は `content[type=thinking]` block で返却されます。`thinking.type=disabled` を渡すと無効化されます\n- **ストリーミング出力**：SSE イベントストリーム\n- **ツール呼び出し**：Anthropic の `tool_use` / `tool_result` フローに対応します\n- ⚠️ **マルチモーダル非対応**：GLM-5.2 はプレーンテキストモデルであり、画像 / 動画のコンテンツブロックは無視されます",
+        "operationId": "createMessageGLM52",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小限の実行可能なリクエスト",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "こんにちは、世界"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system プロンプトを含む",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "system": "あなたは経験豊富な技術編集者です。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "GLM-5.2 を三文で紹介してください。"
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "思考モードを無効化（token を節約）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一文で：日本の首都は？"
+                      }
+                    ]
+                  }
+                },
+                "stop_sequences": {
+                  "summary": "カスタム停止シーケンス",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 50,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "stop_sequences": [
+                      "3"
+                    ],
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Output exactly: 1 2 3 4 5 6"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "ツール呼び出し（Anthropic tool_use スタイル）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "東京の天気を調べて教えてください"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "指定した都市の現在の天気を照会します",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "都市名、例：Tokyo"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "ストリーミング出力（SSE）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "春についての短い詩を書いてください"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "メッセージオブジェクト",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "with_thinking": {
+                    "summary": "デフォルトで thinking content block を含む",
+                    "value": {
+                      "id": "msg_0842a705-9d0b-4eaa-b12d-09a4106326c5",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "ユーザーは一語で挨拶するよう求めているので、\"Hi\" と答えればよい。",
+                          "signature": ""
+                        },
+                        {
+                          "type": "text",
+                          "text": "Hi."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 101,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "ツール呼び出しをトリガー（stop_reason=tool_use）",
+                    "value": {
+                      "id": "msg_067e85db-53df-43a1-bd38-09c53375f2f0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_36b8a98e284c426799f08612",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "Tokyo"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 161,
+                        "output_tokens": 11,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "認証エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "権限エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "モデルまたはリソースが存在しません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "ゲートウェイエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル",
+            "enum": [
+              "glm-5.2"
+            ],
+            "example": "glm-5.2"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "生成内容の長さの上限（Token 数）を指定します\n\n**説明**：\n- thinking が生成する token もこの上限に含まれます\n- 上限に達すると内容が切り詰められ、レスポンスは `stop_reason=max_tokens` になります",
+            "minimum": 1,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "対話メッセージのリスト。ターンごとに user / assistant が交互になります\n\n**説明**：\n- 少なくとも 1 件のメッセージを含みます\n- 最後のメッセージは通常 `role=user` です\n- マルチターンの文脈に対応し、モデルは過去のメッセージを参照します",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "システムプロンプト。AI の役割と振る舞いを設定するために使用します\n\n**説明**：\n- 文字列またはコンテンツブロック配列に対応します\n- トップレベルの `system` フィールドで渡します（messages には入れないでください）\n- モデルは system の制約に従います\n- ⚠️ **長すぎる system は切り詰められる可能性があります**：長い文脈が必要な場合は `messages` に入れ、すべてを `system` に詰め込まないでください",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "コンテンツブロック配列形式のシステムプロンプト。text ブロックは cache_control を持つことができます",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度\n\n**説明**：\n- 値が高いほど出力が発散的になり、低いほど確定的になります\n- 推奨範囲 `[0, 1]`",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核サンプリングのしきい値\n\n**説明**：\n- 範囲 `[0, 1]`\n- temperature と top_p を同時に調整しないことを推奨します",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "確率が最も高い K 個の token のみからサンプリングします（Anthropic 固有のパラメータ）\n\n**説明**：\n- 値が小さいほど出力が確定的になり、大きいほど候補が多様になります",
+            "minimum": 0,
+            "example": 10
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "カスタム停止シーケンス：生成がいずれかの文字列にヒットすると停止します\n\n**説明**：\n- ヒットすると切り詰められ、ヒット箇所より前の内容は正常に返却されます\n- ⚠️ **注意**：停止シーケンスにヒットした場合、GLM-5.2 の `stop_reason` は `end_turn` を返し（Anthropic 標準の `stop_sequence` ではなく）、レスポンスにも `stop_sequence` フィールドは含まれません。クライアントが `stop_reason==\"stop_sequence\"` でヒットを判定している場合は、特別な処理が必要です",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "\n\n"
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE でストリーミング返却するかどうか\n\n- `true`：Server-Sent Events でストリーミング返却します（標準的な Anthropic イベントシーケンス：message_start / content_block_start / content_block_delta / message_delta / message_stop）\n- `false`：完全なレスポンスを生成してから一括で返します（デフォルト）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "深い思考を制御します\n\n**説明**：\n- GLM-5.2 は推論モデルであり、**このフィールドを渡さない場合はデフォルトで思考が有効**です\n- 有効な場合、レスポンスの `content` 配列に `type=\"thinking\"` の推論過程 block が現れます（output token として課金され、`signature` は空文字列になることがあります）\n- `{\"type\":\"disabled\"}` を渡すと思考を無効化でき、output token を大幅に削減できます\n- ⚠️ **`type` の二値スイッチのみ有効**：`budget_tokens`、`effort` などの思考予算 / レベルのパラメータは効果がなく（無視されます）、思考量を細かく制御することはできません",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- thinking フィールドを渡さない：デフォルトで思考が有効\n- `disabled`：思考を無効化し、直接回答します\n- `enabled`：Anthropic 標準の明示的な有効化値"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツール定義のリスト\n\n**説明**：\n- Anthropic の tool 定義仕様に従います\n- `input_schema` は JSON Schema オブジェクトを使用します\n- モデルは標準的な `tool_use` block を返し、`stop_reason=tool_use` になります",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "ツール選択戦略",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`：ツールを呼び出すかどうかをモデルが自動で判断します\n- `none`：ツールの呼び出しを禁止します"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "リクエストのメタデータ",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "エンドユーザーを表す一意の識別子。ユーザー単位での監視や不正利用の検出に使用できます（ハッシュ化した ID の使用を推奨します）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "メッセージ送信者の役割。user / assistant が交互になります\n\n- `user`：ユーザーメッセージ（`tool_result` block の返送にも使用します）\n- `assistant`：アシスタントの過去の返信（`text` / `thinking` / `tool_use` blocks を含むことができます）\n\n⚠️ **`system` は受け付けません**：システムプロンプトはトップレベルの `system` フィールドで渡してください。"
+          },
+          "content": {
+            "description": "メッセージ内容\n\n**説明**：\n- プレーンテキストの場合は文字列を直接渡します\n- 構造化する場合は content block 配列を渡します（`text` / `tool_use` / `tool_result` / `thinking`）\n- ⚠️ GLM-5.2 はプレーンテキストモデルであり、`image` / `video` コンテンツブロックは無視されます",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "メッセージのコンテンツブロック\n\n**対応する type**：\n- `text`：テキスト内容\n- `tool_use`：前のターンの assistant ツール呼び出しを返送\n- `tool_result`：ツールの実行結果\n- `thinking`：前のターンの assistant 思考内容を返送\n\n⚠️ `image` / `video` には対応していません（プレーンテキストモデル）",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト内容"
+          },
+          "id": {
+            "type": "string",
+            "description": "ツール呼び出し ID（tool_use の場合は必須）"
+          },
+          "name": {
+            "type": "string",
+            "description": "ツール名（tool_use の場合は必須）"
+          },
+          "input": {
+            "type": "object",
+            "description": "ツールの入力パラメータ（tool_use の場合、JSON オブジェクト）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "対応するツール呼び出し ID（tool_result の場合は必須。tool_use.id に対応させます）"
+          },
+          "content": {
+            "description": "ツールの実行結果（tool_result）。文字列または content block 配列",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "返送する assistant の思考過程の内容（type=`thinking` の場合に使用）"
+          },
+          "signature": {
+            "type": "string",
+            "description": "返送する thinking 内容の署名。マルチターンの継続執筆時はそのまま返送する必要があります（GLM-5.2 は空文字列を返すことがあります）"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "ツール名\n\n**説明**：\n- `a-zA-Z0-9_-` のみ許可されます\n- 最大 64 文字"
+          },
+          "description": {
+            "type": "string",
+            "description": "ツールの機能説明。モデルがいつ呼び出すかを判断するために使用します"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "ツールの入力パラメータの JSON Schema オブジェクト\n\n**説明**：\n- `type` は `object` でなければなりません\n- `properties` と `required` を宣言する必要があります"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "プロンプトキャッシュのマーク\n\n**説明**：GLM-5.2 は暗黙的キャッシュを使用します（同じプレフィックスに基づいて自動的に作成され、ヒットは `cache_read_input_tokens` で確認でき、ウォームアップが必要です）。この明示的なマークには依存しません。`cache_control` は通常どおり渡せますが無視されることがあり、暗黙的キャッシュには影響しません。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "キャッシュマークの種類"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic スタイルのメッセージレスポンス",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "メッセージの一意の ID（形式：`msg_<uuid>`）"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "レスポンスオブジェクトの種類"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル",
+            "example": "glm-5.2"
+          },
+          "content": {
+            "type": "array",
+            "description": "レスポンスのコンテンツブロックのリスト\n\n**含まれる可能性のある block type**：\n- `thinking`：推論過程（思考が有効な場合、デフォルトで有効）\n- `text`：最終的な回答テキスト\n- `tool_use`：モデルが発起したツール呼び出し",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止理由\n\n- `end_turn`：自然終了（⚠️ stop_sequences にヒットした場合もこの値を返します）\n- `max_tokens`：max_tokens の上限に到達\n- `tool_use`：モデルがツール呼び出しをトリガー",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "レスポンス内のコンテンツブロック",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` の場合の推論過程テキスト"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` の場合の署名（GLM-5.2 は空文字列になることがあります）"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール呼び出し ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` の場合にモデルが生成した JSON 入力パラメータ"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用統計（Anthropic 仕様）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "入力 token 数（キャッシュに未ヒットの部分）",
+            "example": 18
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力 token 数（thinking を含む）",
+            "example": 101
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュ作成の入力 token 数（GLM-5.2 は常に 0）",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュにヒットした入力 token 数（暗黙的キャッシュにヒットした場合は同じプレフィックスの長さにほぼ等しくなります）",
+            "example": 0
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "入力 token の詳細（キャッシュヒットのフィールド。GLM-5.2 も併せて返却します）",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "キャッシュにヒットした入力 token 数",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "エラーの種類（invalid_request_error / authentication_error / billing_error など）"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "リクエスト追跡 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API は Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)にアクセスして API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**備考**：EvoLink は `/v1/messages` に対して一律で Bearer Token 認証を採用しています。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages プロトコルインターフェース"
+    }
+  ]
+}
