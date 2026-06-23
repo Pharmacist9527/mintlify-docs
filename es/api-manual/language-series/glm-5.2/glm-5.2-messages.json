@@ -1,0 +1,819 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GLM-5.2 Interfaz compatible con Anthropic",
+    "description": "Referencia completa de la API de GLM-5.2 invocado mediante el protocolo Anthropic Messages.\n\n**Notas de compatibilidad**:\n- Ruta: `/v1/messages` (ruta estándar de Anthropic)\n- La estructura de solicitud / respuesta es coherente con la API de Anthropic Messages\n- Campos admitidos: `model` `messages` (obligatorios) `system` `max_tokens` `temperature` `top_p` `top_k` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `metadata`\n\n**Capacidades del modelo**:\n- Modo de pensamiento: GLM-5.2 es un modelo de razonamiento, **el pensamiento está activado de forma predeterminada**; el contenido del pensamiento se devuelve mediante un bloque `content[type=thinking]` y se contabiliza en los output tokens. Cuando no lo necesites, pasa explícitamente `thinking.type=disabled` para desactivarlo y ahorrar tokens\n- **Modelo de solo texto**: ⚠️ no admite entradas multimodales como imágenes / videos (los bloques de contenido de imagen que se transfieran se ignoran)\n- Caché de indicaciones: admite caché implícita, las solicitudes con el mismo prefijo aciertan automáticamente en la caché (el acierto se refleja en `cache_read_input_tokens`, sin necesidad de configurar manualmente `cache_control`); la caché requiere calentamiento, y tras varias solicitudes con el mismo prefijo el acierto es más estable; `cache_creation_input_tokens` es siempre 0",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Producción (recomendado, mejor compatibilidad con modelos de texto)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternativa"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Interfaz GLM-5.2 Messages (compatible con Anthropic)",
+        "description": "- Invoca el modelo GLM-5.2 mediante el protocolo Anthropic Messages\n- La estructura de solicitud / respuesta está alineada con la API de Anthropic\n- **Indicación de sistema**: se transfiere mediante el campo `system` de nivel superior\n- **Modo de pensamiento**: GLM-5.2 activa el pensamiento de forma predeterminada, el contenido del pensamiento se devuelve mediante un bloque `content[type=thinking]`; pasa `thinking.type=disabled` para desactivarlo\n- **Salida en streaming**: flujo de eventos SSE\n- **Llamada a herramientas**: compatible con el flujo `tool_use` / `tool_result` de Anthropic\n- ⚠️ **No admite multimodalidad**: GLM-5.2 es un modelo de solo texto, los bloques de contenido de imagen / video se ignoran",
+        "operationId": "createMessageGLM52",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Solicitud mínima ejecutable",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hola, mundo"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Con indicación de sistema (system)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "system": "Eres un editor técnico experimentado en chino.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Presenta GLM-5.2 en tres frases."
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "Desactivar el modo de pensamiento (ahorrar tokens)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "En una frase: ¿cuál es la capital de Japón?"
+                      }
+                    ]
+                  }
+                },
+                "stop_sequences": {
+                  "summary": "Secuencias de parada personalizadas",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 50,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "stop_sequences": [
+                      "3"
+                    ],
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Output exactly: 1 2 3 4 5 6"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "Llamada a herramientas (estilo tool_use de Anthropic)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Consulta el tiempo en Tokio y dímelo"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "Consulta el clima actual de una ciudad específica",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "Nombre de la ciudad, por ejemplo: Tokyo"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "Salida en streaming (SSE)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Escribe un poema corto sobre la primavera"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Objeto de mensaje",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "with_thinking": {
+                    "summary": "Bloque de contenido thinking incluido de forma predeterminada",
+                    "value": {
+                      "id": "msg_0842a705-9d0b-4eaa-b12d-09a4106326c5",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "El usuario pide saludar con una sola palabra, basta con responder \"Hi\".",
+                          "signature": ""
+                        },
+                        {
+                          "type": "text",
+                          "text": "Hi."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 101,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "Se activa la llamada a herramientas (stop_reason=tool_use)",
+                    "value": {
+                      "id": "msg_067e85db-53df-43a1-bd38-09c53375f2f0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_36b8a98e284c426799f08612",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "Tokyo"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 161,
+                        "output_tokens": 11,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error en los parámetros de la solicitud",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error de autenticación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error de permisos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El modelo o el recurso no existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de frecuencia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error de puerta de enlace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio temporalmente no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modelo a invocar",
+            "enum": [
+              "glm-5.2"
+            ],
+            "example": "glm-5.2"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Especifica el límite superior de longitud del contenido generado (número de Tokens)\n\n**Notas**:\n- Los tokens producidos por el thinking también se contabilizan en este límite\n- Al alcanzar el límite, el contenido se trunca y la respuesta devuelve `stop_reason=max_tokens`",
+            "minimum": 1,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "Lista de mensajes de la conversación, alternando user / assistant por turnos\n\n**Notas**:\n- Debe contener al menos 1 mensaje\n- El último mensaje suele ser `role=user`\n- Admite contexto de múltiples turnos, el modelo hará referencia a los mensajes históricos",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "Indicación de sistema, usada para definir el rol y el comportamiento de la IA\n\n**Notas**:\n- Admite una cadena o un array de bloques de contenido\n- Se transfiere mediante el campo `system` de nivel superior (no lo incluyas en messages)\n- El modelo respetará las restricciones de system\n- ⚠️ **Un system demasiado largo puede truncarse**: si necesitas un contexto largo, colócalo en `messages`, no lo amontones todo en `system`",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "Indicación de sistema en formato de array de bloques de contenido. Los bloques text pueden llevar cache_control",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Temperatura de muestreo\n\n**Notas**:\n- Cuanto más alto el valor, más diversa la salida; cuanto más bajo, más determinista\n- Rango recomendado `[0, 1]`",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Umbral de muestreo por núcleo\n\n**Notas**:\n- Rango `[0, 1]`\n- Se recomienda no ajustar temperature y top_p simultáneamente",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "Muestrea solo entre los K tokens de mayor probabilidad (parámetro exclusivo de Anthropic)\n\n**Notas**:\n- Cuanto más pequeño el valor, más determinista la salida; cuanto más grande, más diversos los candidatos",
+            "minimum": 0,
+            "example": 10
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "Secuencias de parada personalizadas: la generación se detiene cuando se encuentra cualquiera de estas cadenas\n\n**Notas**:\n- Al encontrarla se trunca, el contenido anterior al punto de coincidencia se devuelve con normalidad\n- ⚠️ **Atención**: al encontrar una secuencia de parada, el `stop_reason` de GLM-5.2 devuelve `end_turn` (en lugar del `stop_sequence` estándar de Anthropic), y la respuesta tampoco incluye el campo `stop_sequence`. Si el cliente se basa en `stop_reason==\"stop_sequence\"` para detectar la coincidencia, necesitarás un manejo especial",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "\n\n"
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Si se devuelve en streaming mediante SSE\n\n- `true`: devolución en streaming mediante Server-Sent Events (secuencia de eventos estándar de Anthropic: message_start / content_block_start / content_block_delta / message_delta / message_stop)\n- `false`: devuelve la respuesta completa de una sola vez (predeterminado)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Controla el pensamiento profundo\n\n**Notas**:\n- GLM-5.2 es un modelo de razonamiento, **cuando no se transfiere este campo, el pensamiento está activado de forma predeterminada**\n- Cuando está activado, en el array `content` de la respuesta aparece un bloque de proceso de razonamiento con `type=\"thinking\"` (se factura como output token, `signature` puede ser una cadena vacía)\n- Pasa `{\"type\":\"disabled\"}` para desactivar el pensamiento, reduciendo notablemente los output tokens\n- ⚠️ **Solo el interruptor binario `type` tiene efecto**: parámetros de presupuesto/nivel de pensamiento como `budget_tokens` o `effort` no surten efecto (se ignoran), no se puede controlar con precisión la cantidad de pensamiento",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- Sin transferir el campo thinking: el pensamiento está activado de forma predeterminada\n- `disabled`: desactiva el pensamiento, responde directamente\n- `enabled`: valor de activación explícita estándar de Anthropic"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Lista de definiciones de herramientas\n\n**Notas**:\n- Sigue la especificación de definición de tool de Anthropic\n- `input_schema` usa un objeto JSON Schema\n- El modelo devuelve un bloque `tool_use` estándar, con `stop_reason=tool_use`",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "Estrategia de selección de herramientas",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`: el modelo decide automáticamente si invoca una herramienta\n- `none`: prohíbe la invocación de herramientas"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Metadatos de la solicitud",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "Identificador único que representa al usuario final, puede usarse para la supervisión y la detección de abusos por usuario (se recomienda usar un ID con hash)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "Rol del emisor del mensaje, alternando user / assistant\n\n- `user`: mensaje del usuario (también se usa para devolver bloques `tool_result`)\n- `assistant`: respuesta histórica del asistente (puede contener bloques `text` / `thinking` / `tool_use`)\n\n⚠️ **No acepta `system`**: para la indicación de sistema usa el campo `system` de nivel superior."
+          },
+          "content": {
+            "description": "Contenido del mensaje\n\n**Notas**:\n- Para texto plano, transfiere directamente una cadena\n- Para contenido estructurado, transfiere un array de bloques de contenido (`text` / `tool_use` / `tool_result` / `thinking`)\n- ⚠️ GLM-5.2 es un modelo de solo texto, los bloques de contenido `image` / `video` se ignoran",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "Bloque de contenido del mensaje\n\n**type admitidos**:\n- `text`: contenido de texto\n- `tool_use`: devuelve la llamada a herramienta del turno anterior del assistant\n- `tool_result`: resultado de la ejecución de la herramienta\n- `thinking`: devuelve el contenido de pensamiento del turno anterior del assistant\n\n⚠️ No admite `image` / `video` (modelo de solo texto)",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenido de texto cuando type=`text`"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de la llamada a la herramienta (obligatorio cuando es tool_use)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta (obligatorio cuando es tool_use)"
+          },
+          "input": {
+            "type": "object",
+            "description": "Argumentos de entrada de la herramienta (cuando es tool_use, objeto JSON)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "ID de la llamada a la herramienta correspondiente (obligatorio cuando es tool_result, se rellena con tool_use.id)"
+          },
+          "content": {
+            "description": "Resultado de la ejecución de la herramienta (tool_result), cadena o array de bloques de contenido",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Contenido del proceso de pensamiento del assistant que se devuelve (se usa cuando type=`thinking`)"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Firma del contenido thinking que se devuelve, debe devolverse tal cual al continuar en múltiples turnos (GLM-5.2 puede devolver una cadena vacía)"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta\n\n**Notas**:\n- Solo se permite `a-zA-Z0-9_-`\n- Máximo 64 caracteres"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripción de la funcionalidad de la herramienta, para que el modelo decida cuándo invocarla"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "Objeto JSON Schema de los argumentos de entrada de la herramienta\n\n**Notas**:\n- `type` debe ser `object`\n- Debe declarar `properties` y `required`"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "Marca de caché de indicaciones\n\n**Notas**: GLM-5.2 usa caché implícita (se establece automáticamente por prefijo idéntico, el acierto se ve en `cache_read_input_tokens`, requiere calentamiento), no depende de esta marca explícita; `cache_control` puede transferirse con normalidad pero podría ignorarse, sin afectar a la caché implícita.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "Tipo de marca de caché"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Respuesta de mensaje al estilo de Anthropic",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único del mensaje (formato: `msg_<uuid>`)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "Tipo de objeto de respuesta"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "Modelo realmente utilizado",
+            "example": "glm-5.2"
+          },
+          "content": {
+            "type": "array",
+            "description": "Lista de bloques de contenido de la respuesta\n\n**Posibles block type**:\n- `thinking`: proceso de razonamiento (cuando el pensamiento está activado, activado de forma predeterminada)\n- `text`: texto de la respuesta final\n- `tool_use`: llamada a herramienta iniciada por el modelo",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "Motivo de la parada\n\n- `end_turn`: finalización natural (⚠️ también devuelve este valor al encontrar stop_sequences)\n- `max_tokens`: se alcanzó el límite de max_tokens\n- `tool_use`: el modelo activó una llamada a herramienta",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "Bloque de contenido de la respuesta",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Texto cuando type=`text`"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Texto del proceso de razonamiento cuando type=`thinking`"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Firma cuando type=`thinking` (GLM-5.2 puede ser una cadena vacía)"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de la llamada a la herramienta cuando type=`tool_use`"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta cuando type=`tool_use`"
+          },
+          "input": {
+            "type": "object",
+            "description": "Argumentos de entrada JSON generados por el modelo cuando type=`tool_use`"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Estadísticas de uso de tokens (especificación de Anthropic)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de entrada (parte que no acertó en caché)",
+            "example": 18
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de salida (incluye thinking)",
+            "example": 101
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de entrada de creación de caché (GLM-5.2 es siempre 0)",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de entrada con acierto de caché (con acierto de caché implícita, aproximadamente la longitud del prefijo idéntico)",
+            "example": 0
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Desglose detallado de los tokens de entrada (campo de acierto de caché, GLM-5.2 lo devuelve igualmente)",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Número de tokens de entrada que acertaron en caché",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Tipo de error (como invalid_request_error / authentication_error / billing_error, etc.)"
+              },
+              "message": {
+                "type": "string",
+                "description": "Descripción del error"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "ID de seguimiento de la solicitud"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las API requieren autenticación con Bearer Token##\n\n**Obtener la API Key**:\n\nVisita la [Página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Añadir al encabezado de la solicitud al usarla**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**Nota**: EvoLink usa de forma unificada la autenticación con Bearer Token para `/v1/messages`."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Interfaz del protocolo Anthropic Messages"
+    }
+  ]
+}

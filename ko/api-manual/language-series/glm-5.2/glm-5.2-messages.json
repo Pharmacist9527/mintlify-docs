@@ -1,0 +1,819 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GLM-5.2 Anthropic 호환 인터페이스",
+    "description": "Anthropic Messages 프로토콜로 GLM-5.2를 호출하기 위한 전체 API 레퍼런스입니다.\n\n**호환 설명**:\n- 경로: `/v1/messages`(Anthropic 표준 경로)\n- 요청 / 응답 구조가 Anthropic Messages API와 일치\n- 지원 필드: `model` `messages`(필수) `system` `max_tokens` `temperature` `top_p` `top_k` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `metadata`\n\n**모델 능력**:\n- 사고 모드: GLM-5.2는 추론 모델로, **기본적으로 사고가 켜져 있습니다**; 사고 내용은 `content[type=thinking]` block으로 반환되며 output tokens에 포함됩니다. 필요하지 않을 때는 `thinking.type=disabled`를 명시적으로 전달하여 끄면 token을 절약할 수 있습니다\n- **순수 텍스트 모델**: ⚠️ 이미지 / 비디오 등 멀티모달 입력을 지원하지 않습니다(전달된 이미지 콘텐츠 블록은 무시됩니다)\n- 프롬프트 캐싱: 암묵적 캐싱을 지원하며, 동일한 접두사의 요청은 자동으로 캐시에 적중합니다(적중은 `cache_read_input_tokens`에 반영되며 `cache_control`을 수동으로 설정할 필요가 없습니다); 캐시는 예열이 필요하며 동일한 접두사로 여러 번 요청하면 적중이 더 안정적입니다; `cache_creation_input_tokens`는 항상 0입니다",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션 (권장, 텍스트 모델 지원이 더 좋음)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "GLM-5.2 Messages 인터페이스(Anthropic 호환)",
+        "description": "- Anthropic Messages 프로토콜을 사용하여 GLM-5.2 모델을 호출합니다\n- 요청 / 응답 구조가 Anthropic API와 정렬됩니다\n- **시스템 프롬프트**: 최상위 `system`으로 전달\n- **사고 모드**: GLM-5.2는 기본적으로 사고가 켜져 있으며, 사고 내용은 `content[type=thinking]` block으로 반환됩니다; `thinking.type=disabled`를 전달하여 끕니다\n- **스트리밍 출력**: SSE 이벤트 스트림\n- **도구 호출**: Anthropic `tool_use` / `tool_result` 플로우와 호환\n- ⚠️ **멀티모달 미지원**: GLM-5.2는 순수 텍스트 모델이며, 이미지 / 비디오 콘텐츠 블록은 무시됩니다",
+        "operationId": "createMessageGLM52",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "최소 실행 가능 요청",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "안녕하세요, 세계"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system 프롬프트 포함",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "system": "당신은 숙련된 한국어 기술 편집자입니다.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "GLM-5.2를 세 문장으로 소개해 주세요."
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "사고 모드 비활성화(token 절약)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "한 문장으로: 일본의 수도는?"
+                      }
+                    ]
+                  }
+                },
+                "stop_sequences": {
+                  "summary": "사용자 정의 중지 시퀀스",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 50,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "stop_sequences": [
+                      "3"
+                    ],
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Output exactly: 1 2 3 4 5 6"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "도구 호출(Anthropic tool_use 스타일)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "도쿄의 날씨를 조회해서 알려주세요"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "지정한 도시의 현재 날씨를 조회합니다",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "도시 이름, 예: Tokyo"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "스트리밍 출력(SSE)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "봄에 관한 짧은 시를 써 주세요"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "메시지 객체",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "with_thinking": {
+                    "summary": "기본적으로 thinking content block 포함",
+                    "value": {
+                      "id": "msg_0842a705-9d0b-4eaa-b12d-09a4106326c5",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "사용자가 한 단어로 인사해 달라고 요청했으니 \"Hi\"라고 답하면 됩니다.",
+                          "signature": ""
+                        },
+                        {
+                          "type": "text",
+                          "text": "Hi."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 101,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "도구 호출 트리거(stop_reason=tool_use)",
+                    "value": {
+                      "id": "msg_067e85db-53df-43a1-bd38-09c53375f2f0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_36b8a98e284c426799f08612",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "Tokyo"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 161,
+                        "output_tokens": 11,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청 파라미터",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량 부족",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "모델 또는 리소스가 존재하지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "속도 제한",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "서버 내부 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "게이트웨이 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스를 일시적으로 사용할 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "호출할 모델",
+            "enum": [
+              "glm-5.2"
+            ],
+            "example": "glm-5.2"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "생성 내용 길이의 상한(Token 수)을 지정합니다\n\n**설명**:\n- thinking이 생성하는 token도 이 상한에 포함됩니다\n- 상한에 도달하면 내용이 잘리며, 응답은 `stop_reason=max_tokens`입니다",
+            "minimum": 1,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "대화 메시지 목록으로, 턴마다 user / assistant가 번갈아 나타납니다\n\n**설명**:\n- 최소 1개의 메시지를 포함합니다\n- 마지막 메시지는 보통 `role=user`입니다\n- 멀티턴 컨텍스트를 지원하며, 모델이 과거 메시지를 참조합니다",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "시스템 프롬프트로, AI의 역할과 동작을 설정하는 데 사용합니다\n\n**설명**:\n- 문자열 또는 콘텐츠 블록 배열을 지원합니다\n- 최상위 `system` 필드로 전달합니다(messages에 넣지 마세요)\n- 모델이 system 제약을 따릅니다\n- ⚠️ **너무 긴 system은 잘릴 수 있습니다**: 긴 컨텍스트가 필요하면 `messages`에 넣고, 모두 `system`에 쌓지 마세요",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "콘텐츠 블록 배열 형식의 시스템 프롬프트. text 블록은 cache_control을 가질 수 있습니다",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "샘플링 온도\n\n**설명**:\n- 값이 높을수록 출력이 더 발산적이고, 낮을수록 더 확정적입니다\n- 권장 범위 `[0, 1]`",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "핵 샘플링 임계값\n\n**설명**:\n- 범위 `[0, 1]`\n- temperature와 top_p를 동시에 조정하지 않는 것을 권장합니다",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "확률이 가장 높은 K개의 token 중에서만 샘플링합니다(Anthropic 고유 파라미터)\n\n**설명**:\n- 값이 작을수록 출력이 더 확정적이고, 클수록 후보가 더 다양합니다",
+            "minimum": 0,
+            "example": 10
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "사용자 정의 중지 시퀀스: 생성이 그중 어느 문자열에라도 적중하면 중지합니다\n\n**설명**:\n- 적중 시 잘리며, 적중 지점 이전 내용은 정상적으로 반환됩니다\n- ⚠️ **주의**: 중지 시퀀스에 적중할 때 GLM-5.2의 `stop_reason`은 `end_turn`을 반환하며(Anthropic 표준인 `stop_sequence`가 아님), 응답에도 `stop_sequence` 필드가 포함되지 않습니다. 클라이언트가 `stop_reason==\"stop_sequence\"`로 적중을 판단한다면 별도 처리가 필요합니다",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "\n\n"
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE로 스트리밍 반환할지 여부\n\n- `true`: Server-Sent Events 스트리밍 반환(표준 Anthropic 이벤트 시퀀스: message_start / content_block_start / content_block_delta / message_delta / message_stop)\n- `false`: 완전한 응답 후 한 번에 반환(기본값)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "심층 사고를 제어합니다\n\n**설명**:\n- GLM-5.2는 추론 모델로, **이 필드를 전달하지 않으면 기본적으로 사고가 켜집니다**\n- 켜져 있으면 응답 `content` 배열에 `type=\"thinking\"`인 추론 과정 block이 나타납니다(output token으로 과금되며 `signature`는 빈 문자열일 수 있음)\n- `{\"type\":\"disabled\"}`를 전달하면 사고를 끌 수 있으며 output token을 크게 줄입니다\n- ⚠️ **`type` 이진 스위치만 유효합니다**: `budget_tokens`, `effort` 등 사고 예산/등급 파라미터는 적용되지 않으며(무시됨), 사고량을 세밀하게 제어할 수 없습니다",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- thinking 필드를 전달하지 않음: 기본적으로 사고가 켜짐\n- `disabled`: 사고를 끄고 바로 답변\n- `enabled`: Anthropic 표준의 명시적 활성화 값"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "도구 정의 목록\n\n**설명**:\n- Anthropic tool 정의 규범을 따릅니다\n- `input_schema`는 JSON Schema 객체를 사용합니다\n- 모델은 표준 `tool_use` block을 반환하며, `stop_reason=tool_use`입니다",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "도구 선택 전략",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`: 모델이 도구 호출 여부를 자동으로 결정\n- `none`: 도구 호출 금지"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "요청 메타데이터",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "최종 사용자를 나타내는 고유 식별자로, 사용자 단위 모니터링과 남용 탐지에 사용할 수 있습니다(해시 처리된 ID 사용 권장)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "메시지 발신자 역할로, user / assistant가 번갈아 나타납니다\n\n- `user`: 사용자 메시지(`tool_result` block을 회신할 때도 사용)\n- `assistant`: 어시스턴트의 과거 응답(`text` / `thinking` / `tool_use` blocks 포함 가능)\n\n⚠️ **`system`을 받지 않습니다**: 시스템 프롬프트는 최상위 `system` 필드로 전달하세요."
+          },
+          "content": {
+            "description": "메시지 내용\n\n**설명**:\n- 순수 텍스트일 때는 문자열을 직접 전달\n- 구조화될 때는 content block 배열을 전달(`text` / `tool_use` / `tool_result` / `thinking`)\n- ⚠️ GLM-5.2는 순수 텍스트 모델이며, `image` / `video` 콘텐츠 블록은 무시됩니다",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "메시지 콘텐츠 블록\n\n**지원 type**:\n- `text`: 텍스트 내용\n- `tool_use`: 직전 턴 assistant의 도구 호출을 회신\n- `tool_result`: 도구 실행 결과\n- `thinking`: 직전 턴 assistant의 사고 내용을 회신\n\n⚠️ `image` / `video`를 지원하지 않습니다(순수 텍스트 모델)",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text`일 때의 텍스트 내용"
+          },
+          "id": {
+            "type": "string",
+            "description": "도구 호출 ID(tool_use일 때 필수)"
+          },
+          "name": {
+            "type": "string",
+            "description": "도구 이름(tool_use일 때 필수)"
+          },
+          "input": {
+            "type": "object",
+            "description": "도구 입력 파라미터(tool_use일 때, JSON 객체)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "대응하는 도구 호출 ID(tool_result일 때 필수, tool_use.id로 회신)"
+          },
+          "content": {
+            "description": "도구 실행 결과(tool_result), 문자열 또는 content block 배열",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "회신하는 assistant 사고 과정 내용(type=`thinking`일 때 사용)"
+          },
+          "signature": {
+            "type": "string",
+            "description": "회신하는 thinking 내용 서명으로, 멀티턴 이어쓰기 시 그대로 회신해야 합니다(GLM-5.2는 빈 문자열을 반환할 수 있음)"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "도구 이름\n\n**설명**:\n- `a-zA-Z0-9_-`만 허용\n- 최대 64자"
+          },
+          "description": {
+            "type": "string",
+            "description": "도구 기능 설명으로, 모델이 언제 호출할지 판단하는 데 사용"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "도구 입력 파라미터의 JSON Schema 객체\n\n**설명**:\n- `type`은 반드시 `object`\n- `properties`와 `required`를 선언해야 합니다"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "프롬프트 캐시 마커\n\n**설명**: GLM-5.2는 암묵적 캐싱을 사용하며(동일한 접두사에 따라 자동으로 생성, 적중은 `cache_read_input_tokens`에 표시, 예열 필요), 이 명시적 마커에 의존하지 않습니다; `cache_control`은 정상적으로 전달할 수 있으나 무시될 수 있으며, 암묵적 캐싱에는 영향을 주지 않습니다.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "캐시 마커 유형"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic 스타일의 메시지 응답",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "메시지 고유 ID(형식: `msg_<uuid>`)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "응답 객체 유형"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "실제 사용된 모델",
+            "example": "glm-5.2"
+          },
+          "content": {
+            "type": "array",
+            "description": "응답 콘텐츠 블록 목록\n\n**포함될 수 있는 block type**:\n- `thinking`: 추론 과정(사고가 켜져 있을 때, 기본적으로 켜짐)\n- `text`: 최종 답변 텍스트\n- `tool_use`: 모델이 발생시킨 도구 호출",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "중지 사유\n\n- `end_turn`: 자연스러운 종료(⚠️ stop_sequences에 적중할 때도 이 값을 반환)\n- `max_tokens`: max_tokens 상한 도달\n- `tool_use`: 모델이 도구 호출을 트리거",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "응답의 콘텐츠 블록",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text`일 때의 텍스트"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking`일 때의 추론 과정 텍스트"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking`일 때의 서명(GLM-5.2는 빈 문자열일 수 있음)"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use`일 때의 도구 호출 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use`일 때의 도구 이름"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use`일 때 모델이 생성한 JSON 입력 파라미터"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 사용 통계(Anthropic 규범)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "입력 token 수(캐시 미적중 부분)",
+            "example": 18
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "출력 token 수(thinking 포함)",
+            "example": 101
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "캐시 생성 입력 token 수(GLM-5.2는 항상 0)",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "캐시 적중 입력 token 수(암묵적 캐시 적중 시 동일한 접두사의 길이와 대략 일치)",
+            "example": 0
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "입력 token 명세(캐시 적중 필드, GLM-5.2가 함께 반환)",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "캐시에 적중한 입력 token 수",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "오류 유형(예: invalid_request_error / authentication_error / billing_error 등)"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "요청 추적 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 인터페이스는 Bearer Token 인증이 필요합니다##\n\n**API Key 발급**:\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에 방문하여 API Key를 발급받으세요\n\n**요청 헤더에 추가**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**참고**: EvoLink는 `/v1/messages`에 대해 일괄적으로 Bearer Token 인증을 사용합니다."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 프로토콜 인터페이스"
+    }
+  ]
+}

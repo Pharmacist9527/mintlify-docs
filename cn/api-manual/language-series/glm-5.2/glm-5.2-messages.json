@@ -1,0 +1,819 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GLM-5.2 Anthropic 兼容接口",
+    "description": "GLM-5.2 通过 Anthropic Messages 协议调用的完整 API 参考。\n\n**兼容说明**：\n- 路径：`/v1/messages`（Anthropic 标准路径）\n- 请求 / 响应结构与 Anthropic Messages API 一致\n- 支持字段：`model` `messages`（必填）`system` `max_tokens` `temperature` `top_p` `top_k` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `metadata`\n\n**模型能力**：\n- 思考模式：GLM-5.2 是推理模型，**默认即开启思考**；思考内容通过 `content[type=thinking]` block 返回，并计入 output tokens。不需要时显式传 `thinking.type=disabled` 关闭以节省 token\n- **纯文本模型**：⚠️ 不支持图像 / 视频等多模态输入（传入的图像内容块会被忽略）\n- 提示词缓存：支持隐式缓存，相同前缀的请求会自动命中缓存（命中体现在 `cache_read_input_tokens`，无需手动设置 `cache_control`）；缓存需要预热，相同前缀多次请求后命中更稳定；`cache_creation_input_tokens` 恒为 0",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐，文本模型支持更好）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "GLM-5.2 Messages 接口（Anthropic 兼容）",
+        "description": "- 使用 Anthropic Messages 协议调用 GLM-5.2 模型\n- 请求 / 响应结构与 Anthropic API 对齐\n- **系统提示词**：通过顶层 `system` 传入\n- **思考模式**：GLM-5.2 默认开启思考，思考内容通过 `content[type=thinking]` block 返回；传 `thinking.type=disabled` 关闭\n- **流式输出**：SSE 事件流\n- **工具调用**：兼容 Anthropic `tool_use` / `tool_result` 流程\n- ⚠️ **不支持多模态**：GLM-5.2 为纯文本模型，图像 / 视频内容块会被忽略",
+        "operationId": "createMessageGLM52",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小可运行请求",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "你好，世界"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "含 system 提示词",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "system": "你是一名资深中文技术编辑。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "用三句话介绍 GLM-5.2。"
+                      }
+                    ]
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "关闭思考模式（节省 token）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 512,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一句话：日本首都是？"
+                      }
+                    ]
+                  }
+                },
+                "stop_sequences": {
+                  "summary": "自定义停止序列",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 50,
+                    "thinking": {
+                      "type": "disabled"
+                    },
+                    "stop_sequences": [
+                      "3"
+                    ],
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Output exactly: 1 2 3 4 5 6"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "工具调用（Anthropic tool_use 风格）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "查询东京的天气并告诉我"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "查询指定城市的当前天气",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "城市名，例如：Tokyo"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "流式输出（SSE）",
+                  "value": {
+                    "model": "glm-5.2",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "写一首关于春天的短诗"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "消息对象",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "with_thinking": {
+                    "summary": "默认含 thinking content block",
+                    "value": {
+                      "id": "msg_0842a705-9d0b-4eaa-b12d-09a4106326c5",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "用户要求用一个词打招呼，回答 \"Hi\" 即可。",
+                          "signature": ""
+                        },
+                        {
+                          "type": "text",
+                          "text": "Hi."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 101,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "触发工具调用（stop_reason=tool_use）",
+                    "value": {
+                      "id": "msg_067e85db-53df-43a1-bd38-09c53375f2f0",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "glm-5.2",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_36b8a98e284c426799f08612",
+                          "name": "get_weather",
+                          "input": {
+                            "city": "Tokyo"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 161,
+                        "output_tokens": 11,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "prompt_tokens_details": {
+                          "cached_tokens": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "身份验证错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模型或资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "速率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "网关错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "要调用的模型",
+            "enum": [
+              "glm-5.2"
+            ],
+            "example": "glm-5.2"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "指定生成内容长度的上限（Token 数）\n\n**说明**：\n- thinking 产生的 token 也计入该上限\n- 达到上限时内容会被截断，响应 `stop_reason=max_tokens`",
+            "minimum": 1,
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "对话消息列表，按轮次 user / assistant 交替\n\n**说明**：\n- 至少包含 1 条消息\n- 最后一条消息通常为 `role=user`\n- 支持多轮上下文，模型会引用历史消息",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "系统提示词，用于设定 AI 角色与行为\n\n**说明**：\n- 支持字符串或内容块数组\n- 通过顶层 `system` 字段传入（不要放进 messages）\n- 模型会遵循 system 约束\n- ⚠️ **过长的 system 可能被截断**：需要长上下文请放入 `messages`，不要全部堆在 `system`",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "内容块数组格式的系统提示词。text 块可携带 cache_control",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "采样温度\n\n**说明**：\n- 值越高输出越发散，越低越确定\n- 建议范围 `[0, 1]`",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核采样阈值\n\n**说明**：\n- 范围 `[0, 1]`\n- 建议不要同时调整 temperature 与 top_p",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "仅从概率最高的 K 个 token 中采样（Anthropic 特有参数）\n\n**说明**：\n- 值越小输出越确定，越大候选越多样",
+            "minimum": 0,
+            "example": 10
+          },
+          "stop_sequences": {
+            "type": "array",
+            "description": "自定义停止序列：生成命中其中任一字符串时停止\n\n**说明**：\n- 命中即截断，命中处之前的内容正常返回\n- ⚠️ **注意**：命中停止序列时，GLM-5.2 的 `stop_reason` 返回 `end_turn`（而非 Anthropic 标准的 `stop_sequence`），响应也不含 `stop_sequence` 字段。若客户端依赖 `stop_reason==\"stop_sequence\"` 判断命中，需特殊处理",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "\n\n"
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否以 SSE 流式返回\n\n- `true`：Server-Sent Events 流式返回（标准 Anthropic 事件序列：message_start / content_block_start / content_block_delta / message_delta / message_stop）\n- `false`：完整响应后一次性返回（默认）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "控制深度思考\n\n**说明**：\n- GLM-5.2 是推理模型，**不传该字段时默认开启思考**\n- 开启时响应 `content` 数组中会出现 `type=\"thinking\"` 的推理过程 block（按 output token 计费，`signature` 可能为空串）\n- 传 `{\"type\":\"disabled\"}` 可关闭思考，显著减少 output token\n- ⚠️ **仅 `type` 二元开关有效**：`budget_tokens`、`effort` 等思考预算/等级参数不生效（会被忽略），无法精细控制思考量",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "- 不传 thinking 字段：默认开启思考\n- `disabled`：关闭思考，直接回答\n- `enabled`：Anthropic 标准的显式开启值"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "工具定义列表\n\n**说明**：\n- 遵循 Anthropic tool 定义规范\n- `input_schema` 使用 JSON Schema 对象\n- 模型会返回标准 `tool_use` block，`stop_reason=tool_use`",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "工具选择策略",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`：模型自动决定是否调用工具\n- `none`：禁止调用工具"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "请求元数据",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "代表终端用户的唯一标识符，可用于按用户维度做监控与滥用检测（建议使用散列后的 ID）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "消息发送方角色，user / assistant 交替\n\n- `user`：用户消息（也用于回传 `tool_result` block）\n- `assistant`：助手历史回复（可含 `text` / `thinking` / `tool_use` blocks）\n\n⚠️ **不接受 `system`**：系统提示请走顶层 `system` 字段。"
+          },
+          "content": {
+            "description": "消息内容\n\n**说明**：\n- 纯文本时直接传字符串\n- 结构化时传 content block 数组（`text` / `tool_use` / `tool_result` / `thinking`）\n- ⚠️ GLM-5.2 为纯文本模型，`image` / `video` 内容块会被忽略",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "消息内容块\n\n**支持 type**：\n- `text`：文本内容\n- `tool_use`：回带上一轮 assistant 工具调用\n- `tool_result`：工具执行结果\n- `thinking`：回带上一轮 assistant 思考内容\n\n⚠️ 不支持 `image` / `video`（纯文本模型）",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "tool_use",
+              "tool_result",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "当 type=`text` 时的文本内容"
+          },
+          "id": {
+            "type": "string",
+            "description": "工具调用 ID（tool_use 时必填）"
+          },
+          "name": {
+            "type": "string",
+            "description": "工具名（tool_use 时必填）"
+          },
+          "input": {
+            "type": "object",
+            "description": "工具入参（tool_use 时，JSON 对象）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "对应的工具调用 ID（tool_result 时必填，回填到 tool_use.id）"
+          },
+          "content": {
+            "description": "工具执行结果（tool_result），字符串或 content block 数组",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "回带的 assistant 思考过程内容（type=`thinking` 时使用）"
+          },
+          "signature": {
+            "type": "string",
+            "description": "回带的 thinking 内容签名，多轮续写时需原样回带（GLM-5.2 可能返回空串）"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "工具名称\n\n**说明**：\n- 只允许 `a-zA-Z0-9_-`\n- 最大 64 字符"
+          },
+          "description": {
+            "type": "string",
+            "description": "工具功能描述，供模型判断何时调用"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "工具入参的 JSON Schema 对象\n\n**说明**：\n- `type` 必须为 `object`\n- 应声明 `properties` 与 `required`"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "提示词缓存标记\n\n**说明**：GLM-5.2 使用隐式缓存（按相同前缀自动建立，命中见 `cache_read_input_tokens`，需预热），不依赖该显式标记；`cache_control` 可正常传入但可能被忽略，不影响隐式缓存。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "缓存标记类型"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic 风格的消息响应",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "消息唯一 ID（格式形如 `msg_<uuid>`）"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "响应对象类型"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型",
+            "example": "glm-5.2"
+          },
+          "content": {
+            "type": "array",
+            "description": "响应内容块列表\n\n**可能包含的 block type**：\n- `thinking`：推理过程（思考开启时，默认开启）\n- `text`：最终回答文本\n- `tool_use`：模型发起的工具调用",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止原因\n\n- `end_turn`：自然结束（⚠️ 命中 stop_sequences 时也返回此值）\n- `max_tokens`：达到 max_tokens 上限\n- `tool_use`：模型触发工具调用",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "响应中的内容块",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` 时的文本"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` 时的推理过程文本"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` 时的签名（GLM-5.2 可能为空串）"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` 时的工具调用 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` 时的工具名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` 时模型生成的 JSON 入参"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用统计（Anthropic 规范）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "输入 token 数（未命中缓存部分）",
+            "example": 18
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "输出 token 数（含 thinking）",
+            "example": 101
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "缓存创建的输入 token 数（GLM-5.2 恒为 0）",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "缓存命中的输入 token 数（隐式缓存命中时约为相同前缀的长度）",
+            "example": 0
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "输入 token 明细（缓存命中字段，GLM-5.2 一并返回）",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "命中缓存的输入 token 数",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "错误类型（如 invalid_request_error / authentication_error / billing_error 等）"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "请求追踪 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**备注**：EvoLink 对 `/v1/messages` 统一采用 Bearer Token 鉴权。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 协议接口"
+    }
+  ]
+}
