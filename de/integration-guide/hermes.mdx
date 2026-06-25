@@ -1,0 +1,417 @@
+---
+title: "Hermes Agent"
+description: "Hermes Agent mit EvoLink.AI verbinden"
+---
+
+## Überblick
+
+![Hermes Agent Oberfläche](/images/integration-guide/hermes/hermes-agent-overview.png)
+
+Hermes Agent ist ein quelloffener, terminal-nativer autonomer KI-Agent (Kommandozeilen-Werkzeug) von [Nous Research](https://nousresearch.com). Er verfügt über ein persistentes Gedächtnis, kann eigene Fähigkeiten (Skills) erstellen und unterstützt ein Messaging-Gateway für mehr als 21 Plattformen (Telegram, Discord, Slack, WhatsApp, Signal, Matrix usw.). Er läuft in verschiedenen Backend-Umgebungen wie lokal, Docker, SSH und Modal.
+
+Hermes Agent unterstützt mehrere Anbieter großer Sprachmodelle und außerdem **benutzerdefinierte OpenAI-kompatible Schnittstellen**. Durch die Integration von Hermes Agent mit der **EvoLink API** können Sie direkt im Terminal auf die von EvoLink bereitgestellten Modellserien wie Claude, GPT und Gemini zugreifen und so mit einem einzigen Schlüssel mehrere Modelle nutzen.
+
+<Note>
+**Wichtige Unterscheidung:** Hermes **Agent** ist eine quelloffene Kommandozeilen-Anwendung (MIT-Lizenz) und nicht dasselbe Werkzeug wie die Hermes 3 / Hermes 4 **Modelle** von Nous Research. Dieser Leitfaden behandelt das Werkzeug Hermes Agent.
+</Note>
+
+## Voraussetzungen
+
+Stellen Sie vor der Konfiguration sicher, dass Sie die folgenden Vorbereitungen abgeschlossen haben:
+
+### 1. System- und Modellanforderungen
+
+- **Terminal-Umgebung**: Hermes Agent läuft in der Kommandozeile von macOS, Linux und Windows (nativ oder WSL2).
+- **Anforderungen an den Modellkontext**: Für Hermes Agent wird ein **Modell mit einer Kontextlänge von mindestens 64K (64.000) Tokens** empfohlen. Da der System-Prompt und die Werkzeugdefinitionen selbst bereits viel Kontext beanspruchen, kann ein zu kleines Fenster gefüllt werden, ohne Platz für die Unterhaltung zu lassen, sodass der Start abgelehnt wird. Falls kontextbezogene Fehler auftreten, wechseln Sie einfach zu einem Modell mit größerem Kontext (die Claude- und Gemini-Serien von EvoLink erfüllen diese Anforderung).
+
+### 2. EvoLink API-Schlüssel erhalten
+
+- Melden Sie sich beim [EvoLink Dashboard](https://evolink.ai/dashboard) an
+- Suchen Sie im Dashboard nach API Keys, klicken Sie auf die Schaltfläche „Neuen Schlüssel erstellen" und kopieren Sie den generierten Schlüssel
+- Der API-Schlüssel beginnt normalerweise mit `sk-`; bewahren Sie ihn sicher auf
+
+## Schritt 1: Hermes Agent installieren
+
+<Note>
+**Tipp:** Wenn Sie nicht wissen, wie Sie ein Kommandozeilen-Terminal öffnen, lesen Sie [FAQ - Wie öffne ich ein Kommandozeilen-Terminal](#11-wie-öffne-ich-ein-kommandozeilen-terminal)
+</Note>
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    Führen Sie das Installationsskript im Terminal aus:
+
+    ```bash
+    curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+    ```
+
+    <Frame>
+    ![Hermes Agent Installationsskript ausführen](/images/integration-guide/hermes/hermes-agent-install.png)
+    </Frame>
+
+    Laden Sie nach Abschluss der Installation die Terminal-Konfiguration neu, damit der Befehl wirksam wird:
+
+    ```bash
+    source ~/.zshrc   # oder source ~/.bashrc
+    ```
+
+    **Erster Start: Installationsmethode wählen (Quick oder Full)**
+
+    Beim ersten Ausführen von `hermes` startet der interaktive Installationsassistent. Zuerst werden Sie gefragt, wie Sie Hermes einrichten möchten:
+
+    <Frame>
+    ![Erster Start: Quick Setup oder Full setup wählen](/images/integration-guide/hermes/hermes-agent-setup.png)
+    </Frame>
+
+    - **Quick Setup (Nous Portal)** – Anmeldung über das kostenlose Nous OAuth, **ohne API-Schlüssel**, mit automatischer Konfiguration von Modellen und Werkzeugen für den schnellsten Einstieg. Standardmäßig werden jedoch die Modelle des Nous Portals verwendet und **nicht EvoLink**; um EvoLink anzubinden, müssen Sie nach Abschluss der Installation separat `hermes model` ausführen (siehe [Schritt 2](#schritt-2-evolink-api-konfigurieren-quick-benutzer-oder-neukonfiguration)).
+    - **Full setup** – Sie konfigurieren Anbieter, Werkzeuge und Optionen selbst Punkt für Punkt (mit Ihrem eigenen Schlüssel). **Für Benutzer, die EvoLink direkt anbinden möchten, wird diese Option empfohlen**, da Sie die EvoLink-Schnittstellenadresse und den Schlüssel bereits während der Installation in einem Schritt eingeben können.
+
+    Im Folgenden werden einige wichtige Schritte zur Anbindung von EvoLink über **Full setup** gezeigt:
+
+    <Steps>
+      <Step title="Full setup wählen">
+        Wählen Sie mit den Pfeiltasten **Full setup — configure every provider, tool & option yourself (bring your own keys)** aus und bestätigen Sie mit der Eingabetaste.
+      </Step>
+      <Step title="Anbieter wählen: Custom endpoint">
+        Suchen Sie in der Anbieterliste weiter unten nach **custom endpoint (enter URL manually)** und wählen Sie es aus. Da EvoLink eine **OpenAI-kompatible Schnittstelle** bereitstellt, erfolgt die Anbindung hier über einen „benutzerdefinierten Endpunkt".
+
+        <Frame>
+        ![In der Anbieterliste custom endpoint auswählen](/images/integration-guide/hermes/hermes-agent-full-provider.png)
+        </Frame>
+      </Step>
+      <Step title="EvoLink-Schnittstellenadresse und API-Schlüssel eingeben">
+        Der Assistent fordert Sie nacheinander zur Eingabe der Endpunktinformationen auf:
+
+        - **API base URL** eingeben: `https://direct.evolink.ai/v1`
+        - **API key** mit Ihrem EvoLink API-Schlüssel (beginnt mit `sk-`) ausfüllen
+
+        Nach der Eingabe überprüft der Assistent den Endpunkt automatisch. Wenn Sie eine Meldung wie `Verified endpoint via https://direct.evolink.ai/v1/models (154 model(s) visible)` sehen, ist die Schnittstelle verbunden und der Schlüssel gültig. Folgen Sie anschließend den Hinweisen, um das Standardmodell und die Werkzeuge auszuwählen.
+
+        <Frame>
+        ![EvoLink-Schnittstellenadresse und Schlüssel eingeben und Endpunktprüfung bestehen](/images/integration-guide/hermes/hermes-agent-full-custom-endpoint.png)
+        </Frame>
+      </Step>
+    </Steps>
+
+    **Erwartetes Ergebnis:** Nach Abschluss des Assistenten wird die Seite **Installation Complete (Installation abgeschlossen)** angezeigt, die den Speicherort der Konfigurationsdateien und gängige Befehle auflistet.
+
+    <Frame>
+    ![Hinweis zum Abschluss der Hermes Agent Installation](/images/integration-guide/hermes/hermes-agent-install-complete.png)
+    </Frame>
+
+    <Note>
+    WSL2- sowie Android-Umgebungen (Termux) verwenden ebenfalls das obige `install.sh`-Skript zur Installation.
+    </Note>
+  </Tab>
+  <Tab title="Windows">
+    Führen Sie den Installationsbefehl in **PowerShell** aus:
+
+    ```powershell
+    iex (irm https://hermes-agent.nousresearch.com/install.ps1)
+    ```
+
+    **Erwartetes Ergebnis:** Sie sehen Download- und Installationsinformationen und am Ende einen Hinweis auf die erfolgreiche Installation.
+
+    **Falls ein Fehler auftritt:** Wenn eine Einschränkung der Ausführungsrichtlinie gemeldet wird, öffnen Sie PowerShell als Administrator oder führen Sie zuerst `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` aus und versuchen Sie es erneut.
+
+    Beim ersten Ausführen von `hermes` nach der Installation startet ebenfalls der **Quick / Full** Installationsassistent. Die Schritte zur Anbindung von EvoLink sind identisch mit dem Tab macOS / Linux (es wird empfohlen, **Full setup** zu wählen und die EvoLink-Schnittstellenadresse und den Schlüssel im Assistenten einzugeben).
+
+    <Tip>
+    macOS- und Windows-Benutzer können auch von der [Hermes-Website](https://hermes-agent.nousresearch.com) das Desktop-Installationspaket Hermes Desktop herunterladen und durch Doppelklick installieren.
+    </Tip>
+  </Tab>
+</Tabs>
+
+### Installation überprüfen
+
+Führen Sie den Diagnosebefehl aus, um den Installationsstatus zu prüfen:
+
+```bash
+hermes doctor
+```
+
+<Frame>
+![hermes doctor Ergebnis der Umgebungsprüfung](/images/integration-guide/hermes/hermes-agent-doctor.png)
+</Frame>
+
+**Erfolgsindikator:** Das Ergebnis der Umgebungsprüfung wird angezeigt und es werden keine installationsbezogenen fatalen Fehler gemeldet.
+
+Um auf die neueste Version zu aktualisieren, können Sie `hermes update` ausführen.
+
+## Schritt 2: EvoLink API konfigurieren (Quick-Benutzer oder Neukonfiguration)
+
+<Note>
+Wenn Sie die EvoLink-Anbindung bereits in Schritt 1 über **Full setup** abgeschlossen und die Endpunktprüfung bestanden haben, können Sie direkt zu [Schritt 3](#schritt-3-verwenden-und-überprüfen) springen. Dieser Schritt richtet sich hauptsächlich an Benutzer, die **Quick Setup** gewählt haben, oder an Szenarien, in denen eine Neukonfiguration / ein Modellwechsel erforderlich ist.
+</Note>
+
+Hermes Agent wird über Konfigurationsdateien im Verzeichnis `~/.hermes/` konfiguriert, darunter:
+
+- `~/.hermes/.env` – speichert Schlüssel wie den API-Schlüssel
+- `~/.hermes/config.yaml` – speichert Nicht-Schlüssel-Konfigurationen wie Modell und Anbieter
+
+Da EvoLink eine **OpenAI-kompatible Schnittstelle** bereitstellt, setzen wir den Anbieter von Hermes auf `custom` (benutzerdefinierter Endpunkt) und richten die Schnittstellenadresse auf `https://direct.evolink.ai/v1`.
+
+<Tabs>
+  <Tab title="Einrichtungsassistent (empfohlen)">
+    Hermes bietet einen interaktiven Einrichtungsassistenten, der sich für neue Benutzer eignet (insbesondere für Benutzer, die Quick Setup gewählt haben). Führen Sie im Terminal aus:
+
+    ```bash
+    hermes model
+    ```
+
+    <Steps>
+      <Step title="Anbieter wählen: Custom endpoint">
+        Suchen Sie in der Anbieterliste weiter unten nach **custom endpoint (enter URL manually)** und wählen Sie es aus, um den OpenAI-kompatiblen Endpunkt von EvoLink anzubinden.
+
+        <Frame>
+        ![Im hermes model Assistenten custom endpoint auswählen](/images/integration-guide/hermes/hermes-agent-quick-provider.png)
+        </Frame>
+      </Step>
+      <Step title="Schnittstellenadresse, Schlüssel eingeben und Kompatibilitätsmodus wählen">
+        Geben Sie nacheinander die Endpunktinformationen ein und wählen Sie nach erfolgreicher Prüfung den API-Kompatibilitätsmodus:
+
+        - **API base URL** eingeben: `https://direct.evolink.ai/v1`
+        - **API key** mit Ihrem EvoLink API-Schlüssel (beginnt mit `sk-`) ausfüllen
+        - **API compatibility mode** auf **Chat Completions (standard OpenAI-compatible endpoints)** setzen
+
+        Wenn Sie eine Meldung wie `Verified endpoint via https://direct.evolink.ai/v1/models (163 model(s) visible)` sehen, ist die Schnittstelle verbunden und der Schlüssel gültig.
+
+        <Frame>
+        ![EvoLink-Schnittstellenadresse und Schlüssel eingeben und Chat Completions Modus wählen](/images/integration-guide/hermes/hermes-agent-quick-custom-endpoint.png)
+        </Frame>
+      </Step>
+      <Step title="Standardmodell wählen">
+        Geben Sie zuletzt den Namen des Modells ein, das als Standardmodell dienen soll (z. B. `claude-sonnet-4-6`, `claude-opus-4-8` usw.), und bestätigen Sie mit der Eingabetaste.
+
+        <Frame>
+        ![Standardmodell für Hermes wählen](/images/integration-guide/hermes/hermes-agent-quick-custom-endpoint2.png)
+        </Frame>
+      </Step>
+    </Steps>
+
+    Der Assistent schreibt den API-Schlüssel automatisch in `~/.hermes/.env` und die Modell- und Endpunktkonfiguration in `~/.hermes/config.yaml`, ohne dass Sie die Dateien manuell bearbeiten müssen.
+
+    <Tip>
+    `hermes model` ist der wichtigste Schritt für Quick-Benutzer, um EvoLink anzubinden. Nach Abschluss können Sie direkt zum nächsten Schritt übergehen und mit der Nutzung beginnen.
+    </Tip>
+  </Tab>
+  <Tab title="Konfiguration über die Befehlszeile">
+    Wenn Sie bereits einen EvoLink API-Schlüssel haben, können Sie die Konfiguration direkt über die Befehlszeile schreiben.
+
+    ### 1. API-Schlüssel setzen (in .env schreiben)
+
+    ```bash
+    hermes config set OPENAI_API_KEY Ihr_EvoLink_API_Key
+    ```
+
+    ### 2. Schnittstellenadresse und Modell setzen (in config.yaml schreiben)
+
+    ```bash
+    hermes config set OPENAI_BASE_URL https://direct.evolink.ai/v1
+    hermes config set model claude-sonnet-4-6
+    ```
+
+    <Note>
+    `hermes config set` schreibt Schlüssel wie den API-Schlüssel automatisch in `.env` und die übrigen Konfigurationen in `config.yaml`. Sie müssen sich nicht darum kümmern, in welche Datei geschrieben wird.
+    </Note>
+
+    Nach Abschluss können Sie `hermes config` ausführen, um zu prüfen, ob die aktuelle Konfiguration korrekt ist.
+  </Tab>
+  <Tab title="Konfigurationsdateien manuell bearbeiten">
+    <Note>
+    **Fortgeschrittene Benutzer:** Bei der folgenden Methode werden die Konfigurationsdateien direkt bearbeitet. Den meisten Benutzern wird der obige „Einrichtungsassistent" empfohlen.
+    </Note>
+
+    ### 1. ~/.hermes/.env bearbeiten
+
+    Öffnen (oder erstellen) Sie `~/.hermes/.env` und tragen Sie API-Schlüssel und Schnittstellenadresse ein:
+
+    ```bash
+    OPENAI_API_KEY=Ihr_EvoLink_API_Key
+    OPENAI_BASE_URL=https://direct.evolink.ai/v1
+    ```
+
+    ### 2. ~/.hermes/config.yaml bearbeiten
+
+    Öffnen (oder erstellen) Sie `~/.hermes/config.yaml` und konfigurieren Sie das Hauptmodell als benutzerdefinierten Endpunkt:
+
+    ```yaml
+    model:
+      provider: custom
+      default: claude-sonnet-4-6
+      base_url: https://direct.evolink.ai/v1
+      api_mode: chat_completions
+    ```
+
+    **⚠️ Wichtige Hinweise:**
+    - Ersetzen Sie `Ihr_EvoLink_API_Key` durch Ihren tatsächlichen API-Schlüssel
+    - `base_url` muss `https://direct.evolink.ai/v1` lauten (die OpenAI-kompatible Schnittstellenadresse von EvoLink)
+    - Geben Sie keine Satzzeichen über eine chinesische Eingabemethode ein (z. B. den chinesischen Doppelpunkt `：`)
+
+    **Erläuterung der Konfigurationsoptionen:**
+    - `provider: custom`: Verwendung eines benutzerdefinierten OpenAI-kompatiblen Endpunkts (also EvoLink)
+    - `base_url`: Die EvoLink API-Schnittstellenadresse
+    - `api_mode: chat_completions`: Verwendung der standardmäßigen Chat-Completions-Schnittstelle
+    - `default`: Der Name des standardmäßig verwendeten Modells
+  </Tab>
+</Tabs>
+
+## Schritt 3: Verwenden und überprüfen
+
+### 1. Hermes Agent starten
+
+```bash
+hermes          # klassischer Kommandozeilenmodus
+```
+
+Oder mit der modernen TUI-Oberfläche (empfohlen):
+
+```bash
+hermes --tui    # moderne Terminal-Oberfläche
+```
+
+### 2. Konfiguration überprüfen
+
+Geben Sie nach dem Start einen einfachen Prompt zur Überprüfung ein, zum Beispiel:
+
+```
+Wer bist du
+```
+
+<Frame>
+![Hermes Agent antwortet normal und bestätigt die erfolgreiche Konfiguration](/images/integration-guide/hermes/hermes-agent-en-who.png)
+</Frame>
+
+**Erfolgsindikator:**
+- Sie sehen die Antwort der KI (einige Zeilen Text)
+- Es treten **keine** Fehler wie `401`, `403`, ungültiger `API key` oder `context length` (Kontextlänge) auf
+
+**Falls Sie einen Fehler sehen:**
+- `401 Unauthorized`: API-Schlüssel nicht gesetzt oder ungültig → prüfen Sie `OPENAI_API_KEY` in `~/.hermes/.env`
+- `403 Forbidden`: API-Schlüssel hat unzureichende Berechtigungen oder ist abgelaufen → prüfen Sie den API-Schlüssel
+- Fehler im Zusammenhang mit `context length`: Der Kontext des gewählten Modells beträgt weniger als 64K → wechseln Sie zu einem Modell, das die Anforderung erfüllt
+- `No API key` / provider not found: Kein Schlüssel gefunden → führen Sie `hermes config set OPENAI_API_KEY ...` erneut aus
+
+### 3. Frühere Sitzung wiederherstellen
+
+```bash
+hermes --continue    # die letzte Sitzung wiederherstellen
+hermes -c            # Kurzform
+```
+
+## Erweiterte Konfiguration (optional)
+
+Die folgenden Konfigurationen werden alle in `~/.hermes/config.yaml` bearbeitet und nach Bedarf verwendet.
+
+### Ersatzmodell (Fallback)
+
+Wenn die Anfrage an das Hauptmodell fehlschlägt, kann Hermes automatisch zu einem Ersatzmodell wechseln, ohne die aktuelle Sitzung zu verlieren. Sie können eine Ersatzkette konfigurieren, die vollständig über EvoLink läuft:
+
+```yaml
+fallback_providers:
+  - provider: custom
+    model: claude-sonnet-4-6
+    base_url: https://direct.evolink.ai/v1
+  - provider: custom
+    model: claude-haiku-4-5-20251001
+    base_url: https://direct.evolink.ai/v1
+```
+
+### Hilfsmodell (Auxiliary)
+
+Hermes verwendet ein „Hilfsmodell" für einige Nebenaufgaben (wie Kontextkomprimierung, Sitzungstitel, Webseiten-Zusammenfassungen usw.). Standardmäßig wird das Hauptmodell verwendet, Sie können diese Aufgaben jedoch zu günstigeren/schnelleren Modellen umleiten, um Kosten zu sparen:
+
+```yaml
+auxiliary:
+  title_generation:
+    provider: custom
+    model: claude-haiku-4-5-20251001
+    base_url: https://direct.evolink.ai/v1
+    api_key: Ihr_EvoLink_API_Key
+  compression:
+    provider: custom
+    model: claude-haiku-4-5-20251001
+    base_url: https://direct.evolink.ai/v1
+    api_key: Ihr_EvoLink_API_Key
+```
+
+So konzentriert sich das Hauptmodell auf komplexes Schlussfolgern, während leichtgewichtige Aufgaben von günstigeren Modellen erledigt werden.
+
+## FAQ
+
+### 1. Was ist Hermes Agent und wofür wird er hauptsächlich verwendet?
+Hermes Agent ist ein quelloffener, terminal-nativer autonomer KI-Agent von Nous Research. Er verfügt über ein persistentes Gedächtnis und die Fähigkeit, eigene Skills zu erstellen, kann in der Kommandozeile Aufgaben wie Code-Unterstützung, Aufgabenautomatisierung und Frage-Antwort-Dialoge erledigen und unterstützt die Anbindung verschiedener Chat-Plattformen über ein Messaging-Gateway.
+
+### 2. Sind Hermes Agent und die Hermes 3 / Hermes 4 Modelle dasselbe?
+Nein. Hermes **Agent** ist ein quelloffenes Kommandozeilen-Werkzeug; Hermes 3 / Hermes 4 sind die Serie großer Sprach**modelle** von Nous Research. Dieser Leitfaden behandelt das Werkzeug Hermes Agent, das verschiedene Modellanbieter einschließlich EvoLink anbinden kann.
+
+### 3. Warum sollte man `provider: custom` verwenden, um EvoLink anzubinden?
+Weil EvoLink eine standardmäßige **OpenAI-kompatible Schnittstelle** bereitstellt. Hermes unterstützt verschiedene Anbieter, wobei `custom` (benutzerdefinierter OpenAI-kompatibler Endpunkt) genau die Methode zur Anbindung solcher kompatiblen Schnittstellen ist. Daher binden Sie EvoLink in Hermes mit `provider: custom` an und tragen als Schnittstellenadresse `https://direct.evolink.ai/v1` ein.
+
+### 4. Was tun, wenn beim Start eine unzureichende Kontextlänge (context length) gemeldet wird?
+Für Hermes Agent wird ein Modell mit mindestens 64K Tokens Kontext empfohlen. Da der System-Prompt und die Werkzeugdefinitionen viel Kontext beanspruchen, kann ein zu kleines Fenster gefüllt werden, ohne Platz für die Unterhaltung zu lassen, sodass der Start abgelehnt wird. Wechseln Sie zu einem Modell mit größerem Kontext (wie der Claude-Serie von EvoLink).
+
+### 5. Was sind die üblichen Ursachen für 401 / 403 Fehler?
+- **401-Fehler**: `OPENAI_API_KEY` nicht gesetzt oder API-Schlüssel ungültig
+- **403-Fehler**: API-Schlüssel hat unzureichende Berechtigungen oder ist abgelaufen
+- Prüfen Sie den Schlüssel in `~/.hermes/.env` sowie ob `base_url` `https://direct.evolink.ai/v1` lautet
+
+### 6. Warum werden meine Konfigurationsänderungen nicht wirksam?
+- Stellen Sie sicher, dass die Konfiguration in die richtige Datei geschrieben wurde: der API-Schlüssel in `~/.hermes/.env`, Modell/Endpunkt in `~/.hermes/config.yaml`
+- Sie können `hermes config` ausführen, um die aktuell wirksame Konfiguration anzuzeigen
+- Prüfen Sie, ob Einrückung und Syntax von `config.yaml` korrekt sind (YAML reagiert empfindlich auf Einrückungen)
+- Starten Sie Hermes neu
+
+### 7. Wie wechsle ich das Modell?
+- Interaktiv: führen Sie `hermes model` aus, um neu auszuwählen
+- Befehlszeile: führen Sie `hermes config set model Modellname` aus
+- Bearbeiten Sie den Wert von `model.default` in `~/.hermes/config.yaml` direkt
+
+### 8. Welche gängigen Modelle unterstützt EvoLink?
+EvoLink unterstützt die folgenden Claude-Modelle (und auch Serien wie GPT, Gemini usw., die Sie im Dashboard einsehen können):
+
+| Modellname | Beschreibung |
+|---------|------|
+| `claude-haiku-4-5-20251001` | Schnelle Antwort |
+| `claude-sonnet-4-5-20250929` | Ausgewogene Leistung |
+| `claude-opus-4-5-20251101` | Erweiterte Version |
+| `claude-sonnet-4-6` | Neueste Version |
+| `claude-opus-4-8` | Neueste Version |
+| `claude-opus-4-7` | Neueste Version |
+
+### 9. Wie sehe ich meinen Verbrauch ein?
+Melden Sie sich beim [EvoLink Dashboard](https://evolink.ai/dashboard) an, um Anfragevolumen, Verbrauch und Token-Nutzung einzusehen.
+
+### 10. Wo befinden sich die Konfigurationsdatei und die Schlüsseldatei jeweils?
+- Schlüssel (API Key): `~/.hermes/.env`
+- Modell- und Anbieterkonfiguration: `~/.hermes/config.yaml`
+- Sie können `hermes config edit` ausführen, um die Konfigurationsdatei direkt zur Bearbeitung zu öffnen.
+
+### 11. Wie öffne ich ein Kommandozeilen-Terminal?
+
+<Tabs>
+  <Tab title="Windows">
+    - Methode 1: Drücken Sie `Win + R`, geben Sie `powershell` ein und drücken Sie Enter
+    - Methode 2: Suchen Sie im Startmenü nach „PowerShell"
+    - Methode 3: Halten Sie Shift gedrückt, klicken Sie mit der rechten Maustaste auf eine leere Stelle in einem Ordner und wählen Sie „PowerShell-Fenster hier öffnen"
+  </Tab>
+  <Tab title="macOS">
+    - Methode 1: Drücken Sie `Command + Leertaste`, um Spotlight zu öffnen, geben Sie `Terminal` ein und drücken Sie Enter
+    - Methode 2: Gehen Sie zu „Programme" → „Dienstprogramme" → „Terminal"
+  </Tab>
+  <Tab title="Linux">
+    - Methode 1: Drücken Sie die Tastenkombination `Ctrl + Alt + T`
+    - Methode 2: Suchen Sie im Anwendungsmenü nach „Terminal"
+  </Tab>
+</Tabs>
+
+## Hinweise
+
+<Warning>
+Es wird empfohlen, Hermes Agent in einem dedizierten Projektordner zu starten und die Ausführung in sensiblen Verzeichnissen (wie Systemordnern oder Verzeichnissen mit Schlüsseln) zu vermeiden. Hermes Agent ist ein autonomer Agent und führt Dateioperationen ausgehend vom aktuellen Arbeitsverzeichnis durch.
+</Warning>
+
+<Tip>
+Weitere Verwendungsmöglichkeiten und Konfigurationen finden Sie in der [offiziellen Dokumentation von Hermes Agent](https://hermes-agent.nousresearch.com/docs) und im [GitHub-Repository](https://github.com/NousResearch/hermes-agent).
+</Tip>
+
+<div style={{ height: "60vh" }} aria-hidden="true" />
