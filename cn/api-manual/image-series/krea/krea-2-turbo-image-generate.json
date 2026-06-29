@@ -1,0 +1,386 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "krea-2-turbo接口",
+    "description": "使用AI模型创建图像任务，支持多种模型和参数配置",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/images/generations": {
+      "post": {
+        "summary": "krea-2-turbo接口",
+        "description": "- Krea 2 Turbo 是一款超快速文本生成图像模型，可输出高保真、富有电影质感的画面\n- 仅支持文本生成图像，不支持参考图\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的图像链接，有效期为24小时，请尽快保存",
+        "operationId": "createImageGeneration",
+        "tags": [
+          "图像生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageGenerationRequest"
+              },
+              "examples": {
+                "text_to_image": {
+                  "summary": "文本生成图像",
+                  "value": {
+                    "model": "krea-2-turbo",
+                    "prompt": "A cinematic product poster, silver headphones floating against a deep matte-black backdrop with soft rim lighting",
+                    "size": "16:9",
+                    "quality": "1K"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "图像生成任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_request",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: krea-2-turbo",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ImageGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "图像生成模型名称",
+            "enum": [
+              "krea-2-turbo"
+            ],
+            "default": "krea-2-turbo",
+            "example": "krea-2-turbo"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "提示词，描述想要生成的图像。使用英文表达效果最佳，长度最多 `640` tokens",
+            "example": "A cinematic product poster, silver headphones floating against a deep matte-black backdrop with soft rim lighting"
+          },
+          "size": {
+            "type": "string",
+            "description": "生成图像的宽高比，不传时默认 `1:1`。实际输出像素由 `size` 与 `quality` 共同决定。\n\n**支持的比例（共 11 种）：** `1:1`、`4:3`、`3:4`、`5:4`、`4:5`、`2:3`、`3:2`、`9:16`、`16:9`、`1:2`、`2:1`\n\n**输出像素对照（`size` × `quality`）：**\n\n| 比例 | `1K` | `2K` |\n|---|---|---|\n| `1:1` | 1024×1024 | 2048×2048 |\n| `4:3` | 1152×896 | 2304×1728 |\n| `3:4` | 896×1152 | 1728×2304 |\n| `5:4` | 1152×896 | 2240×1792 |\n| `4:5` | 896×1152 | 1792×2240 |\n| `2:3` | 832×1280 | 1664×2496 |\n| `3:2` | 1280×832 | 2496×1664 |\n| `9:16` | 768×1344 | 1472×2688 |\n| `16:9` | 1344×768 | 2688×1472 |\n| `1:2` | 704×1472 | 1408×2816 |\n| `2:1` | 1472×704 | 2816×1408 |",
+            "enum": [
+              "1:1",
+              "4:3",
+              "3:4",
+              "5:4",
+              "4:5",
+              "2:3",
+              "3:2",
+              "9:16",
+              "16:9",
+              "1:2",
+              "2:1"
+            ],
+            "default": "1:1",
+            "example": "16:9"
+          },
+          "quality": {
+            "type": "string",
+            "description": "输出清晰度档位 `1K` / `2K`，不传时默认 `1K`。`2K` 相比 `1K` 输出更高分辨率的图像。不同档位计费不同，详见定价页",
+            "enum": [
+              "1K",
+              "2K"
+            ],
+            "default": "1K",
+            "example": "1K"
+          },
+          "seed": {
+            "type": "integer",
+            "description": "随机种子，用于生成类似的构图\n\n**注意：**\n- 取值范围：`0` 到 `1048576`\n- `0` 或留空则使用随机种子\n- 相同种子配合相同提示词有可能复现相同构图",
+            "minimum": 0,
+            "maximum": 1048576,
+            "example": 12345
+          },
+          "nsfw_check": {
+            "type": "boolean",
+            "description": "是否启用额外的NSFW内容审核\n\n**注意：**\n- 默认值：`false`（关闭）\n- 即使关闭，基础内容审核仍然生效\n- 开启后将进行更严格的内容过滤",
+            "default": false,
+            "example": false
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "任务完成后的HTTPS回调地址\n\n**回调时机：**\n- 任务完成（completed）、失败（failed）或取消（cancelled）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持HTTPS协议\n- 禁止回调到内网IP地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x等）\n- URL长度不超过`2048`字符\n\n**回调机制：**\n- 超时时间：`10`秒\n- 失败后最多重试`3`次（会分别在失败的`1`秒/`2`秒/`4`秒后进行重试）\n- 回调响应体格式与任务查询接口返回的格式一致\n- 回调地址若返回2xx状态码视为成功，其他状态码会触发重试",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/image-task-completed"
+          }
+        }
+      },
+      "ImageGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1751280000
+          },
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-1751280000-k2t9x8a3"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "krea-2-turbo"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "image.generation.task"
+            ],
+            "description": "任务的具体类型"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "任务进度百分比 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "任务状态",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/TaskInfo",
+            "description": "异步任务信息"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "任务的输出类型",
+            "example": "image"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "使用量和计费信息"
+          }
+        }
+      },
+      "TaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "任务是否可以取消，krea-2-turbo 始终为 `false`",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "预估完成时间（秒）",
+            "minimum": 0,
+            "example": 45
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "使用量和计费信息",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "计费规则",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "预估消耗积分数",
+            "minimum": 0,
+            "example": 0.05
+          },
+          "user_group": {
+            "type": "string",
+            "description": "用户组类别",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "错误代码标识符"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key ：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "图像生成",
+      "description": "AI图像生成相关接口"
+    }
+  ]
+}
