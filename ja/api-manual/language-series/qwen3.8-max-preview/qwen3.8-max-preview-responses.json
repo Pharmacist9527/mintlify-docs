@@ -1,0 +1,232 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8-Max-Preview - Responses インターフェース",
+    "description": "通義千問 Qwen3.8-Max-Preview の OpenAI Responses 互換インターフェース（`/v1/responses`）。\n\n**Chat Completions と比較した利点**：\n- **コンテキスト管理の簡素化**：`previous_response_id` で前のターンを関連付け、完全な履歴を手動で連結する必要がありません\n- **組み込みツール**：Web 検索、Web ページ抽出、コードインタプリタなど\n- **便利なセッションキャッシュ**：リクエストヘッダーに `x-dashscope-session-cache: enable` を追加すると、サーバー側が対話コンテキストを自動的にキャッシュし、複数ターンの遅延とコストを削減\n\n**能力**：マルチモーダル入力（テキスト + 画像）、思考強度の制御（`reasoning.effort`）、ストリーミング出力。",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://direct.evolink.ai", "description": "本番環境（推奨、テキストモデルの長時間接続サポートがより優れています）" },
+    { "url": "https://api.evolink.ai", "description": "マルチモーダル主力アドレス（画像入力を含む場合に使用）" }
+  ],
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Qwen3.8-Max-Preview Responses インターフェース（OpenAI 互換）",
+        "description": "> 🚧 **このモデルはまだ利用できません。お楽しみに**\n\n- OpenAI Responses プロトコルで Qwen3.8-Max-Preview を呼び出します\n- **柔軟な入力**：`input` には文字列を渡すことも、Chat 形式のメッセージ配列を渡すこともできます（マルチモーダル `input_text` / `input_image` に対応）\n- **複数ターン対話**：`previous_response_id` を渡して前のターンの応答を関連付けると、サーバー側がコンテキストを自動的に組み合わせます（応答 `id` の有効期間は 7 日）\n- **セッションキャッシュ**：リクエストヘッダーに `x-dashscope-session-cache: enable`（デフォルトは disable）を追加して有効化、ヒットは `usage.input_tokens_details.cached_tokens` を参照\n- **思考強度**：`reasoning.effort` で制御\n- **ストリーミング出力**：`stream=true` の場合、Responses イベント（`response.output_text.delta` / `response.completed` など）で返します",
+        "operationId": "createResponseQwen38MaxPreview",
+        "parameters": [
+          {
+            "name": "x-dashscope-session-cache",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string", "enum": ["enable", "disable"], "default": "disable" },
+            "description": "セッションキャッシュのスイッチ。`enable` に設定すると、サーバー側が対話コンテキストを自動的にキャッシュし、複数ターン推論の遅延とコストを削減します。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResponseRequest" },
+              "examples": {
+                "basic": {
+                  "summary": "基本呼び出し（文字列入力）",
+                  "value": { "model": "qwen3.8-max-preview", "input": "何ができますか？" }
+                },
+                "multi_turn": {
+                  "summary": "複数ターン対話（previous_response_id）",
+                  "value": { "model": "qwen3.8-max-preview", "input": "GBDT との違いは何ですか？", "previous_response_id": "resp_xxxxxxxx" }
+                },
+                "multimodal": {
+                  "summary": "マルチモーダル入力（画像）",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "input": [
+                      {
+                        "role": "user",
+                        "content": [
+                          { "type": "input_text", "text": "この画像を説明してください" },
+                          { "type": "input_image", "image_url": "https://example.com/image.jpg" }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成に成功しました",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResponseObject" } } }
+          },
+          "400": { "description": "リクエストパラメータが不正です", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 400, "message": "Invalid request parameters", "type": "invalid_request_error" } } } } },
+          "401": { "description": "未認証、トークンが無効または期限切れです", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 401, "message": "Invalid or expired token", "type": "authentication_error" } } } } },
+          "402": { "description": "残高不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 402, "message": "Insufficient credits", "type": "insufficient_quota" } } } } },
+          "429": { "description": "リクエストが頻繁すぎます（レート制限）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "サーバー内部エラー", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API で Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)で API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponseRequest": {
+        "type": "object",
+        "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "enum": ["qwen3.8-max-preview"], "example": "qwen3.8-max-preview", "description": "対話モデル名" },
+          "input": {
+            "description": "モデル入力。文字列（プレーンテキスト）を渡すことも、Chat 形式のメッセージ配列を渡すこともできます（マルチモーダル `input_text` / `input_image` に対応）。",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/InputItem" } }
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "システム指示としてコンテキストの先頭位置に挿入されます。`previous_response_id` を使用する場合、前のターンの `instructions` は今回のターンには渡されません。"
+          },
+          "previous_response_id": {
+            "type": "string",
+            "description": "前のターンの応答の一意の ID（応答 `id`、有効期間 7 日）。複数ターン対話の関連付けに使用され、サーバー側がそのターンの入力と出力を自動的に取得してコンテキストとして組み合わせます。"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "今回生成する出力内容の最大 token 数（思考を含む）。"
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "思考の制御。",
+            "properties": {
+              "effort": { "type": "string", "enum": ["low", "medium", "high"], "description": "思考強度" }
+            }
+          },
+          "store": {
+            "type": "boolean",
+            "description": "今回の応答を保存するかどうか。\n\n- `true`（デフォルト）：`previous_response_id` で参照可能\n- `false`：保存せず、以降は参照できません",
+            "default": true
+          },
+          "stream": { "type": "boolean", "description": "Responses イベントでストリーミング返却するかどうか。", "default": false },
+          "temperature": { "type": "number", "description": "サンプリング温度、値の範囲は `[0, 2]`。", "minimum": 0, "maximum": 2 },
+          "top_p": { "type": "number", "description": "核サンプリングパラメータ、値の範囲は `(0, 1]`。", "minimum": 0, "maximum": 1 },
+          "tools": {
+            "type": "array",
+            "description": "ツールのリスト。組み込みツール（`web_search` Web 検索、`web_extractor` Web ページ抽出、`code_interpreter` コードインタプリタ）およびカスタム `function` に対応。",
+            "items": { "$ref": "#/components/schemas/Tool" }
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "入力メッセージ項目（Chat 形式）。",
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant", "system"], "description": "メッセージのロール" },
+          "content": {
+            "description": "メッセージの内容。プレーンテキストの場合は文字列を渡します；マルチモーダルの場合は内容片配列を渡します。",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/InputContentPart" } }
+            ]
+          }
+        }
+      },
+      "InputContentPart": {
+        "type": "object",
+        "description": "Responses 入力内容片、`type` でタイプを宣言します。",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["input_text", "input_image"],
+            "description": "コンテンツタイプ\n\n- `input_text`：テキスト\n- `input_image`：画像"
+          },
+          "text": { "type": "string", "description": "`type=input_text` のときのテキスト内容" },
+          "image_url": { "type": "string", "description": "`type=input_image` のときの画像 URL、または `data:` で始まる base64 data URL" }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "ツール定義。組み込みツールは `type` を宣言するだけで済みます；カスタム function には名前とパラメータ schema を指定する必要があります。",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["web_search", "web_extractor", "code_interpreter", "function"], "description": "ツールタイプ" },
+          "name": { "type": "string", "description": "`type=function` のときの関数名" },
+          "parameters": { "type": "object", "description": "`type=function` のときのパラメータ JSON Schema" }
+        }
+      },
+      "ResponseObject": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "今回の応答の一意の ID（有効期間 7 日、`previous_response_id` として使用可能）", "example": "resp_xxxxxxxx" },
+          "object": { "type": "string", "example": "response" },
+          "status": { "type": "string", "description": "応答ステータス", "example": "completed" },
+          "model": { "type": "string", "example": "qwen3.8-max-preview" },
+          "output": {
+            "type": "array",
+            "description": "出力項目の配列（`message` / `reasoning` / 組み込みツール呼び出しなどを含む）",
+            "items": { "type": "object" }
+          },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 使用統計。",
+        "properties": {
+          "input_tokens": { "type": "integer", "description": "入力 token 数", "example": 45 },
+          "output_tokens": { "type": "integer", "description": "出力 token 数（思考を含む）", "example": 63 },
+          "total_tokens": { "type": "integer", "description": "合計 token 数", "example": 108 },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "入力 token の内訳",
+            "properties": {
+              "cached_tokens": { "type": "integer", "description": "セッションキャッシュにヒットした入力 token 数（キャッシュ読み取り）", "example": 0 }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "出力 token の内訳",
+            "properties": {
+              "reasoning_tokens": { "type": "integer", "description": "思考過程の token 数", "example": 0 }
+            }
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "セッションキャッシュを有効にした後に返されるキャッシュ詳細",
+            "properties": {
+              "cached_tokens": { "type": "integer", "description": "キャッシュにヒットした token 数", "example": 0 },
+              "cache_creation_input_tokens": { "type": "integer", "description": "今回新規作成されたキャッシュの token 数（キャッシュ書き込み）", "example": 0 }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "integer", "description": "HTTP ステータスエラーコード" },
+              "message": { "type": "string", "description": "エラーの説明" },
+              "type": { "type": "string", "description": "エラータイプ" },
+              "param": { "type": "string", "description": "関連するパラメータ名" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

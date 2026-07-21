@@ -1,0 +1,232 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8-Max-Preview - Responses API",
+    "description": "OpenAI Responses-compatible API (`/v1/responses`) for Tongyi Qwen3.8-Max-Preview.\n\n**Advantages over Chat Completions**:\n- **Simplified context management**: link to the previous turn via `previous_response_id`, without manually assembling the full history\n- **Built-in tools**: web search, web extraction, code interpreter, and more\n- **Convenient session caching**: add `x-dashscope-session-cache: enable` to the request header, and the server automatically caches the conversation context, reducing multi-turn latency and cost\n\n**Capabilities**: multimodal input (text + image), thinking-effort control (`reasoning.effort`), and streaming output.",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://direct.evolink.ai", "description": "Production environment (recommended, better long-connection support for text models)" },
+    { "url": "https://api.evolink.ai", "description": "Primary multimodal endpoint (use when input includes images)" }
+  ],
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Qwen3.8-Max-Preview Responses API (OpenAI-Compatible)",
+        "description": "> 🚧 **This model is not yet available, stay tuned**\n\n- Call Qwen3.8-Max-Preview using the OpenAI Responses protocol\n- **Flexible input**: `input` can be a string or a Chat-format message array (supporting multimodal `input_text` / `input_image`)\n- **Multi-turn conversation**: pass `previous_response_id` to link to the previous response, and the server automatically assembles the context (the response `id` is valid for 7 days)\n- **Session caching**: enable by adding `x-dashscope-session-cache: enable` to the request header (default disable); see `usage.input_tokens_details.cached_tokens` for hits\n- **Thinking effort**: controlled via `reasoning.effort`\n- **Streaming output**: when `stream=true`, returned as Responses events (`response.output_text.delta` / `response.completed`, etc.)",
+        "operationId": "createResponseQwen38MaxPreview",
+        "parameters": [
+          {
+            "name": "x-dashscope-session-cache",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string", "enum": ["enable", "disable"], "default": "disable" },
+            "description": "Session caching switch. When set to `enable`, the server automatically caches the conversation context to reduce multi-turn inference latency and cost."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResponseRequest" },
+              "examples": {
+                "basic": {
+                  "summary": "Basic call (string input)",
+                  "value": { "model": "qwen3.8-max-preview", "input": "What can you do?" }
+                },
+                "multi_turn": {
+                  "summary": "Multi-turn conversation (previous_response_id)",
+                  "value": { "model": "qwen3.8-max-preview", "input": "How is it different from GBDT?", "previous_response_id": "resp_xxxxxxxx" }
+                },
+                "multimodal": {
+                  "summary": "Multimodal input (image)",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "input": [
+                      {
+                        "role": "user",
+                        "content": [
+                          { "type": "input_text", "text": "Describe this image" },
+                          { "type": "input_image", "image_url": "https://example.com/image.jpg" }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResponseObject" } } }
+          },
+          "400": { "description": "Invalid request parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 400, "message": "Invalid request parameters", "type": "invalid_request_error" } } } } },
+          "401": { "description": "Unauthenticated, invalid or expired token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 401, "message": "Invalid or expired token", "type": "authentication_error" } } } } },
+          "402": { "description": "Insufficient balance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 402, "message": "Insufficient credits", "type": "insufficient_quota" } } } } },
+          "429": { "description": "Too many requests (rate limited)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Internal server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key**:\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponseRequest": {
+        "type": "object",
+        "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "enum": ["qwen3.8-max-preview"], "example": "qwen3.8-max-preview", "description": "Chat model name" },
+          "input": {
+            "description": "Model input. Can be a string (plain text) or a Chat-format message array (supporting multimodal `input_text` / `input_image`).",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/InputItem" } }
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Inserted as a system instruction at the start of the context. When using `previous_response_id`, the previous turn's `instructions` are not carried into this turn."
+          },
+          "previous_response_id": {
+            "type": "string",
+            "description": "Unique ID of the previous response (the response `id`, valid for 7 days). Used to link multi-turn conversations; the server automatically retrieves and combines that turn's input and output as context."
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "Maximum number of output tokens to generate this time (including thinking)."
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "Thinking control.",
+            "properties": {
+              "effort": { "type": "string", "enum": ["low", "medium", "high"], "description": "Thinking effort" }
+            }
+          },
+          "store": {
+            "type": "boolean",
+            "description": "Whether to store this response.\n\n- `true` (default): can be referenced by `previous_response_id`\n- `false`: not stored and cannot be referenced later",
+            "default": true
+          },
+          "stream": { "type": "boolean", "description": "Whether to return a Responses event stream.", "default": false },
+          "temperature": { "type": "number", "description": "Sampling temperature, range `[0, 2]`.", "minimum": 0, "maximum": 2 },
+          "top_p": { "type": "number", "description": "Nucleus sampling parameter, range `(0, 1]`.", "minimum": 0, "maximum": 1 },
+          "tools": {
+            "type": "array",
+            "description": "List of tools. Supports built-in tools (`web_search` for web search, `web_extractor` for web extraction, `code_interpreter` for code interpretation) and custom `function` tools.",
+            "items": { "$ref": "#/components/schemas/Tool" }
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "Input message item (Chat format).",
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant", "system"], "description": "Message role" },
+          "content": {
+            "description": "Message content. Pass a string for plain text; pass a content part array for multimodal input.",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/InputContentPart" } }
+            ]
+          }
+        }
+      },
+      "InputContentPart": {
+        "type": "object",
+        "description": "Responses input content part; declare the type via `type`.",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["input_text", "input_image"],
+            "description": "Content type\n\n- `input_text`: text\n- `input_image`: image"
+          },
+          "text": { "type": "string", "description": "Text content when `type=input_text`" },
+          "image_url": { "type": "string", "description": "Image URL when `type=input_image`, or a base64 data URL starting with `data:`" }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Tool definition. Built-in tools only need to declare `type`; custom functions must provide a name and parameter schema.",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["web_search", "web_extractor", "code_interpreter", "function"], "description": "Tool type" },
+          "name": { "type": "string", "description": "Function name when `type=function`" },
+          "parameters": { "type": "object", "description": "Parameter JSON Schema when `type=function`" }
+        }
+      },
+      "ResponseObject": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Unique ID of this response (valid for 7 days, can be used as `previous_response_id`)", "example": "resp_xxxxxxxx" },
+          "object": { "type": "string", "example": "response" },
+          "status": { "type": "string", "description": "Response status", "example": "completed" },
+          "model": { "type": "string", "example": "qwen3.8-max-preview" },
+          "output": {
+            "type": "array",
+            "description": "Array of output items (including `message` / `reasoning` / built-in tool calls, etc.)",
+            "items": { "type": "object" }
+          },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token usage statistics.",
+        "properties": {
+          "input_tokens": { "type": "integer", "description": "Number of input tokens", "example": 45 },
+          "output_tokens": { "type": "integer", "description": "Number of output tokens (including thinking)", "example": 63 },
+          "total_tokens": { "type": "integer", "description": "Total number of tokens", "example": 108 },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "Breakdown of input tokens",
+            "properties": {
+              "cached_tokens": { "type": "integer", "description": "Number of input tokens served from the session cache (cache read)", "example": 0 }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "Breakdown of output tokens",
+            "properties": {
+              "reasoning_tokens": { "type": "integer", "description": "Number of thinking-process tokens", "example": 0 }
+            }
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Cache details returned when session caching is enabled",
+            "properties": {
+              "cached_tokens": { "type": "integer", "description": "Number of tokens served from cache", "example": 0 },
+              "cache_creation_input_tokens": { "type": "integer", "description": "Number of tokens newly written to cache in this request (cache write)", "example": 0 }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "integer", "description": "HTTP status error code" },
+              "message": { "type": "string", "description": "Error description" },
+              "type": { "type": "string", "description": "Error type" },
+              "param": { "type": "string", "description": "Name of the related parameter" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

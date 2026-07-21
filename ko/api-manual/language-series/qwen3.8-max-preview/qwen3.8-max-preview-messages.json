@@ -1,0 +1,243 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8-Max-Preview - Anthropic 호환 API",
+    "description": "Qwen3.8-Max-Preview의 Anthropic Messages 호환 API(`/v1/messages`).\n\n**적용 시나리오**: Claude Code, Claude Desktop 등 Anthropic Messages 프로토콜을 사용하는 클라이언트.\n\n**능력**:\n- 컨텍스트 길이 **1,000,000 tokens**(1M)\n- 멀티모달 입력: `content`는 텍스트 + 이미지 블록을 지원\n- 컨텍스트 캐시: `cache_control` 명시적 캐시 표시, 적중 / 생성은 응답 `usage` 참조\n- 사고 모드: `thinking` 필드로 제어\n- 스트리밍 출력: SSE 증분 반환",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://direct.evolink.ai", "description": "프로덕션 환경(권장, 텍스트 모델 장기 연결 지원이 더 우수)" },
+    { "url": "https://api.evolink.ai", "description": "멀티모달 주력 주소(이미지 입력 포함 시 사용)" }
+  ],
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Qwen3.8-Max-Preview 대화 API(Anthropic Messages 호환)",
+        "description": "> 🚧 **이 모델은 아직 제공되지 않습니다. 기대해 주세요**\n\n- Anthropic Messages 프로토콜로 Qwen3.8-Max-Preview 호출\n- **시스템 프롬프트**: 최상위 `system` 필드로 설정(messages 안에 넣지 않음)\n- **멀티모달 입력**: `content`에 내용 블록 배열 전달, `text` / `image` 지원\n- **컨텍스트 캐시**: 내용 블록에 `cache_control`을 추가해 명시적 캐시 선언; 적중 / 생성은 응답 `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens` 참조\n- **사고 모드**: `thinking`으로 활성화하며, 사고는 `thinking` 내용 블록으로 스트리밍 반환\n- **스트리밍 출력**: `stream=true`일 때 Anthropic SSE 이벤트(`message_start` / `content_block_delta` / `message_delta` 등)로 반환",
+        "operationId": "createMessageQwen38MaxPreview",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateMessageRequest" },
+              "examples": {
+                "basic": {
+                  "summary": "기본 대화",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "system": "You are a helpful assistant.",
+                    "messages": [
+                      { "role": "user", "content": "안녕하세요, 자기소개를 해 주세요" }
+                    ]
+                  }
+                },
+                "explicit_cache": {
+                  "summary": "명시적 캐시(system + cache_control)",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "system": [
+                      { "type": "text", "text": "<1024 token을 초과하는 안정적인 시스템 프롬프트……>", "cache_control": { "type": "ephemeral" } }
+                    ],
+                    "messages": [
+                      { "role": "user", "content": "위 배경을 바탕으로 질문에 답하세요" }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "멀티모달 입력(이미지 블록)",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          { "type": "text", "text": "이 이미지를 설명해 주세요" },
+                          { "type": "image", "source": { "type": "url", "url": "https://example.com/image.jpg" } }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "생성 성공",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } }
+          },
+          "400": { "description": "요청 매개변수 오류", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "type": "error", "error": { "type": "invalid_request_error", "message": "max_tokens is required" } } } } },
+          "401": { "description": "인증되지 않았거나 토큰이 유효하지 않거나 만료됨", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "type": "error", "error": { "type": "authentication_error", "message": "Invalid or expired token" } } } } },
+          "402": { "description": "잔액 부족", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "type": "error", "error": { "type": "insufficient_quota", "message": "Insufficient credits" } } } } },
+          "429": { "description": "요청이 너무 잦음(속도 제한)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "서버 내부 오류", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 API에는 Bearer Token 인증이 필요합니다##\n\n**API Key 발급:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에서 API Key를 발급받으세요\n\n**요청 헤더에 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": ["model", "max_tokens", "messages"],
+        "properties": {
+          "model": { "type": "string", "enum": ["qwen3.8-max-preview"], "example": "qwen3.8-max-preview", "description": "대화 모델 이름" },
+          "max_tokens": {
+            "type": "integer",
+            "description": "생성 콘텐츠의 최대 token 수.\n\n> **필수**(Anthropic 프로토콜 요구 사항). 모델이 이 값을 초과해 생성하면 잘립니다.",
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "대화 메시지 목록(system 미포함). 각 메시지는 `role`(`user` / `assistant`)과 `content`(문자열 또는 내용 블록 배열)를 포함합니다.",
+            "items": { "$ref": "#/components/schemas/InputMessage" }
+          },
+          "system": {
+            "description": "시스템 프롬프트. 순수 텍스트는 문자열로 전달하며, 명시적 캐시를 선언할 때는 내용 블록 배열로 전달합니다(블록에 `cache_control` 추가).",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/ContentBlock" } }
+            ]
+          },
+          "temperature": { "type": "number", "description": "샘플링 온도, 범위 `[0, 2]`.", "minimum": 0, "maximum": 2 },
+          "top_p": { "type": "number", "description": "뉴클리어스 샘플링 매개변수, 범위 `(0, 1]`.", "minimum": 0, "maximum": 1 },
+          "top_k": { "type": "integer", "description": "확률이 가장 높은 K개의 token에서 샘플링합니다." },
+          "stop_sequences": { "type": "array", "items": { "type": "string" }, "description": "사용자 정의 중단 시퀀스, 적중 시 생성을 중단합니다." },
+          "stream": { "type": "boolean", "description": "Anthropic SSE 이벤트로 스트리밍 반환할지 여부.", "default": false },
+          "thinking": {
+            "type": "object",
+            "description": "심층 사고 구성. 활성화하면 모델이 `thinking` 내용 블록으로 사고 과정을 반환합니다.",
+            "properties": {
+              "type": { "type": "string", "enum": ["enabled", "disabled"], "description": "심층 사고 활성화 여부" }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "도구 정의 목록(Anthropic tools 형식), Function Calling에 사용됩니다.",
+            "items": { "$ref": "#/components/schemas/Tool" }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant"], "description": "메시지 역할" },
+          "content": {
+            "description": "메시지 내용. 순수 텍스트는 문자열로 전달하며, 멀티모달이거나 명시적 캐시가 필요할 때는 내용 블록 배열로 전달합니다.",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/ContentBlock" } }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "내용 블록, `type`으로 유형을 선언합니다. 임의의 블록에 `cache_control`을 추가해 명시적 캐시를 선언할 수 있습니다.",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["text", "image", "thinking", "tool_use", "tool_result"],
+            "description": "내용 블록 유형\n\n- `text`: 텍스트 블록\n- `image`: 이미지 블록\n- `thinking`: 사고 블록(응답에 나타남)\n- `tool_use` / `tool_result`: 도구 호출과 결과"
+          },
+          "text": { "type": "string", "description": "`type=text`일 때의 텍스트 내용" },
+          "source": {
+            "type": "object",
+            "description": "이미지 출처(`type=image`일 때). JPEG / PNG / GIF / WEBP 지원.",
+            "properties": {
+              "type": { "type": "string", "enum": ["url", "base64"], "description": "출처 유형: `url`(이미지 링크) 또는 `base64`(인라인 데이터)" },
+              "url": { "type": "string", "description": "`type=url`일 때의 이미지 링크" },
+              "media_type": { "type": "string", "description": "`type=base64`일 때의 MIME 유형, 예: `image/jpeg`", "example": "image/jpeg" },
+              "data": { "type": "string", "description": "`type=base64`일 때의 base64 이미지 데이터" }
+            }
+          },
+          "cache_control": { "$ref": "#/components/schemas/CacheControl" }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "명시적 캐시 표시(프롬프트 캐시). 시스템은 이 표시 위치를 종점으로 앞쪽으로 거슬러 올라가 캐시 블록을 생성 / 적중합니다.\n\n- 최소 캐시 가능 길이 **1024 token**, 유효 기간 **5분**(적중 후 초기화)\n- 단일 요청당 최대 **4개**의 캐시 표시\n- 적중은 응답 `usage.cache_read_input_tokens`, 생성은 `usage.cache_creation_input_tokens` 참조",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["ephemeral"], "description": "캐시 유형, `ephemeral`로 고정(5분 임시 캐시)" }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Anthropic 도구 정의.",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "description": "도구 이름" },
+          "description": { "type": "string", "description": "도구 용도 설명" },
+          "input_schema": { "type": "object", "description": "도구 입력 매개변수의 JSON Schema" }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "msg_xxxxxxxx" },
+          "type": { "type": "string", "example": "message" },
+          "role": { "type": "string", "example": "assistant" },
+          "model": { "type": "string", "example": "qwen3.8-max-preview" },
+          "content": {
+            "type": "array",
+            "description": "응답 내용 블록 배열",
+            "items": { "$ref": "#/components/schemas/OutputContentBlock" }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "중단 이유: `end_turn`(정상 종료), `max_tokens`(상한 도달), `stop_sequence`(중단 시퀀스 적중), `tool_use`(도구 호출 필요)",
+            "example": "end_turn"
+          },
+          "usage": { "$ref": "#/components/schemas/AnthropicUsage" }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "description": "내용 블록 유형: `text` / `thinking` / `tool_use`", "example": "text" },
+          "text": { "type": "string", "description": "`type=text`일 때의 텍스트 내용", "example": "안녕하세요! 저는 Qwen3.8-Max-Preview입니다." }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "token 사용 통계(Anthropic 의미: `input_tokens`는 캐시를 포함하지 않으며, cache 필드와 상호 배타적으로 합산).",
+        "properties": {
+          "input_tokens": { "type": "integer", "description": "입력 token 수(캐시 부분 미포함)", "example": 12 },
+          "output_tokens": { "type": "integer", "description": "출력 token 수(사고 포함)", "example": 104 },
+          "cache_creation_input_tokens": { "type": "integer", "description": "이번에 새로 생성된 캐시 token 수(캐시 쓰기)", "example": 0 },
+          "cache_read_input_tokens": { "type": "integer", "description": "캐시에 적중한 token 수(캐시 읽기)", "example": 0 }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "example": "error" },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "description": "오류 유형" },
+              "message": { "type": "string", "description": "오류 설명 정보" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

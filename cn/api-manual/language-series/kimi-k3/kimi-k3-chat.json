@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3 OpenAI 兼容接口",
-    "description": "通过 OpenAI Chat Completions 协议调用 Kimi K3。\n\n**首版已确认能力**：\n- 模型 ID：`kimi-k3`\n- 上下文窗口：1,048,576 tokens\n- K3 始终进行推理，推理内容通过 `reasoning_content` 返回\n- `reasoning_effort` 当前仅支持 `max`\n- 支持多轮对话、SSE 流式输出和 Function Calling\n\n多轮对话时，请将上一轮完整 assistant message 原样放回 `messages`，包括可能出现的 `reasoning_content` 和 `tool_calls`。",
+    "description": "通过 OpenAI Chat Completions 协议调用 Kimi K3。\n\n**首版已确认能力**：\n- 模型 ID：`kimi-k3`\n- 上下文窗口：1,048,576 tokens\n- K3 始终进行推理，推理内容通过 `reasoning_content` 返回\n- `reasoning_effort` 当前仅支持 `max`\n- 支持多轮对话、SSE 流式输出和 Function Calling\n- 支持多模态输入（文本 + 图片 + 视频）：`content` 传内容块数组\n\n多轮对话时，请将上一轮完整 assistant message 原样放回 `messages`，包括可能出现的 `reasoning_content` 和 `tool_calls`。",
     "license": {
       "name": "MIT"
     },
@@ -48,6 +48,29 @@
                       {
                         "role": "user",
                         "content": "请用三句话介绍 Kimi K3。"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "多模态输入（图片 + 文本）",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "请描述这张图片。"
+                          }
+                        ]
                       }
                     ]
                   }
@@ -230,11 +253,23 @@
             ]
           },
           "content": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "消息文本。工具调用场景下 assistant content 可以为空。"
+            "description": "消息内容。纯文本时传字符串；多模态输入时传内容块数组（文本 + 图片 + 视频）。工具调用场景下 assistant content 可以为 null。",
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "纯文本消息内容。"
+              },
+              {
+                "type": "array",
+                "description": "多模态内容块数组。",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reasoning_content": {
             "type": "string",
@@ -250,6 +285,54 @@
           "tool_call_id": {
             "type": "string",
             "description": "`role=tool` 时对应的工具调用 ID。"
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "多模态内容块。`type` 决定使用哪个字段。",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url",
+              "video_url"
+            ],
+            "description": "内容块类型。"
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=text` 时的文本内容。"
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=image_url` 时的图片；也可直接传 URL 字符串。",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "图片地址。支持 Base64 Data URL（`data:image/png;base64,...`）或 Kimi 平台文件引用（`ms://<file_id>`）。"
+              }
+            }
+          },
+          "video_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=video_url` 时的视频；也可直接传 URL 字符串。",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "视频地址。支持 Base64 Data URL（`data:video/mp4;base64,...`）或 Kimi 平台文件引用（`ms://<file_id>`）。"
+              }
+            }
           }
         }
       },

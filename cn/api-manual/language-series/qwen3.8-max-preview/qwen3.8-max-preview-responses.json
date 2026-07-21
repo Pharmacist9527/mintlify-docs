@@ -1,0 +1,232 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8-Max-Preview - Responses 接口",
+    "description": "通义千问 Qwen3.8-Max-Preview 的 OpenAI Responses 兼容接口（`/v1/responses`）。\n\n**相较 Chat Completions 的优势**：\n- **简化上下文管理**：通过 `previous_response_id` 关联上一轮，无需手动拼接完整历史\n- **内置工具**：联网搜索、网页抓取、代码解释器等\n- **便捷会话缓存**：请求头加 `x-dashscope-session-cache: enable`，服务端自动缓存对话上下文，降低多轮延迟与成本\n\n**能力**：多模态输入（文本 + 图像）、思考强度控制（`reasoning.effort`）、流式输出。",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://direct.evolink.ai", "description": "生产环境（推荐，文本模型长连接支持更好）" },
+    { "url": "https://api.evolink.ai", "description": "多模态主力地址（含图像输入时使用）" }
+  ],
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Qwen3.8-Max-Preview Responses 接口（OpenAI 兼容）",
+        "description": "> 🚧 **该模型暂未开放，敬请期待**\n\n- 使用 OpenAI Responses 协议调用 Qwen3.8-Max-Preview\n- **输入灵活**：`input` 可传字符串，也可传 Chat 格式的消息数组（支持多模态 `input_text` / `input_image`）\n- **多轮对话**：传 `previous_response_id` 关联上一轮响应，服务端自动组合上下文（响应 `id` 有效期 7 天）\n- **会话缓存**：请求头加 `x-dashscope-session-cache: enable`（默认 disable）开启，命中见 `usage.input_tokens_details.cached_tokens`\n- **思考强度**：通过 `reasoning.effort` 控制\n- **流式输出**：`stream=true` 时按 Responses 事件（`response.output_text.delta` / `response.completed` 等）返回",
+        "operationId": "createResponseQwen38MaxPreview",
+        "parameters": [
+          {
+            "name": "x-dashscope-session-cache",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string", "enum": ["enable", "disable"], "default": "disable" },
+            "description": "会话缓存开关。设为 `enable` 时，服务端自动缓存对话上下文以降低多轮推理延迟与成本。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResponseRequest" },
+              "examples": {
+                "basic": {
+                  "summary": "基础调用（字符串输入）",
+                  "value": { "model": "qwen3.8-max-preview", "input": "你能做些什么？" }
+                },
+                "multi_turn": {
+                  "summary": "多轮对话（previous_response_id）",
+                  "value": { "model": "qwen3.8-max-preview", "input": "它和 GBDT 有什么区别？", "previous_response_id": "resp_xxxxxxxx" }
+                },
+                "multimodal": {
+                  "summary": "多模态输入（图像）",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "input": [
+                      {
+                        "role": "user",
+                        "content": [
+                          { "type": "input_text", "text": "描述这张图片" },
+                          { "type": "input_image", "image_url": "https://example.com/image.jpg" }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResponseObject" } } }
+          },
+          "400": { "description": "请求参数错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 400, "message": "Invalid request parameters", "type": "invalid_request_error" } } } } },
+          "401": { "description": "未认证、Token 无效或过期", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 401, "message": "Invalid or expired token", "type": "authentication_error" } } } } },
+          "402": { "description": "余额不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": { "code": 402, "message": "Insufficient credits", "type": "insufficient_quota" } } } } },
+          "429": { "description": "请求过于频繁（限流）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "服务器内部错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponseRequest": {
+        "type": "object",
+        "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "enum": ["qwen3.8-max-preview"], "example": "qwen3.8-max-preview", "description": "对话模型名称" },
+          "input": {
+            "description": "模型输入。可传字符串（纯文本），也可传 Chat 格式的消息数组（支持多模态 `input_text` / `input_image`）。",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/InputItem" } }
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "作为系统指令插入到上下文起始位置。使用 `previous_response_id` 时，上一轮的 `instructions` 不会传入本轮。"
+          },
+          "previous_response_id": {
+            "type": "string",
+            "description": "上一轮响应的唯一 ID（响应 `id`，有效期 7 天）。用于关联多轮对话，服务端自动检索并组合该轮的输入与输出作为上下文。"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "本次生成输出内容的最大 token 数（含思考）。"
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "思考控制。",
+            "properties": {
+              "effort": { "type": "string", "enum": ["low", "medium", "high"], "description": "思考强度" }
+            }
+          },
+          "store": {
+            "type": "boolean",
+            "description": "是否存储本次响应。\n\n- `true`（默认）：可被 `previous_response_id` 引用\n- `false`：不存储，后续无法引用",
+            "default": true
+          },
+          "stream": { "type": "boolean", "description": "是否以 Responses 事件流式返回。", "default": false },
+          "temperature": { "type": "number", "description": "采样温度，取值范围 `[0, 2]`。", "minimum": 0, "maximum": 2 },
+          "top_p": { "type": "number", "description": "核采样参数，取值范围 `(0, 1]`。", "minimum": 0, "maximum": 1 },
+          "tools": {
+            "type": "array",
+            "description": "工具列表。支持内置工具（`web_search` 联网搜索、`web_extractor` 网页抓取、`code_interpreter` 代码解释器）及自定义 `function`。",
+            "items": { "$ref": "#/components/schemas/Tool" }
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "输入消息项（Chat 格式）。",
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant", "system"], "description": "消息角色" },
+          "content": {
+            "description": "消息内容。纯文本时传字符串；多模态时传内容片段数组。",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/InputContentPart" } }
+            ]
+          }
+        }
+      },
+      "InputContentPart": {
+        "type": "object",
+        "description": "Responses 输入内容片段，通过 `type` 声明类型。",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["input_text", "input_image"],
+            "description": "内容类型\n\n- `input_text`：文本\n- `input_image`：图像"
+          },
+          "text": { "type": "string", "description": "当 `type=input_text` 时的文本内容" },
+          "image_url": { "type": "string", "description": "当 `type=input_image` 时的图片 URL，或 `data:` 开头的 base64 data URL" }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "工具定义。内置工具只需声明 `type`；自定义 function 需提供名称与参数 schema。",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["web_search", "web_extractor", "code_interpreter", "function"], "description": "工具类型" },
+          "name": { "type": "string", "description": "当 `type=function` 时的函数名称" },
+          "parameters": { "type": "object", "description": "当 `type=function` 时的参数 JSON Schema" }
+        }
+      },
+      "ResponseObject": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "本次响应唯一 ID（有效期 7 天，可作 `previous_response_id`）", "example": "resp_xxxxxxxx" },
+          "object": { "type": "string", "example": "response" },
+          "status": { "type": "string", "description": "响应状态", "example": "completed" },
+          "model": { "type": "string", "example": "qwen3.8-max-preview" },
+          "output": {
+            "type": "array",
+            "description": "输出项数组（含 `message` / `reasoning` / 内置工具调用等）",
+            "items": { "type": "object" }
+          },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 使用统计。",
+        "properties": {
+          "input_tokens": { "type": "integer", "description": "输入 token 数", "example": 45 },
+          "output_tokens": { "type": "integer", "description": "输出 token 数（含思考）", "example": 63 },
+          "total_tokens": { "type": "integer", "description": "总 token 数", "example": 108 },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "输入 token 分项",
+            "properties": {
+              "cached_tokens": { "type": "integer", "description": "命中会话缓存的输入 token 数（缓存读）", "example": 0 }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "输出 token 分项",
+            "properties": {
+              "reasoning_tokens": { "type": "integer", "description": "思考过程 token 数", "example": 0 }
+            }
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "启用会话缓存后返回的缓存详情",
+            "properties": {
+              "cached_tokens": { "type": "integer", "description": "命中缓存的 token 数", "example": 0 },
+              "cache_creation_input_tokens": { "type": "integer", "description": "本次新创建缓存的 token 数（缓存写）", "example": 0 }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "integer", "description": "HTTP 状态错误代码" },
+              "message": { "type": "string", "description": "错误描述信息" },
+              "type": { "type": "string", "description": "错误类型" },
+              "param": { "type": "string", "description": "相关参数名称" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

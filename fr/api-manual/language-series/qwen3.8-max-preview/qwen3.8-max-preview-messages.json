@@ -1,0 +1,517 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8-Max-Preview - Interface compatible Anthropic",
+    "description": "Interface compatible Anthropic Messages de Qwen3.8-Max-Preview (`/v1/messages`).\n\n**Cas d'usage** : clients utilisant le protocole Anthropic Messages, tels que Claude Code, Claude Desktop, etc.\n\n**Capacités** :\n- Longueur de contexte **1 000 000 tokens** (1M)\n- Entrée multimodale : `content` prend en charge le texte + les blocs d'image\n- Mise en cache du contexte : marqueur de cache explicite `cache_control`, voir les correspondances / créations dans la réponse `usage`\n- Mode réflexion : contrôlé par le champ `thinking`\n- Sortie en streaming : retour incrémental SSE",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Environnement de production (recommandé, meilleure prise en charge des connexions longues pour les modèles de texte)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Adresse principale multimodale (à utiliser avec une entrée image)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Interface de conversation Qwen3.8-Max-Preview (compatible Anthropic Messages)",
+        "description": "> 🚧 **Ce modele n'est pas encore disponible, restez a l'ecoute**\n\n- Appelez Qwen3.8-Max-Preview avec le protocole Anthropic Messages\n- **Prompt système** : défini via le champ `system` de premier niveau (pas dans messages)\n- **Entrée multimodale** : `content` reçoit un tableau de blocs de contenu, prenant en charge `text` / `image`\n- **Mise en cache du contexte** : ajoutez `cache_control` sur un bloc de contenu pour déclarer un cache explicite ; voir les correspondances / créations dans la réponse `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens`\n- **Mode réflexion** : activé via `thinking`, la réflexion est renvoyée en streaming sous forme de blocs de contenu `thinking`\n- **Sortie en streaming** : lorsque `stream=true`, le retour suit les événements Anthropic SSE (`message_start` / `content_block_delta` / `message_delta`, etc.)",
+        "operationId": "createMessageQwen38MaxPreview",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Conversation de base",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "system": "You are a helpful assistant.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Bonjour, présente-toi"
+                      }
+                    ]
+                  }
+                },
+                "explicit_cache": {
+                  "summary": "Cache explicite (system + cache_control)",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "system": [
+                      {
+                        "type": "text",
+                        "text": "<invite système stable de plus de 1024 tokens...>",
+                        "cache_control": {
+                          "type": "ephemeral"
+                        }
+                      }
+                    ],
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Réponds à la question en te basant sur le contexte ci-dessus"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "Entrée multimodale (bloc d'image)",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Décris cette image"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Génération réussie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "max_tokens is required"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Invalid or expired token"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Solde insuffisant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "insufficient_quota",
+                    "message": "Insufficient credits"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Requêtes trop fréquentes (limitation de débit)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API** :\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête** :\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "qwen3.8-max-preview"
+            ],
+            "example": "qwen3.8-max-preview",
+            "description": "Nom du modèle de conversation"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Nombre maximal de tokens du contenu généré.\n\n> **Obligatoire** (exigé par le protocole Anthropic). Si le modèle génère au-delà de cette valeur, la sortie sera tronquée.",
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "Liste des messages de conversation (hors system). Chaque message contient `role` (`user` / `assistant`) et `content` (chaîne ou tableau de blocs de contenu).",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            }
+          },
+          "system": {
+            "description": "Prompt système. Passez une chaîne pour du texte brut ; passez un tableau de blocs de contenu pour déclarer un cache explicite (en ajoutant `cache_control` sur un bloc).",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Température d'échantillonnage, plage `[0, 2]`.",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Paramètre d'échantillonnage nucleus, plage `(0, 1]`.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "Échantillonne parmi les K tokens les plus probables."
+          },
+          "stop_sequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Séquences d'arrêt personnalisées, la génération s'arrête lorsqu'elles sont rencontrées."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Renvoyer ou non un flux d'événements Anthropic SSE.",
+            "default": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Configuration de la réflexion approfondie. Une fois activée, le modèle renvoie son processus de réflexion sous forme de blocs de contenu `thinking`.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "description": "Activer ou non la réflexion approfondie"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Liste de définitions d'outils (format Anthropic tools), utilisée pour Function Calling.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "Rôle du message"
+          },
+          "content": {
+            "description": "Contenu du message. Passez une chaîne pour du texte brut ; passez un tableau de blocs de contenu pour le multimodal ou un cache explicite.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "Bloc de contenu, le type est déclaré via `type`. Vous pouvez attacher `cache_control` à n'importe quel bloc pour déclarer un cache explicite.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "thinking",
+              "tool_use",
+              "tool_result"
+            ],
+            "description": "Type de bloc de contenu\n\n- `text` : bloc de texte\n- `image` : bloc d'image\n- `thinking` : bloc de réflexion (apparaît dans la réponse)\n- `tool_use` / `tool_result` : appel d'outil et résultat"
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenu textuel lorsque `type=text`"
+          },
+          "source": {
+            "type": "object",
+            "description": "Source de l'image (lorsque `type=image`). Prend en charge JPEG / PNG / GIF / WEBP.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "url",
+                  "base64"
+                ],
+                "description": "Type de source : `url` (lien de l'image) ou `base64` (données en ligne)"
+              },
+              "url": {
+                "type": "string",
+                "description": "Lien de l'image lorsque `type=url`"
+              },
+              "media_type": {
+                "type": "string",
+                "description": "Type MIME lorsque `type=base64`, tel que `image/jpeg`",
+                "example": "image/jpeg"
+              },
+              "data": {
+                "type": "string",
+                "description": "Données d'image base64 lorsque `type=base64`"
+              }
+            }
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "Marqueur de cache explicite (mise en cache de prompt). Le système remonte en arrière à partir de la position de ce marqueur comme point final pour créer / faire correspondre un bloc de cache.\n\n- Longueur minimale pouvant être mise en cache **1024 tokens**, durée de validité **5 minutes** (réinitialisée après une correspondance)\n- Au maximum **4** marqueurs de cache par requête\n- Voir les correspondances dans la réponse `usage.cache_read_input_tokens`, les créations dans `usage.cache_creation_input_tokens`",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "Type de cache, fixé à `ephemeral` (cache temporaire de 5 minutes)"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Définition d'outil Anthropic.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nom de l'outil"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description de l'usage de l'outil"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "JSON Schema des paramètres d'entrée de l'outil"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "msg_xxxxxxxx"
+          },
+          "type": {
+            "type": "string",
+            "example": "message"
+          },
+          "role": {
+            "type": "string",
+            "example": "assistant"
+          },
+          "model": {
+            "type": "string",
+            "example": "qwen3.8-max-preview"
+          },
+          "content": {
+            "type": "array",
+            "description": "Tableau de blocs de contenu de la réponse",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "Raison de l'arrêt : `end_turn` (fin normale), `max_tokens` (limite atteinte), `stop_sequence` (séquence d'arrêt rencontrée), `tool_use` (appel d'outil nécessaire)",
+            "example": "end_turn"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Type de bloc de contenu : `text` / `thinking` / `tool_use`",
+            "example": "text"
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenu textuel lorsque `type=text`",
+            "example": "Bonjour ! Je suis Qwen3.8-Max-Preview."
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Statistiques d'utilisation des tokens (sémantique Anthropic : `input_tokens` n'inclut pas le cache et s'additionne de manière exclusive avec les champs cache).",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens d'entrée (hors partie en cache)",
+            "example": 12
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens de sortie (réflexion incluse)",
+            "example": 104
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens de cache nouvellement créés cette fois (écriture du cache)",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens servis depuis le cache (lecture du cache)",
+            "example": 0
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "error"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

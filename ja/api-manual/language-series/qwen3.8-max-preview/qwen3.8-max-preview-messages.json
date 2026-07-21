@@ -1,0 +1,243 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8-Max-Preview - Anthropic 互換インターフェース",
+    "description": "通義千問 Qwen3.8-Max-Preview の Anthropic Messages 互換インターフェース（`/v1/messages`）。\n\n**適用シーン**：Claude Code、Claude Desktop など Anthropic Messages プロトコルを使用するクライアント。\n\n**能力**：\n- コンテキスト長 **1,000,000 tokens**（1M）\n- マルチモーダル入力：`content` はテキスト + 画像ブロックに対応\n- コンテキストキャッシュ：`cache_control` 明示的キャッシュマーク、ヒット / 作成は応答の `usage` を参照\n- 思考モード：`thinking` フィールドで制御\n- ストリーミング出力：SSE で増分返却",
+    "license": { "name": "MIT" },
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://direct.evolink.ai", "description": "本番環境（推奨、テキストモデルの長時間接続サポートがより優れています）" },
+    { "url": "https://api.evolink.ai", "description": "マルチモーダル主力アドレス（画像入力を含む場合に使用）" }
+  ],
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Qwen3.8-Max-Preview 対話インターフェース（Anthropic Messages 互換）",
+        "description": "> 🚧 **このモデルはまだ利用できません。お楽しみに**\n\n- Anthropic Messages プロトコルで Qwen3.8-Max-Preview を呼び出します\n- **システムプロンプト**：トップレベルの `system` フィールドで設定（messages 内には置きません）\n- **マルチモーダル入力**：`content` に内容ブロック配列を渡し、`text` / `image` に対応\n- **コンテキストキャッシュ**：内容ブロックに `cache_control` を付けて明示的キャッシュを宣言；ヒット / 作成は応答の `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens` を参照\n- **思考モード**：`thinking` で開始し、思考は `thinking` 内容ブロックとしてストリーミング返却されます\n- **ストリーミング出力**：`stream=true` の場合、Anthropic SSE イベント（`message_start` / `content_block_delta` / `message_delta` など）で返します",
+        "operationId": "createMessageQwen38MaxPreview",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateMessageRequest" },
+              "examples": {
+                "basic": {
+                  "summary": "基本的な対話",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "system": "You are a helpful assistant.",
+                    "messages": [
+                      { "role": "user", "content": "こんにちは、自己紹介してください" }
+                    ]
+                  }
+                },
+                "explicit_cache": {
+                  "summary": "明示的キャッシュ（system + cache_control）",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "system": [
+                      { "type": "text", "text": "<1024 token を超える安定したシステムプロンプト……>", "cache_control": { "type": "ephemeral" } }
+                    ],
+                    "messages": [
+                      { "role": "user", "content": "上記の背景に基づいて質問に答える" }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "マルチモーダル入力（画像ブロック）",
+                  "value": {
+                    "model": "qwen3.8-max-preview",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          { "type": "text", "text": "この画像を説明してください" },
+                          { "type": "image", "source": { "type": "url", "url": "https://example.com/image.jpg" } }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成に成功しました",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } }
+          },
+          "400": { "description": "リクエストパラメータが不正です", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "type": "error", "error": { "type": "invalid_request_error", "message": "max_tokens is required" } } } } },
+          "401": { "description": "未認証、トークンが無効または期限切れです", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "type": "error", "error": { "type": "authentication_error", "message": "Invalid or expired token" } } } } },
+          "402": { "description": "残高不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "type": "error", "error": { "type": "insufficient_quota", "message": "Insufficient credits" } } } } },
+          "429": { "description": "リクエストが頻繁すぎます（レート制限）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "サーバー内部エラー", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API で Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)で API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": ["model", "max_tokens", "messages"],
+        "properties": {
+          "model": { "type": "string", "enum": ["qwen3.8-max-preview"], "example": "qwen3.8-max-preview", "description": "対話モデル名" },
+          "max_tokens": {
+            "type": "integer",
+            "description": "生成内容の最大 token 数。\n\n> **必須**（Anthropic プロトコルの要件）。モデルの生成がこの値を超えると切り捨てられます。",
+            "example": 1024
+          },
+          "messages": {
+            "type": "array",
+            "description": "対話メッセージのリスト（system は含みません）。各メッセージには `role`（`user` / `assistant`）と `content`（文字列または内容ブロック配列）が含まれます。",
+            "items": { "$ref": "#/components/schemas/InputMessage" }
+          },
+          "system": {
+            "description": "システムプロンプト。プレーンテキストの場合は文字列を渡します；明示的キャッシュを宣言する場合は内容ブロック配列を渡します（ブロックに `cache_control` を付けます）。",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/ContentBlock" } }
+            ]
+          },
+          "temperature": { "type": "number", "description": "サンプリング温度、値の範囲は `[0, 2]`。", "minimum": 0, "maximum": 2 },
+          "top_p": { "type": "number", "description": "核サンプリングパラメータ、値の範囲は `(0, 1]`。", "minimum": 0, "maximum": 1 },
+          "top_k": { "type": "integer", "description": "確率が最も高い K 個の token からサンプリングします。" },
+          "stop_sequences": { "type": "array", "items": { "type": "string" }, "description": "カスタム停止シーケンス、ヒットすると生成を停止します。" },
+          "stream": { "type": "boolean", "description": "Anthropic SSE イベントでストリーミング返却するかどうか。", "default": false },
+          "thinking": {
+            "type": "object",
+            "description": "深い思考の設定。有効にするとモデルは `thinking` 内容ブロックで思考過程を返します。",
+            "properties": {
+              "type": { "type": "string", "enum": ["enabled", "disabled"], "description": "深い思考を有効にするかどうか" }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツール定義のリスト（Anthropic tools 形式）、Function Calling に使用します。",
+            "items": { "$ref": "#/components/schemas/Tool" }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant"], "description": "メッセージのロール" },
+          "content": {
+            "description": "メッセージの内容。プレーンテキストの場合は文字列を渡します；マルチモーダルまたは明示的キャッシュが必要な場合は内容ブロック配列を渡します。",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "$ref": "#/components/schemas/ContentBlock" } }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "内容ブロック、`type` でタイプを宣言します。任意のブロックに `cache_control` を付けて明示的キャッシュを宣言できます。",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["text", "image", "thinking", "tool_use", "tool_result"],
+            "description": "内容ブロックのタイプ\n\n- `text`：テキストブロック\n- `image`：画像ブロック\n- `thinking`：思考ブロック（応答に出現）\n- `tool_use` / `tool_result`：ツール呼び出しと結果"
+          },
+          "text": { "type": "string", "description": "`type=text` のときのテキスト内容" },
+          "source": {
+            "type": "object",
+            "description": "画像ソース（`type=image` のとき）。JPEG / PNG / GIF / WEBP に対応。",
+            "properties": {
+              "type": { "type": "string", "enum": ["url", "base64"], "description": "ソースタイプ：`url`（画像リンク）または `base64`（インラインデータ）" },
+              "url": { "type": "string", "description": "`type=url` のときの画像リンク" },
+              "media_type": { "type": "string", "description": "`type=base64` のときの MIME タイプ、`image/jpeg` など", "example": "image/jpeg" },
+              "data": { "type": "string", "description": "`type=base64` のときの base64 画像データ" }
+            }
+          },
+          "cache_control": { "$ref": "#/components/schemas/CacheControl" }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "明示的キャッシュマーク（プロンプトキャッシュ）。システムはこのマーク位置を終点として前方に遡ってキャッシュブロックを作成 / ヒットします。\n\n- 最小キャッシュ可能長は **1024 token**、有効期間は **5 分**（ヒット後にリセット）\n- 1 回のリクエストで最大 **4 個**のキャッシュマーク\n- ヒットは応答の `usage.cache_read_input_tokens`、作成は `usage.cache_creation_input_tokens` を参照",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["ephemeral"], "description": "キャッシュタイプ、固定で `ephemeral`（5 分間の一時キャッシュ）" }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Anthropic ツール定義。",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "description": "ツール名" },
+          "description": { "type": "string", "description": "ツールの用途の説明" },
+          "input_schema": { "type": "object", "description": "ツール入力パラメータの JSON Schema" }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "msg_xxxxxxxx" },
+          "type": { "type": "string", "example": "message" },
+          "role": { "type": "string", "example": "assistant" },
+          "model": { "type": "string", "example": "qwen3.8-max-preview" },
+          "content": {
+            "type": "array",
+            "description": "応答内容ブロックの配列",
+            "items": { "$ref": "#/components/schemas/OutputContentBlock" }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止理由：`end_turn`（正常終了）、`max_tokens`（上限に到達）、`stop_sequence`（停止シーケンスにヒット）、`tool_use`（ツール呼び出しが必要）",
+            "example": "end_turn"
+          },
+          "usage": { "$ref": "#/components/schemas/AnthropicUsage" }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "description": "内容ブロックのタイプ：`text` / `thinking` / `tool_use`", "example": "text" },
+          "text": { "type": "string", "description": "`type=text` のときのテキスト内容", "example": "こんにちは！私は通義千問 Qwen3.8-Max-Preview です。" }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用統計（Anthropic のセマンティクス：`input_tokens` はキャッシュを含まず、cache フィールドと排他的に加算）。",
+        "properties": {
+          "input_tokens": { "type": "integer", "description": "入力 token 数（キャッシュ部分を含まない）", "example": 12 },
+          "output_tokens": { "type": "integer", "description": "出力 token 数（思考を含む）", "example": 104 },
+          "cache_creation_input_tokens": { "type": "integer", "description": "今回新規作成されたキャッシュの token 数（キャッシュ書き込み）", "example": 0 },
+          "cache_read_input_tokens": { "type": "integer", "description": "キャッシュにヒットした token 数（キャッシュ読み取り）", "example": 0 }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "example": "error" },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "description": "エラータイプ" },
+              "message": { "type": "string", "description": "エラーの説明" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

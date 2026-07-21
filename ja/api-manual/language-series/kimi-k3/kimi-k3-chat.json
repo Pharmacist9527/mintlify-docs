@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3 - OpenAI 互換 API",
-    "description": "OpenAI Chat Completions プロトコルで Kimi K3 を呼び出します。\n\n**初期リリースで確認済みの機能**：\n- モデル ID：`kimi-k3`\n- コンテキストウィンドウ：1,048,576 tokens\n- K3 は常に推論を行い、`reasoning_content` で返します\n- `reasoning_effort` は現在 `max` のみをサポート\n- 複数ターン会話、SSE ストリーミング、Function Calling をサポート\n\n複数ターンの会話では、前のターンの完全な assistant メッセージを `reasoning_content` と `tool_calls` を含めて `messages` に追加してください。",
+    "description": "OpenAI Chat Completions プロトコルで Kimi K3 を呼び出します。\n\n**初期リリースで確認済みの機能**：\n- モデル ID：`kimi-k3`\n- コンテキストウィンドウ：1,048,576 tokens\n- K3 は常に推論を行い、`reasoning_content` で返します\n- `reasoning_effort` は現在 `max` のみをサポート\n- 複数ターン会話、SSE ストリーミング、Function Calling をサポート\n- マルチモーダル入力（テキスト + 画像 + 動画）をサポート：`content` に内容ブロック配列を渡す\n\n複数ターンの会話では、前のターンの完全な assistant メッセージを `reasoning_content` と `tool_calls` を含めて `messages` に追加してください。",
     "license": {
       "name": "MIT"
     },
@@ -48,6 +48,29 @@
                       {
                         "role": "user",
                         "content": "Kimi K3 を 3 文で紹介してください。"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "マルチモーダル入力（画像 + テキスト）",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "この画像を説明してください。"
+                          }
+                        ]
                       }
                     ]
                   }
@@ -230,11 +253,23 @@
             ]
           },
           "content": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "メッセージテキスト。ツール呼び出しを返す場合、assistant の content は null にできます。"
+            "description": "メッセージ内容。プレーンテキストの場合は文字列を渡します；マルチモーダル入力の場合は内容ブロック配列（テキスト + 画像 + 動画）を渡します。ツール呼び出しの場合、assistant の content は null にできます。",
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "プレーンテキストのメッセージ内容。"
+              },
+              {
+                "type": "array",
+                "description": "マルチモーダル内容ブロックの配列。",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reasoning_content": {
             "type": "string",
@@ -250,6 +285,54 @@
           "tool_call_id": {
             "type": "string",
             "description": "`role=tool` のときに対応するツール呼び出し ID。"
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "マルチモーダル内容ブロック。`type` でどのフィールドを使用するかが決まります。",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url",
+              "video_url"
+            ],
+            "description": "内容ブロックのタイプ。"
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=text` のときのテキスト内容。"
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=image_url` のときの画像；URL 文字列を直接渡すこともできます。",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "画像アドレス。Base64 Data URL（`data:image/png;base64,...`）または Kimi プラットフォームのファイル参照（`ms://<file_id>`）をサポートします。"
+              }
+            }
+          },
+          "video_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=video_url` のときの動画；URL 文字列を直接渡すこともできます。",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "動画アドレス。Base64 Data URL（`data:video/mp4;base64,...`）または Kimi プラットフォームのファイル参照（`ms://<file_id>`）をサポートします。"
+              }
+            }
           }
         }
       },
