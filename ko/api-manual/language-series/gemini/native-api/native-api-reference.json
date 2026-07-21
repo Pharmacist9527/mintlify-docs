@@ -1,0 +1,1116 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gemini 전체 모델 인터페이스 (Native API 형식)",
+    "description": "Gemini 전체 시리즈 텍스트 모델의 통합 Native 인터페이스로, 경로의 model을 통해 구체적인 모델을 선택하며, 텍스트 및 멀티모달(이미지 / 오디오 / 비디오) 입력을 지원합니다.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션 (권장)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1beta/models/{model}:generateContent": {
+      "post": {
+        "summary": "Gemini 콘텐츠 생성 (전체 모델)",
+        "description": "경로의 `{model}`을 통해 호출할 Gemini 텍스트 모델을 선택합니다(전체 선택 가능한 값은 `model` 파라미터의 대조표 참조).\n\n- Google Native API 형식을 사용하여 대화 내용을 동기적으로 반환\n- **일반 텍스트 / 멀티모달 입력**: 텍스트 + 이미지 / 오디오 / 비디오 혼합 입력\n- **스트리밍**: 경로의 `generateContent`를 `streamGenerateContent`로 대체(`?alt=sse`를 추가하여 SSE 획득 가능)\n\n---\n\n**모델 사양 및 차이점**\n- **샘플링 파라미터** `temperature` / `topP` / `topK`: `gemini-3.6-flash`, `gemini-3.5-flash-lite`는 사용자 지정을 지원하지 않으며 전달해도 적용되지 않습니다. 그 외 모델은 정상 적용됩니다.\n- **사고 제어**: `gemini-3.6-flash` / `gemini-3.5-flash-lite`는 `thinkingConfig.thinkingLevel`(`minimal`/`low`/`medium`/`high`, `gemini-3.5-flash-lite`는 기본값 `minimal`)을 사용하며, Gemini 2.5 시리즈는 `thinkingConfig.thinkingBudget`(정수, `0`=비활성화)을 사용합니다. 둘은 상호 배타적입니다.\n- **마지막 턴 역할**: 마지막 메시지의 `role`은 `model`일 수 없습니다(Gemini 3.5+에서 오류 발생).\n- **Token 상한**: `gemini-3.6-flash` / `gemini-3.5-flash-lite`는 컨텍스트 1,048,576, 최대 출력 65,536이며, 그 외 모델은 각자의 사양을 따릅니다.",
+        "operationId": "geminiGenerateContent",
+        "tags": [
+          "콘텐츠 생성"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateContentRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "단일 턴 텍스트 대화",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Please introduce yourself"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "multi_turn": {
+                  "summary": "다중 턴 대화 (컨텍스트 이해)",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "What is Python?"
+                          }
+                        ]
+                      },
+                      {
+                        "role": "model",
+                        "parts": [
+                          {
+                            "text": "Python is a high-level programming language..."
+                          }
+                        ]
+                      },
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "What are its advantages?"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "audio_analysis": {
+                  "summary": "오디오 분석",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Please analyze this song audio and answer: 1. Song source and artist 2. Song mood 3. Complete lyrics output"
+                          },
+                          {
+                            "fileData": {
+                              "mimeType": "audio/mp3",
+                              "fileUri": "https://example.com/audio.mp3"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "이미지 이해",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Please describe the scene and main elements in this image in detail"
+                          },
+                          {
+                            "fileData": {
+                              "mimeType": "image/jpeg",
+                              "fileUri": "https://example.com/image.jpg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "multi_file": {
+                  "summary": "다중 파일 입력 (혼합)",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Compare the relationship between these two images and this audio"
+                          },
+                          {
+                            "fileData": {
+                              "mimeType": "image/jpeg",
+                              "fileUri": "https://example.com/image1.jpg"
+                            }
+                          },
+                          {
+                            "fileData": {
+                              "mimeType": "image/png",
+                              "fileUri": "https://example.com/image2.png"
+                            }
+                          },
+                          {
+                            "fileData": {
+                              "mimeType": "audio/mp3",
+                              "fileUri": "https://example.com/audio.mp3"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "콘텐츠가 성공적으로 생성되었습니다\n\n**응답 형식 설명**:\n- `generateContent` 엔드포인트 사용 시, `GenerateContentResponse` 반환 (완전한 응답을 한 번에 반환)\n- `streamGenerateContent` 엔드포인트 사용 시, `StreamGenerateContentResponse` 반환 (스트리밍 응답, 콘텐츠를 청크 단위로 반환)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/GenerateContentResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StreamGenerateContentResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청 매개변수",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "잘못된 요청 매개변수",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음, 유효하지 않거나 만료된 토큰",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량 부족, 충전 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "할당량 부족",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "접근 거부",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Access denied for this model",
+                    "type": "permission_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "리소스를 찾을 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "원격 파일 URL\n\n**요구사항:**\n- 공개적으로 접근 가능한 URL이어야 합니다\n- HTTP 및 HTTPS 프로토콜 지원\n- 시스템이 이 URL에서 파일 콘텐츠를 자동으로 다운로드합니다\n- 요청당 최대 `1`개 이미지\n- 현재 `image/jpeg`, `image/png`, `image/gif`, `image/webp` 형식의 파일 업로드만 지원합니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "요청 본문이 너무 큼",
+                    "type": "request_too_large_error",
+                    "fallback_suggestion": "reduce file size"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "랜덤 시드, 범위 `[0, 2147483647]`, 동일한 시드 값을 사용하면 생성 결과를 일관되게 유지할 수 있습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "랜덤 시드, 범위 `[0, 2147483647]`, 동일한 시드 값을 사용하면 생성 결과를 일관되게 유지할 수 있습니다",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "내부 서버 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "내부 서버 오류",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "업스트림 서비스 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Upstream AI service unavailable",
+                    "type": "upstream_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스 일시적으로 사용 불가",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "서비스 일시적으로 사용 불가",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "호출할 Gemini 텍스트 모델을 선택하세요:\n\n| 모델 ID | 시리즈 | 포지셔닝 |\n|---|---|---|\n| `gemini-3.6-flash` | 3.6 Flash | 다단계 오케스트레이션 / 코드 리팩터링 / 범용 추론 |\n| `gemini-3.5-flash` | 3.5 Flash | 범용 Flash |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | 저비용 / 고처리량 / 경량 agent |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | 고급 추론 |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | 고급 추론 + 사용자 지정 도구 |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | 저비용 |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | 고급 추론 |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | 범용 Flash |\n| `gemini-2.5-pro` | 2.5 Pro | 고급 추론 |\n| `gemini-2.5-flash` | 2.5 Flash | 범용 Flash |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | 저비용 |",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.1-pro-preview",
+                "gemini-3.1-pro-preview-customtools",
+                "gemini-3.1-flash-lite-preview",
+                "gemini-3-pro-preview",
+                "gemini-3-flash-preview",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite"
+              ],
+              "example": "gemini-3.6-flash"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GenerateContentRequest": {
+        "type": "object",
+        "required": [
+          "contents"
+        ],
+        "properties": {
+          "contents": {
+            "type": "array",
+            "description": "List of conversation contents, supports multi-turn dialogue and multimodal input",
+            "items": {
+              "$ref": "#/components/schemas/Content"
+            },
+            "minItems": 1
+          },
+          "generationConfig": {
+            "$ref": "#/components/schemas/GenerationConfig",
+            "description": "Generation configuration parameters (optional)"
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "System instruction (optional), mainly text content"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of tools the model can call, such as function calling or code execution"
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "Tool calling configuration (optional)"
+          },
+          "safetySettings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Safety settings list (optional)"
+          },
+          "cachedContent": {
+            "type": "string",
+            "description": "Cached content name, in the form cachedContents/{cachedContent}"
+          }
+        }
+      },
+      "Content": {
+        "type": "object",
+        "required": [
+          "role",
+          "parts"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "콘텐츠 역할\n\n- `user`: 사용자 입력\n- `model`: AI 모델의 응답 (다중 턴 대화용)",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "example": "user"
+          },
+          "parts": {
+            "type": "array",
+            "description": "Content parts list, supports text, file data, inline data, function calls, function responses, and code execution results",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "Part": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextPart"
+          },
+          {
+            "$ref": "#/components/schemas/FilePart"
+          },
+          {
+            "$ref": "#/components/schemas/InlineDataPart"
+          },
+          {
+            "$ref": "#/components/schemas/FunctionCallPart"
+          },
+          {
+            "$ref": "#/components/schemas/FunctionResponsePart"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutableCodePart"
+          },
+          {
+            "$ref": "#/components/schemas/CodeExecutionResultPart"
+          }
+        ],
+        "description": "Content part union type. The thoughtSignature returned by thinking models must be echoed back in the next turn."
+      },
+      "TextPart": {
+        "title": "텍스트 입력",
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "텍스트 내용",
+            "example": "Hello! I'm pleased to introduce myself.\n\nI'm a large language model, trained and developed by Google..."
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "Whether this is thought content"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "Thought signature, must be echoed back in the next turn",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FilePart": {
+        "title": "멀티모달 입력",
+        "type": "object",
+        "required": [
+          "fileData"
+        ],
+        "properties": {
+          "fileData": {
+            "type": "object",
+            "required": [
+              "mimeType",
+              "fileUri"
+            ],
+            "properties": {
+              "mimeType": {
+                "type": "string",
+                "description": "파일 MIME 유형\n\n**지원 유형**:\n\n**이미지**:\n- `image/jpeg`, `image/png`\n- 이미지당 최대 크기: 10 MB\n\n**오디오**:\n- `audio/mp3`\n- 파일당 최대 크기: 10 MB\n- 권장 길이: 10분 이하\n\n**비디오**:\n- `video/mp4`\n- 파일당 최대 크기: 50 MB\n- 권장 길이: 180초 이하\n\n**문서**:\n- `application/pdf`\n- 파일당 최대 크기: 20 MB",
+                "example": "audio/mp3"
+              },
+              "fileUri": {
+                "type": "string",
+                "format": "uri",
+                "description": "파일 URI 주소\n\n**요구사항**:\n- 공개적으로 접근 가능한 URL이어야 합니다\n- URL은 파일 확장자로 끝나야 하며 (예: .mp3, .jpg) mimeType 파라미터와 일치해야 합니다",
+                "example": "https://example.com/audio.mp3"
+              }
+            }
+          }
+        }
+      },
+      "GenerationConfig": {
+        "type": "object",
+        "description": "Generation configuration parameters",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "description": "샘플링 온도, 출력의 무작위성을 제어합니다\n\n**설명**:\n- 낮은 값 (예: 0.2): 더 결정적이고 집중된 출력\n- 높은 값 (예: 1.5): 더 무작위적이고 창의적인 출력\n\n⚠️ `gemini-3.6-flash`, `gemini-3.5-flash-lite`는 이 파라미터의 사용자 지정을 지원하지 않습니다(전달해도 적용되지 않음). 그 외 모델은 정상 적용됩니다.",
+            "minimum": 0,
+            "maximum": 2,
+            "example": 0.7
+          },
+          "maxOutputTokens": {
+            "type": "integer",
+            "description": "생성할 최대 이미지 수, `[1,15]` 사이의 정수 값 지원\n\n**참고:**\n- 여러 이미지를 생성하려면 프롬프트에 \"2개의 다른 이미지 생성\"과 같은 프롬프트를 포함하세요\n\n- 참조 이미지 수 + 최종 생성 이미지 수 ≤ 15개\n\n- 만약: 참조 이미지 수 + 프롬프트에서 요청한 이미지 수 > 15이고, 프롬프트에서 요청한 이미지 수 ≤ 매개변수 n 값이면, 최종 생성 이미지 = 15 - 참조 이미지 수\n- 각 요청은 `n` 값을 기준으로 선불 청구되며, 실제 청구는 생성된 이미지 수를 기준으로 합니다\n\n`gemini-3.6-flash` / `gemini-3.5-flash-lite`는 상한 65,536 tokens이며, 그 외 모델은 각자의 사양을 따릅니다.",
+            "minimum": 1,
+            "example": 2000
+          },
+          "topP": {
+            "type": "number",
+            "description": "Nucleus Sampling 매개변수\n\n**설명**:\n- 누적 확률에서 토큰 샘플링을 제어합니다\n- 예를 들어, 0.9는 누적 확률 90%까지의 토큰에서 선택하는 것을 의미합니다\n- 기본값: 1.0 (모든 토큰 고려)\n\n**권장사항**: temperature와 topP를 동시에 조정하지 마세요\n\n⚠️ `gemini-3.6-flash`, `gemini-3.5-flash-lite`는 이 파라미터의 사용자 지정을 지원하지 않습니다(전달해도 적용되지 않음). 그 외 모델은 정상 적용됩니다.",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "topK": {
+            "type": "integer",
+            "description": "Top-K 샘플링 매개변수\n\n**설명**:\n- 예를 들어, 10은 샘플링 시 가장 확률이 높은 상위 10개 토큰만 고려하도록 제한합니다\n- 작은 값일수록 출력이 더 집중됩니다\n- 기본값: 제한 없음\n\n⚠️ `gemini-3.6-flash`, `gemini-3.5-flash-lite`는 이 파라미터의 사용자 지정을 지원하지 않습니다(전달해도 적용되지 않음). 그 외 모델은 정상 적용됩니다.",
+            "minimum": 1,
+            "example": 40
+          },
+          "candidateCount": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of candidates to return",
+            "example": 1
+          },
+          "responseMimeType": {
+            "type": "string",
+            "description": "MIME type of generated candidate content, for example text/plain or application/json",
+            "example": "application/json"
+          },
+          "responseSchema": {
+            "type": "object",
+            "description": "Output schema definition for generated content (JSON mode / structured output)"
+          },
+          "responseJsonSchema": {
+            "type": "object",
+            "description": "JSON Schema for generated content (useful for more complex structured output)"
+          },
+          "thinkingConfig": {
+            "type": "object",
+            "description": "사고 구성으로, 모델의 추론 동작을 제어합니다.\n\n- **`gemini-3.6-flash` / `gemini-3.5-flash-lite`**: `thinkingLevel` 사용\n- **Gemini 2.5 시리즈**: `thinkingBudget` 사용\n\n⚠️ `thinkingLevel`과 `thinkingBudget`은 상호 배타적이며, 동시에 전달하면 오류가 발생합니다.",
+            "properties": {
+              "thinkingLevel": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "description": "사고 레벨로, 추론 깊이를 제어합니다(대소문자 구분 없음):\n- `minimal`: 거의 사고하지 않으며, 고처리량 / 저지연 시나리오(분류, 추출, 라우팅 등)에 적합\n- `low`: 적은 사고로, 간단한 작업에 적합\n- `medium`: 품질과 속도의 균형으로, 중간 복잡도 작업에 적합\n- `high`: 심층 다단계 추론으로, 복잡한 추론, 수학, 코딩에 적합\n\n**`gemini-3.6-flash`와 `gemini-3.5-flash-lite`에서만 지원**되며, `gemini-3.5-flash-lite`는 기본값 `minimal`(속도 / 비용 우선)이므로 다단계 agent로 사용할 때는 `medium` / `high`로 높이는 것을 권장합니다. **Gemini 2.5 시리즈**는 `thinkingBudget`을 대신 사용하며, 그 외 모델은 아직 사고 제어를 지원하지 않습니다.",
+                "example": "minimal"
+              },
+              "thinkingBudget": {
+                "type": "integer",
+                "description": "사고 token 예산으로, **Gemini 2.5 시리즈**(`gemini-2.5-flash` / `gemini-2.5-flash-lite` / `gemini-2.5-pro`)에서 사용합니다: `0`=사고 비활성화, `-1`=동적 예산, 양의 정수=고정 예산(구체적인 값 범위는 각 모델을 따름). `thinkingLevel`과 상호 배타적입니다.",
+                "example": -1
+              }
+            }
+          }
+        }
+      },
+      "GenerateContentResponse": {
+        "title": "동기 응답",
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "description": "List of candidate responses",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            }
+          },
+          "promptFeedback": {
+            "$ref": "#/components/schemas/PromptFeedback"
+          },
+          "usageMetadata": {
+            "$ref": "#/components/schemas/UsageMetadata"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Model version",
+            "example": "gemini-3.6-flash"
+          },
+          "responseId": {
+            "type": "string",
+            "description": "Response ID",
+            "example": "l-LoaPu0BPmo1dkP6ZPHiQc"
+          }
+        }
+      },
+      "Candidate": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/ContentResponse"
+          },
+          "finishReason": {
+            "type": "string",
+            "description": "Finish reason",
+            "enum": [
+              "FINISH_REASON_UNSPECIFIED",
+              "STOP",
+              "MAX_TOKENS",
+              "SAFETY",
+              "RECITATION",
+              "LANGUAGE",
+              "OTHER",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "MALFORMED_FUNCTION_CALL",
+              "IMAGE_SAFETY",
+              "IMAGE_PROHIBITED_CONTENT",
+              "IMAGE_OTHER",
+              "NO_IMAGE",
+              "IMAGE_RECITATION",
+              "UNEXPECTED_TOOL_CALL",
+              "TOO_MANY_TOOL_CALLS",
+              "MISSING_THOUGHT_SIGNATURE"
+            ],
+            "example": "STOP"
+          },
+          "index": {
+            "type": "integer",
+            "description": "후보 인덱스",
+            "example": 0
+          },
+          "safetyRatings": {
+            "type": "array",
+            "nullable": true,
+            "description": "안전 등급",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "ContentResponse": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "응답 역할",
+            "enum": [
+              "model"
+            ],
+            "example": "model"
+          },
+          "parts": {
+            "type": "array",
+            "description": "Response content parts, supports text, inline data, function calls, function responses, and code execution results",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            }
+          }
+        }
+      },
+      "PromptFeedback": {
+        "type": "object",
+        "properties": {
+          "safetyRatings": {
+            "type": "array",
+            "nullable": true,
+            "description": "프롬프트 최적화 기능의 모드를 설정하기 위한 프롬프트 최적화 전략\n\n**옵션:**\n- `standard`: 표준 모드, 더 높은 품질 출력, 더 긴 처리 시간\n- `fast`: 빠른 모드, 더 빠른 생성 속도, 평균 품질",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "UsageMetadata": {
+        "type": "object",
+        "description": "사용량 통계",
+        "properties": {
+          "promptTokenCount": {
+            "type": "integer",
+            "description": "입력 콘텐츠의 토큰 수",
+            "example": 4
+          },
+          "candidatesTokenCount": {
+            "type": "integer",
+            "description": "출력 콘텐츠의 토큰 수",
+            "example": 611
+          },
+          "totalTokenCount": {
+            "type": "integer",
+            "description": "총 토큰 수",
+            "example": 2422
+          },
+          "thoughtsTokenCount": {
+            "type": "integer",
+            "description": "추론 토큰 수",
+            "example": 1807
+          },
+          "promptTokensDetails": {
+            "type": "array",
+            "description": "상세 입력 토큰 정보 (모달리티별)",
+            "items": {
+              "$ref": "#/components/schemas/TokenDetail"
+            }
+          },
+          "cachedContentTokenCount": {
+            "type": "integer",
+            "description": "Number of cached content tokens",
+            "example": 0
+          }
+        }
+      },
+      "TokenDetail": {
+        "type": "object",
+        "description": "토큰 상세 (모달리티별 통계)",
+        "properties": {
+          "modality": {
+            "type": "string",
+            "description": "Content modality type",
+            "enum": [
+              "MODALITY_UNSPECIFIED",
+              "TEXT",
+              "IMAGE",
+              "AUDIO",
+              "VIDEO",
+              "DOCUMENT"
+            ],
+            "example": "TEXT"
+          },
+          "tokenCount": {
+            "type": "integer",
+            "description": "이 모달리티의 토큰 수",
+            "example": 4
+          }
+        }
+      },
+      "StreamCandidate": {
+        "type": "object",
+        "description": "Stream response candidate (more simplified than regular response)",
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/ContentResponse"
+          },
+          "finishReason": {
+            "type": "string",
+            "description": "Finish reason (only included in last chunk)",
+            "enum": [
+              "FINISH_REASON_UNSPECIFIED",
+              "STOP",
+              "MAX_TOKENS",
+              "SAFETY",
+              "RECITATION",
+              "LANGUAGE",
+              "OTHER",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "MALFORMED_FUNCTION_CALL",
+              "IMAGE_SAFETY",
+              "IMAGE_PROHIBITED_CONTENT",
+              "IMAGE_OTHER",
+              "NO_IMAGE",
+              "IMAGE_RECITATION",
+              "UNEXPECTED_TOOL_CALL",
+              "TOO_MANY_TOOL_CALLS",
+              "MISSING_THOUGHT_SIGNATURE"
+            ],
+            "example": "STOP"
+          }
+        }
+      },
+      "StreamGenerateContentResponse": {
+        "title": "스트림 응답",
+        "type": "object",
+        "description": "스트림 응답 청크\n\n**중간 청크**:\n```json\n{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"role\": \"model\",\n        \"parts\": [{ \"text\": \"부분 텍스트...\" }]\n      }\n    }\n  ],\n  \"usageMetadata\": {\n    \"trafficType\": \"ON_DEMAND\"\n  },\n  \"modelVersion\": \"gemini-3.6-flash\",\n  \"createTime\": \"2025-10-10T10:40:23.072315Z\",\n  \"responseId\": \"xxx\"\n}\n```\n\n**마지막 청크**:\n```json\n{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"role\": \"model\",\n        \"parts\": [{ \"text\": \"최종 텍스트 조각\" }]\n      },\n      \"finishReason\": \"STOP\"\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 4,\n    \"candidatesTokenCount\": 522,\n    \"totalTokenCount\": 2191,\n    \"trafficType\": \"ON_DEMAND\"\n  },\n  \"modelVersion\": \"gemini-3.6-flash\",\n  \"createTime\": \"2025-10-10T10:40:23.072315Z\",\n  \"responseId\": \"xxx\"\n}\n```",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "description": "후보 응답 목록 (스트리밍 모드에서는 index 및 safetyRatings 미포함)",
+            "items": {
+              "$ref": "#/components/schemas/StreamCandidate"
+            }
+          },
+          "usageMetadata": {
+            "type": "object",
+            "description": "사용량 통계 (중간 청크에는 trafficType만 있으며, 마지막 청크에 전체 통계가 포함됩니다)",
+            "properties": {
+              "promptTokenCount": {
+                "type": "integer",
+                "description": "입력 콘텐츠의 토큰 수 (마지막 청크만)",
+                "example": 4
+              },
+              "candidatesTokenCount": {
+                "type": "integer",
+                "description": "출력 콘텐츠의 토큰 수 (마지막 청크만)",
+                "example": 522
+              },
+              "totalTokenCount": {
+                "type": "integer",
+                "description": "총 토큰 수 (마지막 청크만)",
+                "example": 2191
+              },
+              "trafficType": {
+                "type": "string",
+                "description": "트래픽 유형",
+                "example": "ON_DEMAND"
+              },
+              "cachedContentTokenCount": {
+                "type": "integer",
+                "description": "Number of cached content tokens (last chunk only)",
+                "example": 0
+              }
+            }
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "모델 버전",
+            "example": "gemini-3.6-flash"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "생성 시간",
+            "example": "2025-10-10T10:40:23.072315Z"
+          },
+          "responseId": {
+            "type": "string",
+            "description": "응답 ID",
+            "example": "l-LoaPu0BPmo1dkP6ZPHiQc"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 상태 오류 코드"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명"
+              },
+              "type": {
+                "type": "string",
+                "description": "오류 유형"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "오류 발생 시 제안"
+              }
+            }
+          }
+        }
+      },
+      "BlobData": {
+        "type": "object",
+        "properties": {
+          "mimeType": {
+            "type": "string",
+            "description": "IANA MIME type",
+            "example": "image/png"
+          },
+          "data": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64-encoded raw media data"
+          }
+        },
+        "required": [
+          "mimeType",
+          "data"
+        ]
+      },
+      "InlineDataPart": {
+        "title": "Inline Data",
+        "type": "object",
+        "required": [
+          "inlineData"
+        ],
+        "properties": {
+          "inlineData": {
+            "$ref": "#/components/schemas/BlobData"
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "Whether this is thought content"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "Thought signature, must be echoed back in the next turn",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FunctionCall": {
+        "type": "object",
+        "required": [
+          "name",
+          "args"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Function name",
+            "example": "get_weather"
+          },
+          "args": {
+            "type": "object",
+            "description": "Function arguments"
+          }
+        }
+      },
+      "FunctionCallPart": {
+        "title": "Function Call",
+        "type": "object",
+        "required": [
+          "functionCall"
+        ],
+        "properties": {
+          "functionCall": {
+            "$ref": "#/components/schemas/FunctionCall"
+          },
+          "thought": {
+            "type": "boolean",
+            "description": "Whether this is thought content"
+          },
+          "thoughtSignature": {
+            "type": "string",
+            "description": "Thought signature, must be echoed back in the next turn",
+            "example": "<Signature_A>"
+          }
+        }
+      },
+      "FunctionResponseMediaPart": {
+        "type": "object",
+        "required": [
+          "inlineData"
+        ],
+        "properties": {
+          "inlineData": {
+            "$ref": "#/components/schemas/BlobData"
+          }
+        }
+      },
+      "FunctionResponse": {
+        "type": "object",
+        "required": [
+          "name",
+          "response"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Function name",
+            "example": "get_weather"
+          },
+          "parts": {
+            "type": "array",
+            "description": "Optional multimodal response parts",
+            "items": {
+              "$ref": "#/components/schemas/FunctionResponseMediaPart"
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "Function response payload"
+          }
+        }
+      },
+      "FunctionResponsePart": {
+        "title": "Function Response",
+        "type": "object",
+        "required": [
+          "functionResponse"
+        ],
+        "properties": {
+          "functionResponse": {
+            "$ref": "#/components/schemas/FunctionResponse"
+          }
+        }
+      },
+      "ExecutableCode": {
+        "type": "object",
+        "required": [
+          "language",
+          "code"
+        ],
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "Code language",
+            "example": "python"
+          },
+          "code": {
+            "type": "string",
+            "description": "Generated code"
+          }
+        }
+      },
+      "ExecutableCodePart": {
+        "title": "Generated Code",
+        "type": "object",
+        "required": [
+          "executableCode"
+        ],
+        "properties": {
+          "executableCode": {
+            "$ref": "#/components/schemas/ExecutableCode"
+          }
+        }
+      },
+      "CodeExecutionResult": {
+        "type": "object",
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "Code execution result",
+            "enum": [
+              "OUTCOME_UNSPECIFIED",
+              "OUTCOME_OK",
+              "OUTCOME_FAILED",
+              "OUTCOME_DEADLINE_EXCEEDED"
+            ],
+            "example": "OUTCOME_OK"
+          },
+          "output": {
+            "type": "string",
+            "description": "Standard output, error output, or other description"
+          }
+        }
+      },
+      "CodeExecutionResultPart": {
+        "title": "Code Execution Result",
+        "type": "object",
+        "required": [
+          "codeExecutionResult"
+        ],
+        "properties": {
+          "codeExecutionResult": {
+            "$ref": "#/components/schemas/CodeExecutionResult"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 API는 Bearer Token 인증이 필요합니다##\n\n**API Key 받기:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)를 방문하여 API Key를 받으세요\n\n**요청 헤더에 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "콘텐츠 생성",
+      "description": "Gemini AI 콘텐츠 생성 관련 API"
+    }
+  ]
+}
