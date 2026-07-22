@@ -1,0 +1,346 @@
+---
+title: "Pi Coding Agent"
+description: "将 Pi Coding Agent 连接到 EvoLink.AI"
+---
+
+## 概述
+
+{/* TODO: 补 Pi TUI 界面总览截图 → /images/integration-guide/pi/pi-overview.png */}
+
+Pi Coding Agent（命令与配置目录名为 `pi`）是 [Earendil Works](https://github.com/earendil-works/pi) 推出的开源、终端原生的编程 Agent（命令行工具），支持多模型供应商、自定义供应商与可插拔工具，适合在命令行里完成代码辅助与任务自动化。
+
+Pi 支持自定义模型供应商和 **Anthropic Messages 接口**。通过在 `~/.pi/agent/models.json` 中把 EvoLink 配置为自定义供应商，你就能在 Pi 中使用 EvoLink 提供的 Claude 系列模型，并保留 Pi 的完整 Agent 工具调用能力。
+
+<Note>
+Pi 官方以**终端 CLI**（交互 / print / RPC / SDK 四种运行模式）为主，本指南以 CLI 为准。
+</Note>
+
+## 使用前准备
+
+在开始配置之前，请确保已完成以下准备工作：
+
+### 1. 安装 Pi Coding Agent CLI
+
+<Note>
+Pi 要求 **Node.js ≥ 22.19.0**。先用 `node -v` 确认版本；低于此版本 `npm install -g` 会报 `EBADENGINE`，请先升级 Node。
+</Note>
+
+<Tabs>
+  <Tab title="curl 脚本">
+    ```bash
+    curl -fsSL https://pi.dev/install.sh | bash
+    ```
+
+    ![curl 脚本安装 Pi](/images/integration-guide/pi/curl-install.png)
+  </Tab>
+  <Tab title="npm">
+    ```bash
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+    ```
+
+    ![npm 安装 Pi](/images/integration-guide/pi/npm-install.png)
+
+    <Note>
+    安装过程中若出现 `npm warn deprecated node-domexception@1.0.0` 之类的**弃用警告**，可直接忽略——它来自上游依赖，不影响安装与使用；只要最后看到 `added N packages` 且 `pi --version` 能输出版本号即为成功。
+
+    官方安装命令带 `--ignore-scripts`（安装时跳过依赖的生命周期脚本，Pi 正常安装不需要它们）。首次运行时 Pi 会按需自动下载 ripgrep、fd 等原生工具。
+
+    认准包名 `@earendil-works/pi-coding-agent`——npm 上另有同名分叉 `@oh-my-pi/pi-coding-agent`（版本线不同）和已废弃的 `@mariozechner/pi-coding-agent`（维护者已注明请改用 earendil-works 版），别装错。
+    </Note>
+  </Tab>
+</Tabs>
+
+安装完成后，确认 `pi` 命令可用：
+
+```bash
+pi --version
+```
+
+更多安装方式（PowerShell、pnpm、bun 等）见 [Pi 官网](https://pi.dev) 与 [官方仓库](https://github.com/earendil-works/pi)。
+
+### 2. 获取 EvoLink API Key
+
+- 登录 [EvoLink 控制台](https://evolink.ai/dashboard)
+- 在控制台中找到 API Keys，点击"创建新Key"按钮，然后复制生成的 Key
+- API Key 通常以 `sk-` 开头，请妥善保存
+
+## 第一步：配置 EvoLink 供应商
+
+Pi 通过一个名为 `models.json` 的配置文件来定义供应商与模型，它位于你电脑用户主目录下的 `.pi/agent/` 文件夹里（完整路径 `~/.pi/agent/models.json`）。Claude 模型在 Pi 中会频繁使用 `tool_use` / `tool_result`，因此本指南使用 EvoLink 的 **Anthropic Messages 兼容接口**，把它配置为 `anthropic-messages` 类型的自定义供应商。
+
+<Note>
+`~` 代表你的**用户主目录**（macOS 上是 `/Users/你的用户名`，Linux 上是 `/home/你的用户名`）。`.pi` 以点开头，是**隐藏文件夹**，在访达（Finder）/文件资源管理器里默认看不到——所以下面用命令行来创建最省事，照抄即可。
+</Note>
+
+这个文件默认**不存在**（刚装完 Pi 时 `.pi` 文件夹通常还没生成），需要你手动创建。按下面三步操作：
+
+<Steps>
+  <Step title="打开终端">
+    - **macOS**：按 `Command + 空格` 打开聚焦搜索，输入 `Terminal`（终端）回车。
+    - **Windows**：在开始菜单搜索 `PowerShell`，点击打开。
+
+    如果不熟悉命令行，可先看 [常见问题 - 如何打开命令行终端](#open-command-line-terminal)。
+  </Step>
+
+  <Step title="创建配置文件夹并新建文件">
+    在终端里粘贴下面这条命令后回车。它会自动创建所需文件夹，并用文本编辑器打开一个空的 `models.json` 文件：
+
+    <Tabs>
+      <Tab title="macOS / Linux">
+        ```bash
+        mkdir -p ~/.pi/agent && nano ~/.pi/agent/models.json
+        ```
+
+        执行后会进入 `nano` 编辑器（终端里的一个简易文本编辑器）。
+      </Tab>
+      <Tab title="Windows (PowerShell)">
+        ```powershell
+        mkdir -Force "$HOME\.pi\agent"; notepad "$HOME\.pi\agent\models.json"
+        ```
+
+        记事本会弹出提示"是否创建新文件？"，点**是**即可。
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="粘贴配置内容并保存">
+    把下面这份**完整配置**整段复制，粘贴进刚打开的编辑器：
+
+    ```json
+    {
+      "providers": {
+        "evolink": {
+          "name": "EvoLink Direct",
+          "baseUrl": "https://direct.evolink.ai",
+          "apiKey": "$EVOLINK_API_KEY",
+          "authHeader": true,
+          "api": "anthropic-messages",
+          "models": [
+            { "id": "claude-fable-5",            "reasoning": true,  "contextWindow": 1000000, "maxTokens": 128000,
+              "cost": {"input": 9.0, "output": 45.0, "cacheRead": 0.9, "cacheWrite": 11.25} },
+            { "id": "claude-sonnet-5",           "reasoning": false, "contextWindow": 1000000, "maxTokens": 64000,
+              "cost": {"input": 2.7, "output": 13.5, "cacheRead": 0.27, "cacheWrite": 3.375} },
+            { "id": "claude-haiku-4-5-20251001", "reasoning": false, "contextWindow": 200000,  "maxTokens": 64000,
+              "cost": {"input": 0.9, "output": 4.5, "cacheRead": 0.09, "cacheWrite": 1.125} }
+          ]
+        }
+      }
+    }
+    ```
+
+    然后保存：
+
+    - **nano（macOS / Linux）**：按 `Control + O` 回车保存，再按 `Control + X` 退出。
+    - **记事本（Windows）**：按 `Control + S` 保存，直接关闭窗口。
+  </Step>
+</Steps>
+
+**关键字段说明（每一项都别漏）：**
+
+- **`api: "anthropic-messages"`** —— 走 EvoLink 的 Anthropic Messages 兼容线，Pi 会使用 Claude 原生的 `tool_use` / `tool_result` 工具协议。
+- **`baseUrl` 只填域名根** `https://direct.evolink.ai`，**不要**手动加 `/v1` 或 `/v1/messages`。Pi 会自动拼接 `/v1/messages`；手动多拼会造成路径重复并返回 `404 Invalid URL`。
+- **`authHeader: true` 不能省略**。Pi 的 Anthropic SDK 默认使用 `x-api-key`，EvoLink 的 `/v1/messages` 统一使用 `Authorization: Bearer <你的Key>`。这个字段会让 Pi 正确添加 Bearer 认证头。
+- **`apiKey` 有两种填法，任选其一：**
+  - **方式一 · 明文直填（最简单，适合本地自用）**：把配置里的 `"$EVOLINK_API_KEY"` 直接换成你真实的 Key，例如 `"apiKey": "sk-你的真实Key"`。一步到位、无需设环境变量；缺点是 Key 会**明文**存在配置文件里，别把这个文件分享给别人或提交到 Git。
+  - **方式二 · 环境变量插值（更安全，推荐）**：保持 `"$EVOLINK_API_KEY"` 不变，把真实 Key 放进环境变量里（见下方「设置 API Key 环境变量」一节）。这样配置文件里不出现明文 Key。
+  - **（进阶）** Pi 的 `apiKey` 还支持 `${EVOLINK_API_KEY}`（等价写法，当变量名后紧跟字面文本时用花括号消歧）、`!command`（以 `!` 开头则执行命令、用输出作为 Key，例如从密码管理器读取：`"!op read 'op://vault/item/credential'"`）；如需在值里写字面量 `$` 或 `!`，用 `$$` 和 `$!` 转义。
+
+<Note>
+不想动配置文件里的 Key？也可以在交互模式里用 `/login` 选择该供应商、把 Key 存进 `~/.pi/agent/auth.json`，效果等价。
+</Note>
+
+### 设置 API Key 环境变量
+
+<Note>
+只有上一步选了**方式二（环境变量插值）**才需要做这一步。如果你选的是**方式一（明文直填）**，Key 已经写进配置文件了，跳过本节直接进入第二步即可。
+</Note>
+
+把上面配置里引用的 `$EVOLINK_API_KEY` 指向你的真实 Key。下面同时给出**临时生效**（只在当前终端窗口有效，关掉就没了，适合先跑通验证）和**持久生效**（每次开终端都自动加载）两种做法：
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    **临时生效**（当前终端窗口，关掉即失效）：
+
+    ```bash
+    export EVOLINK_API_KEY=你的EvoLink_API_Key
+    ```
+
+    **持久生效**（写入 shell 配置文件，之后每次开终端自动生效）：
+
+    ```bash
+    # 如果你用的是 zsh（macOS 现在默认就是 zsh）
+    echo 'export EVOLINK_API_KEY=你的EvoLink_API_Key' >> ~/.zshrc
+    source ~/.zshrc
+
+    # 如果你用的是 bash
+    echo 'export EVOLINK_API_KEY=你的EvoLink_API_Key' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+
+    <Note>
+    不确定自己用的是哪个 shell？在终端执行 `echo $SHELL`，输出里含 `zsh` 就用 `~/.zshrc`，含 `bash` 就用 `~/.bashrc`。
+    </Note>
+  </Tab>
+  <Tab title="Windows (PowerShell)">
+    **临时生效**（当前 PowerShell 窗口，关掉即失效）：
+
+    ```powershell
+    $env:EVOLINK_API_KEY = "你的EvoLink_API_Key"
+    ```
+
+    **持久生效**（写入用户环境变量，之后所有新窗口都有效）：
+
+    ```powershell
+    setx EVOLINK_API_KEY "你的EvoLink_API_Key"
+    ```
+
+    `setx` 写入后**不会影响当前窗口**，需**重启终端**（关闭并重新打开 PowerShell）才会生效。
+  </Tab>
+</Tabs>
+
+## 第二步：开始使用并验证
+
+### 1. 选择模型
+
+在终端中运行以下命令启动 Pi：
+
+```bash
+pi
+```
+
+进入 Pi 会话后，输入 `/model` 打开模型选择器，然后选择上面配置的 EvoLink 模型（如 `claude-fable-5`）。
+
+{/* TODO: 补 Pi 会话内 /model 选择器截图（展示 evolink 供应商下的模型列表）→ /images/integration-guide/pi/pi-model-select.png */}
+
+### 2. 验证配置
+
+选好模型后，先输入一个简单的提示验证模型回复：
+
+```
+你是谁
+```
+
+![Pi 正常回复“你是谁”](/images/integration-guide/pi/whoareyou.png)
+
+然后再输入一个会触发工具的任务，验证 Agent 能力：
+
+```
+请列出当前目录下的文件，并告诉我其中有哪些 Markdown 文件
+```
+
+**配置成功长什么样：**
+
+- 看到 AI 的正常回复内容（几行文字）。
+- 第二个任务中 Pi 能正常调用 `ls` 工具并继续回答。
+- **没有**出现 `401`、`404`、`model_not_found` 或 `Unexpected role "tool"` 等错误。
+
+## 排错
+
+以下按**你实际看到的报错**分类，对号入座即可。
+
+### 返回 `401`（Invalid API key）
+
+```
+{"code":"unauthorized","message":"Invalid API key (request id: ...)"}
+```
+
+可能原因：
+
+- 环境变量没生效（最常见）：在当前终端执行 `test -n "$EVOLINK_API_KEY" && echo "Key 已加载" || echo "Key 未加载"`；Windows 用 `setx` 后需**重启终端**。
+- `apiKey` 字段写错：确认 `models.json` 里写的是 `"$EVOLINK_API_KEY"`（引用环境变量），而不是把变量名当成了字面 Key。
+- 漏了 `"authHeader": true`：EvoLink 的 `/v1/messages` 需要 Bearer Token，请确认该字段与 `apiKey` 处于同一供应商配置内。
+- Key 本身无效或已被禁用：到 [EvoLink 控制台](https://evolink.ai/dashboard) 核对。
+
+### 返回 `404 Invalid URL`
+
+```
+{"message":"Invalid URL (POST /v1/v1/messages)","type":"invalid_request_error"}
+```
+
+原因：`baseUrl` 里**手动多拼了路径**。Pi 会自动拼接 `/v1/messages`，把 `baseUrl` 改回域名根 `https://direct.evolink.ai` 即可。
+
+### 返回 `404 model_not_found`
+
+```
+{"code":"model_not_found","message":"Model '...' is not available for this API key ... Call GET /v1/models ..."}
+```
+
+原因：模型 ID 拼错或该模型未开通。核对 `models.json` 里的 `id` 与 EvoLink 控制台显示的模型名是否完全一致。
+
+### 返回 `400 Unexpected role "tool"`
+
+```text
+400: messages: Unexpected role "tool". Allowed roles are "user" or "assistant".
+```
+
+**原因**：当前仍在使用 `api: "openai-completions"` 和以 `/v1` 结尾的 Base URL。Pi 的 Agent 工具结果会使用 OpenAI 的 `role: "tool"`，而当前 Claude 兼容通道不接受该角色。
+
+**解决**：把供应商的这三项改为：
+
+```json
+{
+  "baseUrl": "https://direct.evolink.ai",
+  "authHeader": true,
+  "api": "anthropic-messages"
+}
+```
+
+这个问题不能通过 `supportsDeveloperRole` 或 `supportsReasoningEffort` 解决，因为被拒绝的是工具角色，不是 `developer` 角色或推理参数。修改配置后建议开启新会话再测试。
+
+## 关于成本
+
+上面 `models.json` 里的 `cost` 字段是 EvoLink 的实付价（统一 9 折，单位：美元 / 百万 tokens），供 Pi 估算用量参考：
+
+| 模型 | Input | Output | Cache Read | Cache Write |
+|---|---|---|---|---|
+| `claude-fable-5` | $9.00 | $45.00 | $0.90 | $11.25 |
+| `claude-sonnet-5` | $2.70 | $13.50 | $0.27 | $3.375 |
+| `claude-haiku-4-5-20251001` | $0.90 | $4.50 | $0.09 | $1.125 |
+
+<Note>
+Cache Read 为命中缓存时的价格（约为 Input 的 0.1×）。实际节省取决于缓存命中率，上下文越大命中越不稳定，收益会打折——不要把它当作无条件的低价。
+</Note>
+
+## 常见问题
+
+<span id="open-command-line-terminal" />
+
+### 如何打开命令行终端？
+
+<Tabs>
+  <Tab title="macOS">
+    - 方法一：按 `Command + 空格` 打开 Spotlight，输入 `Terminal`，按回车
+    - 方法二：在"应用程序" → "实用工具" → "终端"
+  </Tab>
+  <Tab title="Windows">
+    - 方法一：按 `Win + R` 键，输入 `powershell`，按回车
+    - 方法二：在开始菜单搜索"PowerShell"
+  </Tab>
+  <Tab title="Linux">
+    - 按 `Ctrl + Alt + T` 快捷键，或在应用菜单中搜索"终端 / Terminal"
+  </Tab>
+</Tabs>
+
+### 1. 为什么 `baseUrl` 只填域名根？
+因为 Pi 的 `anthropic-messages` 会自动在 `baseUrl` 后拼接 `/v1/messages`。手动加 `/v1` 或 `/v1/messages` 会导致路径重复并返回 `404 Invalid URL`。只填 `https://direct.evolink.ai` 即可。
+
+### 2. 需要设 `authHeader: true` 吗？
+需要。Pi 的 Anthropic SDK 默认使用 `x-api-key`，EvoLink 的 `/v1/messages` 使用 Bearer Token。`authHeader: true` 会让 Pi 添加 `Authorization: Bearer <你的Key>`，漏掉可能导致 `401`。
+
+### 3. 本指南为什么以终端 CLI 为准？
+Pi 官方以**终端 CLI** 为主形态（交互 / print / RPC / SDK 四种运行模式），接入 EvoLink 的配置与验证都在 CLI 中完成，稳定可靠。本指南的所有步骤均以 CLI 为准。
+
+### 4. 如何避免把 API Key 明文写进配置？
+在 `apiKey` 字段用环境变量插值（如 `"$EVOLINK_API_KEY"`），把真实 Key 放到环境变量里。
+
+### 5. EvoLink 支持哪些常用模型？
+EvoLink 支持 Claude 全系列（也支持 GPT、Gemini 等，可在控制台查看）。规划/复杂推理推荐 `claude-fable-5`，日常执行可用 `claude-sonnet-5`，轻量任务用 `claude-haiku-4-5-20251001`。
+
+### 6. 如何查看用量？
+登录 [EvoLink 控制台](https://evolink.ai/dashboard) 即可查看请求量、消耗与 Token 使用情况。
+
+<Tip>
+更多用法与配置可参考 [Pi 官方仓库](https://github.com/earendil-works/pi)。
+</Tip>
+
+<div style={{ height: "60vh" }} aria-hidden="true" />
