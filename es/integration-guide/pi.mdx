@@ -1,0 +1,346 @@
+---
+title: "Pi Coding Agent"
+description: "Conecte Pi Coding Agent a EvoLink.AI"
+---
+
+## Descripción general
+
+{/* TODO: add Pi TUI overview screenshot → /images/integration-guide/pi/pi-overview.png */}
+
+Pi Coding Agent (cuyo nombre de directorio de configuración y comando es `pi`) es un agente de codificación nativo de terminal (una herramienta de línea de comandos) de código abierto de [Earendil Works](https://github.com/earendil-works/pi). Admite múltiples proveedores de modelos, proveedores personalizados y herramientas conectables, lo que lo hace ideal para asistencia de código y automatización de tareas desde la línea de comandos.
+
+Pi admite proveedores de modelos personalizados y la **API Anthropic Messages**. Al configurar EvoLink como proveedor personalizado en `~/.pi/agent/models.json`, puede utilizar la familia de modelos Claude de EvoLink en Pi y al mismo tiempo conservar las capacidades completas de llamada de herramientas de agentes de Pi.
+
+<Note>
+El enfoque oficial de Pi es la **CLI de terminal** (cuatro modos de ejecución: interactivo/impresión/RPC/SDK), y esta guía sigue la CLI.
+</Note>
+
+## Antes de comenzar
+
+Antes de comenzar la configuración, asegúrese de haber completado los siguientes preparativos:
+
+### 1. Instale la CLI del agente de codificación Pi
+
+<Note>
+Pi requiere **Node.js ≥ 22.19.0**. Primero verifique su versión con `node -v`; debajo de esta versión, `npm install -g` informará `EBADENGINE`, por lo que primero actualice Node.
+</Note>
+
+<Tabs>
+  <Tab title="guión de rizo">
+    ```bash
+    curl -fsSL https://pi.dev/install.sh | bash
+    ```
+
+    ![Instalando Pi con el script curl](/images/integration-guide/pi/curl-install.png)
+  </Tab>
+  <Tab title="npm">
+    ```bash
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+    ```
+
+    ![Instalando Pi con npm](/images/integration-guide/pi/npm-install.png)
+
+    <Note>
+    Si ve una **advertencia de obsolescencia** durante la instalación, como `npm warn deprecated node-domexception@1.0.0`, puede ignorarla con seguridad: proviene de una dependencia ascendente y no afecta la instalación ni el uso. Siempre que vea `added N packages` al final y `pi --version` imprima un número de versión, la instalación se realizó correctamente.
+
+    El comando de instalación oficial incluye `--ignore-scripts` (que omite los scripts del ciclo de vida de las dependencias durante la instalación; la instalación normal de Pi no los necesita). En la primera ejecución, Pi descarga automáticamente herramientas nativas como ripgrep y fd según sea necesario.
+
+    Asegúrese de obtener el nombre del paquete correcto `@earendil-works/pi-coding-agent`: npm también tiene una bifurcación con el mismo nombre `@oh-my-pi/pi-coding-agent` (una línea de versión diferente) y el obsoleto `@mariozechner/pi-coding-agent` (cuyo responsable ha señalado que debe cambiar a la versión earendil-works). No instales el incorrecto.
+    </Note>
+  </Tab>
+</Tabs>
+
+Una vez que se complete la instalación, confirme que el comando `pi` esté disponible:
+
+```bash
+pi --version
+```
+
+Para conocer más métodos de instalación (PowerShell, pnpm, bun, etc.), consulte el [sitio web de Pi](https://pi.dev) y el [repositorio oficial](https://github.com/earendil-works/pi).
+
+### 2. Obtenga una clave API de EvoLink
+
+- Inicie sesión en la [consola EvoLink](https://evolink.ai/dashboard)
+- Busque las claves API en la consola, haga clic en el botón "Crear nueva clave" y luego copie la clave generada.
+- La clave API normalmente comienza con `sk-`. Por favor mantenlo a salvo.
+
+## Paso 1: configurar el proveedor de EvoLink
+
+Pi define proveedores y modelos a través de un archivo de configuración llamado `models.json`, ubicado en la carpeta `.pi/agent/` dentro de su directorio de inicio (ruta completa `~/.pi/agent/models.json`). Los modelos Claude utilizan con frecuencia `tool_use` / `tool_result` en Pi, por lo que esta guía utiliza la **API compatible con Anthropic Messages** de EvoLink y la configura como un proveedor personalizado de tipo `anthropic-messages`.
+
+<Note>
+`~` significa su **directorio de inicio** (`/Users/your-username` en macOS, `/home/your-username` en Linux). `.pi` comienza con un punto, lo que la convierte en una **carpeta oculta** que Finder/Explorador de archivos no mostrará de forma predeterminada, por lo que la forma más sencilla de crear el archivo a continuación es mediante la línea de comando. Simplemente copie y pegue.
+</Note>
+
+Este archivo **no** existe de forma predeterminada (la carpeta `.pi` generalmente no se crea hasta que se ejecuta Pi), por lo que debe crearlo manualmente. Siga estos tres pasos:
+
+<Steps>
+  <Step title="abrir una terminal">
+    - **macOS**: presione `Command + Space` para abrir Spotlight, escriba `Terminal` y presione Entrar.
+    - **Windows**: busque `PowerShell` en el menú Inicio y ábralo.
+
+    Si es nuevo en la línea de comandos, consulte primero [Preguntas frecuentes: ¿Cómo abro una terminal de línea de comandos?](#cómo-abro-una-terminal-de-línea-de-comandos).
+  </Step>
+
+  <Step title="Cree la carpeta de configuración y un nuevo archivo.">
+    Pegue el siguiente comando en la terminal y presione Enter. Crea automáticamente la carpeta necesaria y abre un `models.json` vacío en un editor de texto:
+
+    <Tabs>
+      <Tab title="macOS/Linux">
+        ```bash
+        mkdir -p ~/.pi/agent && nano ~/.pi/agent/models.json
+        ```
+
+        Esto lo llevará al editor `nano` (un editor de texto simple dentro de la terminal).
+      </Tab>
+      <Tab title="Windows (PowerShell)">
+        ```powershell
+        mkdir -Force "$HOME\.pi\agent"; notepad "$HOME\.pi\agent\models.json"
+        ```
+
+        El Bloc de notas le preguntará "¿Quiere crear un archivo nuevo?" — haga clic en **Sí**.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Pega la configuración y guarda">
+    Copie la **configuración completa** a continuación y péguela en el editor que acaba de abrir:
+
+    ```json
+    {
+      "providers": {
+        "evolink": {
+          "name": "EvoLink Direct",
+          "baseUrl": "https://direct.evolink.ai",
+          "apiKey": "$EVOLINK_API_KEY",
+          "authHeader": true,
+          "api": "anthropic-messages",
+          "models": [
+            { "id": "claude-fable-5",            "reasoning": true,  "contextWindow": 1000000, "maxTokens": 128000,
+              "cost": {"input": 9.0, "output": 45.0, "cacheRead": 0.9, "cacheWrite": 11.25} },
+            { "id": "claude-sonnet-5",           "reasoning": false, "contextWindow": 1000000, "maxTokens": 64000,
+              "cost": {"input": 2.7, "output": 13.5, "cacheRead": 0.27, "cacheWrite": 3.375} },
+            { "id": "claude-haiku-4-5-20251001", "reasoning": false, "contextWindow": 200000,  "maxTokens": 64000,
+              "cost": {"input": 0.9, "output": 4.5, "cacheRead": 0.09, "cacheWrite": 1.125} }
+          ]
+        }
+      }
+    }
+    ```
+
+    Luego guarda:
+
+    - **nano (macOS/Linux)**: Presione `Control + O`, luego Intro para guardar y luego `Control + X` para salir.
+    - **Bloc de notas (Windows)**: presione `Control + S` para guardar y luego cierre la ventana.
+  </Step>
+</Steps>
+
+**Descripciones de campos clave (no omita ninguna):**
+
+- **`api: "anthropic-messages"`**: utiliza la ruta compatible con Anthropic Messages de EvoLink, por lo que Pi utiliza el protocolo nativo `tool_use` / `tool_result` de Claude.
+- **Establezca `baseUrl` solo en la raíz del dominio** `https://direct.evolink.ai`: **no** agregue manualmente `/v1` o `/v1/messages`. Pi agrega `/v1/messages` automáticamente; agregarlo manualmente duplica la ruta y provoca un `404 Invalid URL`.
+- **Se requiere `authHeader: true`.** El SDK Anthropic de Pi usa `x-api-key` de forma predeterminada, mientras que `/v1/messages` de EvoLink espera `Authorization: Bearer <your-key>`. Este campo hace que Pi envíe el encabezado de autenticación de portador correcto.
+- **`apiKey` tiene dos formularios: elige uno:**
+  - **Opción 1 · Pegue la clave directamente (la más simple, buena para uso personal local)**: reemplace `"$EVOLINK_API_KEY"` en la configuración con su clave real, p.e. `"apiKey": "sk-your-real-key"`. Hecho en un solo paso, no se necesita ninguna variable de entorno; La desventaja es que la clave se encuentra en **texto sin formato** en el archivo de configuración, así que no comparta este archivo ni lo envíe a Git.
+  - **Opción 2 · Interpolación de variables de entorno (más segura, recomendada)**: mantenga `"$EVOLINK_API_KEY"` como está y coloque la clave real en una variable de entorno (consulte "Establecer la variable de entorno de clave API" a continuación). Esto mantiene la clave de texto plano fuera del archivo de configuración.
+  - **(Avanzado)** `apiKey` de Pi también admite `${EVOLINK_API_KEY}` (equivalente; use llaves para eliminar la ambigüedad cuando el nombre de la variable va inmediatamente seguido de texto literal) y `!command` (un `!` inicial ejecuta un comando y usa su salida como clave, por ejemplo leyendo desde un administrador de contraseñas: `"!op read 'op://vault/item/credential'"`). Si necesita un literal `**(Avanzado)** `apiKey` de Pi también admite `${EVOLINK_API_KEY}` (equivalente; use llaves para eliminar la ambigüedad cuando el nombre de la variable va inmediatamente seguido de texto literal) y `!command` (un `!` inicial ejecuta un comando y usa su salida como clave, por ejemplo leyendo desde un administrador de contraseñas: `"!op read 'op://vault/item/credential'"`). Si necesita un literal  o `!` en el valor, escápelos como `$` y `$!`.
+
+<Note>
+¿No quieres tocar la tecla en el archivo de configuración? También puede usar `/login` en modo interactivo para seleccionar este proveedor y almacenar la clave en `~/.pi/agent/auth.json`; el efecto es equivalente.
+</Note>
+
+### Establecer la variable de entorno de la clave API
+
+<Note>
+Solo necesita este paso si eligió **Opción 2 (interpolación de variables de entorno)** arriba. Si elige **Opción 1 (pegue la clave directamente)**, la clave ya está en el archivo de configuración; omita esta sección y vaya directamente al Paso 2.
+</Note>
+
+Apunte el `$EVOLINK_API_KEY` al que se hace referencia en la configuración anterior a su clave real. A continuación se muestran la versión **temporal** (solo válida en la ventana de terminal actual; desaparece una vez que la cierras, buena para una primera ejecución de prueba) y la versión **persistente** (se carga automáticamente cada vez que abres una terminal):
+
+<Tabs>
+  <Tab title="macOS/Linux">
+    **Temporal** (ventana de terminal actual; se pierde cuando se cierra):
+
+    ```bash
+    export EVOLINK_API_KEY=your_EvoLink_API_Key
+    ```
+
+    **Persistente** (escrito en su archivo de configuración de shell; se aplica automáticamente en cada nueva terminal):
+
+    ```bash
+    # If you use zsh (the default on modern macOS)
+    echo 'export EVOLINK_API_KEY=your_EvoLink_API_Key' >> ~/.zshrc
+    source ~/.zshrc
+
+    # If you use bash
+    echo 'export EVOLINK_API_KEY=your_EvoLink_API_Key' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+
+    <Note>
+    ¿No estás seguro de qué shell estás usando? Ejecute `echo $SHELL` en la terminal; si la salida contiene `zsh`, use `~/.zshrc`; si contiene `bash`, utilice `~/.bashrc`.
+    </Note>
+  </Tab>
+  <Tab title="Windows (PowerShell)">
+    **Temporal** (ventana actual de PowerShell; se pierde cuando se cierra):
+
+    ```powershell
+    $env:EVOLINK_API_KEY = "your_EvoLink_API_Key"
+    ```
+
+    **Persistente** (escrito en variables de entorno del usuario; aplicado en todas las ventanas nuevas):
+
+    ```powershell
+    setx EVOLINK_API_KEY "your_EvoLink_API_Key"
+    ```
+
+    `setx` **no afecta la ventana actual**; **reinicie su terminal** (cierre y vuelva a abrir PowerShell) para que surta efecto.
+  </Tab>
+</Tabs>
+
+## Paso 2: comience a usar y verifique
+
+### 1. Seleccione un modelo
+
+Ejecute el siguiente comando en su terminal para iniciar Pi:
+
+```bash
+pi
+```
+
+Dentro de la sesión Pi, ingrese `/model` para abrir el selector de modelo, luego elija el modelo EvoLink configurado anteriormente (como `claude-fable-5`).
+
+{/* TODO: add screenshot of the in-session /model selector in Pi (showing the model list under the evolink provider) → /images/integration-guide/pi/pi-model-select.png */}
+
+### 2. Verificar la configuración
+
+Después de seleccionar un modelo, primero ingrese un mensaje simple para verificar la respuesta del modelo:
+
+```
+who are you
+```
+
+![Pi responde normalmente a "¿quién eres?"](/images/integration-guide/pi/whoareyou2.png)
+
+Luego ingrese una tarea que active una llamada a la herramienta para verificar las capacidades del agente:
+
+```
+List the files in the current directory and tell me which ones are Markdown files.
+```
+
+**Cómo se ve el éxito:**
+
+- Verá la respuesta normal de la IA (unas pocas líneas de texto).
+- Pi puede llamar a la herramienta `ls` en la segunda tarea y continuar respondiendo.
+- **No** hay errores como `401`, `404`, `model_not_found` o `Unexpected role "tool"`.
+
+## Solución de problemas
+
+Lo siguiente está organizado por **el error real que ves**; simplemente busca el que coincida.
+
+### Devuelve `401` (clave API no válida)
+
+```
+{"code":"unauthorized","message":"Invalid API key (request id: ...)"}
+```
+
+Posibles causas:
+
+- La variable de entorno no tuvo efecto (lo más común): ejecute `test -n "$EVOLINK_API_KEY" && echo "Key loaded" || echo "Key not loaded"` en la terminal actual; en Windows, debe **reiniciar el terminal** después de usar `setx`.
+- El campo `apiKey` es incorrecto: confirme que `models.json` contiene `"$EVOLINK_API_KEY"` (que hace referencia a la variable de entorno), en lugar de tratar el nombre de la variable como una clave literal.
+- Falta `"authHeader": true`: `/v1/messages` de EvoLink requiere un token de portador, así que confirme que este campo esté dentro de la misma configuración de proveedor que `apiKey`.
+- La clave en sí no es válida o ha sido deshabilitada: verifíquela en la [consola EvoLink](https://evolink.ai/dashboard).
+
+### Devuelve `404 Invalid URL`
+
+```
+{"message":"Invalid URL (POST /v1/v1/messages)","type":"invalid_request_error"}
+```
+
+Causa: **agregaste manualmente una ruta adicional** en `baseUrl`. Pi agrega automáticamente `/v1/messages`, así que cambie `baseUrl` nuevamente a la raíz del dominio: `https://direct.evolink.ai`.
+
+### Devuelve `404 model_not_found`
+
+```
+{"code":"model_not_found","message":"Model '...' is not available for this API key ... Call GET /v1/models ..."}
+```
+
+Causa: el ID del modelo está mal escrito o el modelo no está habilitado. Verifique que `id` en `models.json` coincida exactamente con el nombre del modelo devuelto por la consola EvoLink/`/v1/models`.
+
+### Devuelve `400 Unexpected role "tool"`
+
+```text
+400: messages: Unexpected role "tool". Allowed roles are "user" or "assistant".
+```
+
+**Causa**: la configuración todavía usa `api: "openai-completions"` con una URL base que termina en `/v1`. Pi envía los resultados de la herramienta del agente con `role: "tool"` de OpenAI, que la ruta actual compatible con Claude no acepta.
+
+**Solución**: cambie estos tres campos de proveedor:
+
+```json
+{
+  "baseUrl": "https://direct.evolink.ai",
+  "authHeader": true,
+  "api": "anthropic-messages"
+}
+```
+
+Este problema no se puede solucionar con `supportsDeveloperRole` o `supportsReasoningEffort`, porque el rol rechazado es el rol de herramienta, no el rol `developer` o un parámetro de razonamiento. Inicie una nueva sesión después de actualizar la configuración.
+
+## Acerca del costo
+
+El campo `cost` en `models.json` arriba es el precio real de EvoLink (un descuento fijo del 10%, en USD por millón de tokens), para que Pi lo use como referencia al estimar el uso:
+
+|Modelo|Aporte|Producción|Lectura de caché|Escritura en caché|
+|---|---|---|---|---|
+|`claude-fable-5`| $9.00 | $45.00 | $0.90 | $11.25 |
+|`claude-sonnet-5`| $2.70 | $13.50 | $0.27 | $3.375 |
+|`claude-haiku-4-5-20251001`| $0.90 | $4.50 | $0.09 | $1.125 |
+
+<Note>
+La lectura de caché es el precio cuando se alcanza el caché (aproximadamente 0,1 veces la entrada). Los ahorros reales dependen de la tasa de aciertos de la caché; cuanto más amplio es el contexto, menos estables son los impactos, por lo que el beneficio se descuenta; no lo trate como un precio bajo incondicional.
+</Note>
+
+## Preguntas frecuentes
+
+<span id="how-do-i-open-a-command-line-terminal" />
+
+### ¿Cómo abro una terminal de línea de comandos?
+
+<Tabs>
+  <Tab title="macos">
+    - Opción 1: presione `Command + Space` para abrir Spotlight, escriba `Terminal` y presione Entrar.
+    - Opción 2: Vaya a Aplicaciones → Utilidades → Terminal.
+  </Tab>
+  <Tab title="ventanas">
+    - Opción 1: Presione `Win + R`, escriba `powershell` y presione Entrar.
+    - Opción 2: busque "PowerShell" en el menú Inicio.
+  </Tab>
+  <Tab title="linux">
+    - Presione `Ctrl + Alt + T` o busque "Terminal" en el menú de su aplicación.
+  </Tab>
+</Tabs>
+
+### 1. ¿Por qué configurar `baseUrl` solo en la raíz del dominio?
+Porque el proveedor `anthropic-messages` de Pi agrega automáticamente `/v1/messages` después de `baseUrl`. Agregar `/v1` o `/v1/messages` duplica manualmente la ruta y devuelve `404 Invalid URL`. Utilice únicamente `https://direct.evolink.ai`.
+
+### 2. ¿Necesito configurar `authHeader: true`?
+Sí. El SDK Anthropic de Pi usa `x-api-key` de forma predeterminada, mientras que el `/v1/messages` de EvoLink usa un token de portador. `authHeader: true` hace que Pi envíe `Authorization: Bearer <your-key>`; omitirlo puede causar un `401`.
+
+### 3. ¿Por qué esta guía sigue la CLI del terminal?
+La forma principal oficial de Pi es **terminal CLI** (cuatro modos de ejecución: interactivo/impresión/RPC/SDK). La configuración y verificación de la integración de EvoLink se realiza en la CLI, que es estable y confiable. Todos los pasos de esta guía siguen la CLI.
+
+### 4. ¿Cómo evito escribir la clave API en texto plano en la configuración?
+Utilice la interpolación de variables de entorno en el campo `apiKey` (como `"$EVOLINK_API_KEY"`), manteniendo la clave real en una variable de entorno.
+
+### 5. ¿Qué modelos comunes admite EvoLink?
+EvoLink es compatible con toda la familia Claude (también es compatible con GPT, Gemini y más, que puedes ver en la consola). Para planificación/razonamiento complejo, se recomienda `claude-fable-5`; para la ejecución diaria, utilice `claude-sonnet-5`; para tareas ligeras, utilice `claude-haiku-4-5-20251001`.
+
+### 6. ¿Cómo verifico el uso?
+Inicie sesión en la [consola EvoLink](https://evolink.ai/dashboard) para ver el volumen de solicitudes, el consumo y el uso de tokens.
+
+<Tip>
+Para obtener más uso y configuración, consulte el [repositorio oficial de Pi](https://github.com/earendil-works/pi).
+</Tip>
+
+<div style={{ height: "60vh" }} aria-hidden="true" />
