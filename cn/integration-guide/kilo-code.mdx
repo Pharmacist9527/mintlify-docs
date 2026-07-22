@@ -1,0 +1,303 @@
+---
+title: "Kilo Code"
+description: "在 Kilo Code 中配置 EvoLink，并验证 Claude 模型的工具调用"
+---
+
+## 概述
+
+Kilo Code 是一款开源 AI 编程 Agent，支持 VS Code、JetBrains 和命令行。本教程以 **VS Code 扩展**为例，通过 Kilo Code 的自定义供应商功能连接 EvoLink。
+
+本页使用 **OpenAI Compatible** 作为快速接入方案。它可以自动读取 EvoLink 的模型列表，且认证方式与 EvoLink 的 OpenAI 兼容接口一致。配置完成后，你可以在同一个 EvoLink 供应商下切换多个 Claude 模型，无需重复创建多套供应商。
+
+<Note>
+Kilo Code 也支持 **Anthropic Messages**。该协议更接近 Claude 原生格式，但不会自动拉取模型，配置步骤也更多；本页在[协议选择](#协议选择：openai-compatible-还是-anthropic-messages)中说明两者差异。
+</Note>
+
+## 使用前准备
+
+### 1. 安装 Kilo Code
+
+在 VS Code 扩展市场搜索 **Kilo Code: AI Coding Agent, Copilot, and Autocomplete** 并安装。
+
+- 官方扩展 ID：`kilocode.kilo-code`
+- 本教程按 Kilo Code `7.4.15` 验证
+- Kilo Code `7.4.15` 要求 VS Code `1.105.1` 或更高版本
+
+安装后，VS Code 侧边栏会出现 Kilo Code 图标。
+
+### 2. 获取 EvoLink API Key
+
+1. 登录 [EvoLink 控制台](https://evolink.ai/dashboard)。
+2. 进入 API Keys 页面并创建 Key。
+3. 复制生成的 Key 并妥善保存。
+
+## 第一步：添加 EvoLink 供应商
+
+打开 Kilo Code，点击齿轮进入 **Settings**，选择 **Providers** 标签页，滚动到底部并点击 **Custom provider**。
+
+按下面填写：
+
+| 字段 | 填写内容 |
+|---|---|
+| Provider ID | `evolink` |
+| Display name | `EvoLink` |
+| Provider API | `OpenAI Compatible` |
+| Base URL | `https://direct.evolink.ai/v1` |
+| API key | 你的 EvoLink 裸 Key |
+| Headers | 留空 |
+
+<Warning>
+**API Key 只填裸 Key，不要添加 `Bearer ` 前缀。** Kilo Code 会自动生成 `Authorization: Bearer ...` 请求头。如果填成 `Bearer sk-xxx`，实际会发送双重 Bearer，并通常返回 `401 unauthorized`。
+</Warning>
+
+<Warning>
+**Base URL 只填到 `/v1`。** 不要填写完整的 `/v1/chat/completions` 地址。Kilo Code `7.4.15` 会自行拼接 `/chat/completions`；填写完整地址会产生重复路径：
+
+```text
+/v1/chat/completions/chat/completions
+```
+</Warning>
+
+## 第二步：添加模型
+
+Base URL 和 API Key 有效后，Kilo Code 会请求 EvoLink 的 `/v1/models`，然后显示可搜索、可勾选的候选模型列表。
+
+在搜索框输入 `claude`，只勾选你需要的模型，例如：
+
+| 模型 ID | 适合任务 |
+|---|---|
+| `claude-fable-5` | 复杂规划、长任务和高难度推理 |
+| `claude-sonnet-5` | 日常编码与综合执行 |
+| `claude-haiku-4-5-20251001` | 轻量任务、快速响应和子 Agent |
+| `claude-opus-4-8` | 复杂编码和企业工作流 |
+
+选择完成后点击 **Submit**。这些模型才会被添加到 `EvoLink` 供应商，并出现在聊天区域的模型选择器中。
+
+<Note>
+EvoLink 的 `/v1/models` 同时包含语言、图像、视频、音频等模型，数量会随平台更新而变化。模型列表较长是正常现象；不要全选，使用 `claude` 搜索并添加需要的模型即可。
+</Note>
+
+## 第三步：补齐模型能力
+
+EvoLink 的 `/v1/models` 当前主要提供模型 ID，不包含 Kilo Code 进行上下文管理所需的完整能力信息。对于自定义模型，建议手动设置：
+
+- `name`：模型显示名
+- `tool_call: true`：允许文件读取、编辑和终端等工具调用
+- `reasoning: true`：标记模型支持推理能力
+- `limit.context`：上下文窗口
+- `limit.output`：Kilo Code 单次请求输出预算
+
+### 配置文件位置
+
+Kilo Code 同时支持 `.json` 和 `.jsonc`：
+
+- 全局配置：`~/.config/kilo/kilo.jsonc`
+- 项目配置：`./kilo.jsonc`
+- 项目目录配置：`.kilo/kilo.jsonc`
+
+如果希望所有项目共用 EvoLink，优先修改全局配置。项目配置会覆盖同名的全局字段。
+
+<Warning>
+下面的 `evolink` 必须与第一步填写的 **Provider ID** 完全一致。不要把 `limit` 写到顶层，也不要另建一个名为 `openai-compatible` 的供应商。
+</Warning>
+
+把下面的模型配置合并到 `provider.evolink.models`：
+
+```jsonc
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "model": "evolink/claude-sonnet-5",
+  "provider": {
+    "evolink": {
+      "models": {
+        "claude-fable-5": {
+          "name": "Claude Fable 5",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": {
+            "context": 1000000,
+            "output": 32000
+          }
+        },
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": {
+            "context": 1000000,
+            "output": 32000
+          }
+        },
+        "claude-haiku-4-5-20251001": {
+          "name": "Claude Haiku 4.5",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": {
+            "context": 200000,
+            "output": 32000
+          }
+        },
+        "claude-opus-4-8": {
+          "name": "Claude Opus 4.8",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": {
+            "context": 1000000,
+            "output": 32000
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 为什么统一使用 32K 输出预算？
+
+Fable 5、Sonnet 5 和 Opus 4.8 的模型最大输出可达到 128K，Haiku 4.5 的 Anthropic 官方最大输出为 64K。但是 Kilo Code 默认会把实际请求上限封顶为 **32,000 tokens**，所以直接把 `limit.output` 写成 128000 并不会自动获得 128K 输出。
+
+32K 足以覆盖大多数编码任务，也能为会话历史保留更多上下文。对于普通 Code 任务，还可以进一步降到 16K。
+
+<Note>
+只有确实需要超长输出时，才考虑提高 `limit.output`，并同时设置 `KILO_EXPERIMENTAL_OUTPUT_TOKEN_MAX`。超长输出会占用上下文、增加等待时间和费用，不建议作为默认配置。
+</Note>
+
+### 未设置 `limit` 会怎样？
+
+- `limit.context` 未知时会解析为 `0`，Kilo Code 无法正常判断何时压缩会话。
+- `limit.output` 为 `0` 时，实际请求通常回落到内部默认的 32K。
+- 长会话可能持续增长，直到上游返回上下文超限错误。
+
+因此，自定义模型应明确配置 `context` 和 `output`。
+
+## 第四步：验证聊天与工具调用
+
+先在模型选择器中选择 `EvoLink / Claude Sonnet 5`，然后发送一个只读任务：
+
+```text
+请读取当前项目根目录的 package.json，告诉我 name 字段；不要修改任何文件。
+```
+
+配置成功时应同时满足：
+
+- Kilo Code 调用了文件读取工具，而不是只返回普通聊天文本。
+- 返回的 `name` 与项目文件内容一致。
+- 没有出现 `401`、`404` 或 `model_not_found`。
+- 没有出现模型不支持工具调用的提示。
+
+只问“你是谁”只能验证文本回复，不能证明 Agent 的文件和终端工具可用。
+
+## 按 Agent 分配模型
+
+不需要为不同模型重复创建多个 EvoLink Provider。把多个模型添加到同一个 `evolink` 供应商后，可以通过以下方式分工：
+
+1. 打开 **Settings → Models → Model per Mode**。
+2. 给 Plan、Code、Explore 等 Agent 选择不同模型。
+3. 会话中也可以通过聊天框下方的模型选择器或 `/models` 临时切换。
+
+例如：
+
+| Agent / 场景 | 推荐模型 |
+|---|---|
+| Plan、复杂规划 | `evolink/claude-fable-5` |
+| Code、日常实现 | `evolink/claude-sonnet-5` |
+| Explore、轻量检索 | `evolink/claude-haiku-4-5-20251001` |
+| 高难度编码 | `evolink/claude-opus-4-8` |
+
+也可以直接在 `kilo.jsonc` 中配置：
+
+```jsonc
+{
+  "agent": {
+    "plan": {
+      "model": "evolink/claude-fable-5"
+    },
+    "code": {
+      "model": "evolink/claude-sonnet-5"
+    },
+    "explore": {
+      "model": "evolink/claude-haiku-4-5-20251001"
+    }
+  }
+}
+```
+
+子 Agent 默认继承父 Agent 当前使用的模型；只有需要固定模型时才单独覆盖。
+
+## 协议选择：OpenAI Compatible 还是 Anthropic Messages？
+
+| 项目 | OpenAI Compatible | Anthropic Messages |
+|---|---|---|
+| Kilo Provider API | `OpenAI Compatible` | `Anthropic Messages` |
+| Base URL | `https://direct.evolink.ai/v1` | `https://direct.evolink.ai/v1` |
+| 请求路径 | `/v1/chat/completions` | `/v1/messages` |
+| 模型自动发现 | 支持 `/v1/models` | 不自动拉取，需手动添加 |
+| Kilo 默认认证 | `Authorization: Bearer ...` | `x-api-key: ...` |
+| 适合场景 | 快速配置、多模型选择 | Claude 原生工具与消息格式 |
+
+EvoLink 当前对页面列出的 Claude 模型同时开放两种协议。对于第一次配置，建议使用本页的 OpenAI Compatible 方案；如果你明确需要 Anthropic 原生消息格式，可以新建另一个 Provider，并手动添加模型及 `limit`、`tool_call` 等能力字段。
+
+## 排错
+
+### `401 unauthorized`
+
+检查：
+
+- API Key 是否有效或已被禁用。
+- API Key 前后是否有空格。
+- 是否误加了 `Bearer ` 前缀；Kilo Code 会自动添加。
+
+### `404` 或路径中出现两次 `chat/completions`
+
+Base URL 填写过长。改为：
+
+```text
+https://direct.evolink.ai/v1
+```
+
+不要填写 `/v1/chat/completions`。
+
+### `model_not_found`
+
+模型 ID 必须与 `/v1/models` 完全一致。返回模型选择页面重新搜索并添加，不要自行删除日期后缀或添加 `anthropic/` 前缀。
+
+### 模型出现在候选列表，但聊天模型选择器里没有
+
+从 `/v1/models` 拉取到模型后，还需要勾选模型并点击 **Submit**。候选列表中的模型不会自动全部加入当前 Provider。
+
+### 可以聊天，但不会读取或修改文件
+
+确认模型配置中包含：
+
+```jsonc
+"tool_call": true
+```
+
+然后重新执行[第四步](#第四步：验证聊天与工具调用)中的只读任务。
+
+### 长会话突然报上下文超限
+
+检查 `provider.evolink.models.<模型ID>.limit.context` 是否存在且不为 `0`。没有上下文窗口时，Kilo Code 无法正常触发会话压缩。
+
+### 配置了 128K 输出，但请求仍只有 32K
+
+这是 Kilo Code 的默认内部上限。使用 32K 作为常规配置；只有明确需要超长输出时才调整 `KILO_EXPERIMENTAL_OUTPUT_TOKEN_MAX`。
+
+### 使用 CLI 辅助诊断
+
+如果同时安装了 Kilo CLI，可以运行：
+
+```bash
+kilo config check
+kilo models evolink --verbose
+```
+
+第一条检查配置结构，第二条确认模型是否存在，以及 Kilo Code 解析到的工具调用和 token 限制。
+
+## 参考资料
+
+- [Kilo Code：OpenAI Compatible](https://kilo.ai/docs/ai-providers/openai-compatible)
+- [Kilo Code：Custom Models](https://kilo.ai/docs/code-with-ai/agents/custom-models)
+- [Kilo Code：Model Selection](https://kilo.ai/docs/code-with-ai/agents/model-selection)
+- [Anthropic：模型与能力对比](https://platform.claude.com/docs/en/about-claude/models/overview)
+- [EvoLink：Claude Messages API](/cn/api-manual/language-series/claude/claude-messages-api)
