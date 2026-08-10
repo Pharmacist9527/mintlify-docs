@@ -1,0 +1,269 @@
+---
+title: "Kilo Code CLI"
+description: "Configure Kilo Code CLI to use Claude models through EvoLink.AI"
+---
+
+## Overview
+
+Kilo Code CLI is the terminal version of Kilo Code. It uses the same agent runtime and `kilo.jsonc` configuration as the VS Code extension, while keeping installation, model selection, task execution, and troubleshooting in the command line.
+
+This tutorial shows you how to:
+
+- Install and start the `kilo` command.
+- Connect EvoLink through an OpenAI-compatible provider.
+- Configure tool calling and token limits for Claude models.
+- Verify file tools from the terminal.
+
+<Card title="Prefer VS Code?" icon="code" href="/en/integration-guide/kilo-code-vscode">
+  Follow the dedicated Kilo Code VS Code tutorial instead.
+</Card>
+
+## Before You Begin
+
+### 1. Install Kilo Code CLI
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install -g @kilocode/cli
+    ```
+  </Tab>
+  <Tab title="Install script">
+    ```bash
+    curl -fsSL https://kilo.ai/cli/install | bash
+    ```
+  </Tab>
+  <Tab title="Homebrew">
+    ```bash
+    brew install Kilo-Org/tap/kilo
+    ```
+  </Tab>
+</Tabs>
+
+Verify the installation:
+
+```bash
+kilo --version
+kilo --help
+```
+
+<Note>
+This guide targets Kilo CLI 1.0 and later. Run `kilo upgrade` if you have an older version.
+</Note>
+
+### 2. Get an EvoLink API Key
+
+1. Sign in to the [EvoLink console](https://evolink.ai/dashboard).
+2. Open API Keys and create a key.
+3. Copy the raw key and keep it secure.
+
+Store the key in an environment variable so it is not committed with your configuration:
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    ```bash
+    export EVOLINK_API_KEY="your_EvoLink_API_key"
+    ```
+  </Tab>
+  <Tab title="Windows PowerShell">
+    ```powershell
+    $env:EVOLINK_API_KEY="your_EvoLink_API_key"
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Set the raw key only. Do not add a `Bearer ` prefix. Kilo's OpenAI-compatible provider creates the authorization header automatically.
+</Warning>
+
+## Step 1: Create the Kilo Configuration
+
+Kilo CLI reads configuration from:
+
+- Global: `~/.config/kilo/kilo.jsonc`
+- Project root: `./kilo.jsonc`
+- Project directory: `./.kilo/kilo.jsonc`
+
+Kilo Code resolves `{env:EVOLINK_API_KEY}`-style references only in **trusted config** — the global config (`~/.config/kilo/`), a config passed via `KILO_CONFIG`, or organization-managed config. Project-level `kilo.jsonc` / `.kilo/kilo.jsonc` files **cannot resolve** `{env:}` references (this prevents a repository's config from stealing credentials). Since this tutorial reads the key from an environment variable, save the following configuration to the **global** `kilo.jsonc`; project files are only suitable for overrides that don't reference secrets, such as the default model:
+
+```jsonc
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "model": "evolink/claude-sonnet-5",
+  "provider": {
+    "evolink": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "apiKey": "{env:EVOLINK_API_KEY}",
+        "baseURL": "https://direct.evolink.ai/v1"
+      },
+      "models": {
+        "claude-fable-5": {
+          "name": "Claude Fable 5",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1000000, "output": 32000 }
+        },
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1000000, "output": 32000 }
+        },
+        "claude-haiku-4-5-20251001": {
+          "name": "Claude Haiku 4.5",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 200000, "output": 32000 }
+        },
+        "claude-opus-4-8": {
+          "name": "Claude Opus 4.8",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1000000, "output": 32000 }
+        }
+      }
+    }
+  }
+}
+```
+
+Key details:
+
+| Field | Purpose |
+|---|---|
+| `npm` | Uses the OpenAI Chat Completions-compatible protocol |
+| `options.apiKey` | Reads the key from `EVOLINK_API_KEY` |
+| `options.baseURL` | Uses the EvoLink API root ending at `/v1` |
+| `model` | Sets the default using `providerID/modelID` format |
+| `tool_call` | Enables file, edit, terminal, and other agent tools |
+| `limit.context` | Enables context tracking and compaction |
+| `limit.output` | Sets the response budget; Kilo defaults to a 32K cap |
+
+<Warning>
+Use `https://direct.evolink.ai/v1` as the Base URL. Do not append `/chat/completions`. Model settings must remain under `provider.evolink.models`.
+</Warning>
+
+## Step 2: Validate the Configuration
+
+Check the JSONC structure:
+
+```bash
+kilo config check
+```
+
+Inspect the models Kilo loaded for EvoLink:
+
+```bash
+kilo models evolink --verbose
+```
+
+You should see models such as `evolink/claude-sonnet-5` with their configured context and output limits.
+
+After changing configuration, restart Kilo or run `/reload` from an active interactive session.
+
+## Step 3: Start the Terminal Agent
+
+Open the project you want Kilo to work on:
+
+```bash
+cd /path/to/your/project
+kilo
+```
+
+Run `/models` and confirm that `evolink/claude-sonnet-5` is selected. Then send a read-only task:
+
+```text
+Read package.json in the project root and tell me its name field. Do not modify any files.
+```
+
+Successful configuration means:
+
+- Kilo invokes a file-reading tool instead of returning only conversational text.
+- The value matches the project file.
+- No `401`, `404`, `model_not_found`, or unsupported-tool error appears.
+
+## Step 4: Common CLI Workflows
+
+Start the interactive terminal UI:
+
+```bash
+kilo
+```
+
+Useful slash commands:
+
+| Command | Purpose |
+|---|---|
+| `/models` | Switch models |
+| `/agents` | Switch Code, Plan, Debug, and other agents |
+| `/status` | Inspect the current session |
+| `/review` | Review local code changes |
+| `/compact` | Compact a long session |
+| `/reload` | Reload configuration, skills, and agents |
+| `/exit` | Exit Kilo |
+
+Run a one-off task without entering the full TUI:
+
+```bash
+kilo run -m evolink/claude-sonnet-5 "Find the cause of the failing tests without changing files"
+```
+
+Temporarily select another model:
+
+```bash
+kilo -m evolink/claude-fable-5
+kilo run -m evolink/claude-haiku-4-5-20251001 "Summarize this repository"
+```
+
+Suggested model roles:
+
+| Agent or task | Recommended model |
+|---|---|
+| Planning and complex reasoning | `evolink/claude-fable-5` |
+| Everyday implementation | `evolink/claude-sonnet-5` |
+| Lightweight exploration | `evolink/claude-haiku-4-5-20251001` |
+| High-difficulty coding | `evolink/claude-opus-4-8` |
+
+## Troubleshooting
+
+### `kilo: command not found`
+
+Make sure the global npm executable directory is on `PATH`, then restart the terminal. Use `npm prefix -g` to locate the global installation directory.
+
+### `kilo config check` reports errors
+
+Check JSONC commas and braces, confirm that `provider`, `models`, and `options` have the same nesting as the example, and use `evolink/model-id` for the default model.
+
+### `401 unauthorized`
+
+Confirm that `EVOLINK_API_KEY` exists in the same terminal session that starts Kilo. Do not print the full key into logs or screenshots, and do not add a `Bearer ` prefix.
+
+### `404` or a duplicated request path
+
+Set `baseURL` back to:
+
+```text
+https://direct.evolink.ai/v1
+```
+
+Do not use `/v1/chat/completions` as the Base URL.
+
+### `model_not_found`
+
+Model IDs must exactly match EvoLink. Run `kilo models evolink --verbose` and do not add an `anthropic/` prefix or remove date suffixes.
+
+### Chat works but file tools do not
+
+Confirm that the model includes `"tool_call": true`. Retry with `claude-sonnet-5` or `claude-fable-5` if a weaker model cannot reliably drive tools.
+
+### Long sessions exceed the context window
+
+Confirm that `provider.evolink.models.<modelID>.limit.context` exists and is not `0`. Kilo cannot compact custom-model conversations correctly without this value.
+
+## References
+
+- [Kilo Code CLI documentation](https://kilo.ai/docs/code-with-ai/platforms/cli)
+- [Kilo OpenAI-compatible providers](https://kilo.ai/docs/ai-providers/openai-compatible)
+- [Kilo custom models](https://kilo.ai/docs/code-with-ai/agents/custom-models)
+- [EvoLink Claude Messages API](/en/api-manual/language-series/claude/claude-messages-api)

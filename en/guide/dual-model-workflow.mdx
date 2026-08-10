@@ -1,0 +1,200 @@
+---
+title: "Five Tools, One Cost-Saving Setup, and a Bill You Can Verify Yourself"
+description: "Claude Code, Hermes, pi, Kilo Code, Cline — plan with Claude Fable 5, execute with cheaper models. Every tool has a copy-paste config, and every cent is one you can check yourself."
+---
+
+{/*
+  ============================================================
+  T8 教程骨架 v2 —— 内部状态说明（发布前删除本注释块）
+  （此块为团队内部工作记录，保留中文，不随正文翻译）
+  ------------------------------------------------------------
+  · 已按 2026-07-15 空位复查重定位（记录：任务清单/2026-07-15-T8-空位复查.md）。
+  · 定位变更：原"认知教育/这条路存在"空位已被英文圈占满（advisor-executor/10-80-10/opusplan
+    叙事/$25→$1.40 账都有人发过）。本篇改主打三个未被占的差异化位：
+      ① 五工具横向一处讲全 + 每篇有唯一真源文档兜底（=T9 三篇 + hermes）——主线
+      ② 账"可自己验证"（cache_read 实拍 + 诚实的命中率条件句）——可信度位
+      ③ 实测踩出的反直觉坑（五工具三种 Key 写法、Cline 静默回落、Kilo 货架 182 项）
+  · 弱化：降本震撼数字（已烂大街）、opusplan 官方背书（降权、不做首屏）。
+  · 删除独家标榜：配置法⑥"网关侧路由"——开源 Claude Code Router 已实现，不再宣称"只有我们能做"。
+  · 【思瑶文案位】= 首屏主张与成本叙事文案，王哥供数与验证。
+  · 【截图位】= 需本地/GUI 补的实拍证据。
+  · 价格用 9 折实付价（见 任务清单/2026-07-14-价格核对.md），发布前请产品再核对真实挂牌价。
+  · 缓存折扣一律写条件句（取决于命中率），大载荷命中率低——不得写成无条件便宜。
+  ============================================================
+*/}
+
+## What This Guide Gives You
+
+{/* 【思瑶文案位 / copy slot】首屏主张。落点不是"教你一个省钱概念"（那个已经普及），而是"给你五个工具的可落地配置 + 一笔你能自己核对的账"。一段话讲清读完能得到什么。 */}
+
+You've probably already heard the idea of "plan with an expensive model, execute with a cheap one" to save money. This guide doesn't rehash the theory — it solves three more practical things:
+
+1. **All five mainstream tools covered** — Claude Code, Hermes, pi, Kilo Code, Cline. For each tool, we give you a copy-paste config for this division of labor, plus one ready-to-use integration guide.
+2. **A bill you can verify yourself** — not "trust us, we saved you X," but teaching you to read the `cache_read` field in the API response and confirm for yourself whether the cache actually hit and how much you saved.
+3. **The pitfalls we hit in real testing** — the five tools each authenticate differently (copy the wrong one and you get a 401), and some toggles fail silently if left off. All of this comes from running the tools for real.
+
+## 1. What This Division of Labor Actually Is
+
+In one sentence: **hand "figuring out how to do it" and "actually doing it" to different models.**
+
+- **Planning** (figuring out how to do it) — architecture design, breaking down tasks, reviewing approaches. Use the most capable **Claude Fable 5**. This part is few tokens but demands the most from the model.
+- **Execution** (actually doing it) — editing files per the plan, batch edits, running tools. Use the cheaper **Haiku / Sonnet**. This part is many tokens but doesn't need a top-tier model.
+
+Most programming work is "a little hard reasoning wrapped in a lot of mechanical execution." Move the mechanical execution off the expensive model and the bill comes down.
+
+{/* opusplan 背书降权处理：作为一句佐证放这里，不做首屏、不展开。 */}
+<Note>
+Anthropic officially endorses this approach too — Claude Code's built-in `/model opusplan` plans with the expensive model and automatically downgrades for execution. This guide extends that: plan with Fable 5, execute with any cheaper model, and reproduce this division of labor in four tools beyond Claude Code as well.
+</Note>
+
+## 2. Five Tools, One Division of Labor
+
+This is the core of the guide. The five tools implement the division of labor in different forms, but the goal is the same: **use Fable 5 for the main/planning role, cheaper models for execution/auxiliary roles.** The full integration steps for each tool are in its own integration guide (that is the single source of truth for configuration); this section only covers what's essential to each tool's division of labor.
+
+### Claude Code — The Finest-Grained Division of Labor
+
+Claude Code uses the native Anthropic line (`https://direct.evolink.ai`) and offers several ways to divide the labor, from simplest to most flexible:
+
+{/* base_url 说明：Claude Code 走 Anthropic 原生线 direct.evolink.ai；其余四工具走 OpenAI 兼容线 direct.evolink.ai/v1。对外主推域名已定为 direct.evolink.ai（code.evolink.ai 仅内部使用）。 */}
+
+**① Environment variables (fastest)**
+
+```bash
+export ANTHROPIC_BASE_URL=https://direct.evolink.ai
+export ANTHROPIC_AUTH_TOKEN=your_EvoLink_API_Key
+export ANTHROPIC_MODEL=claude-fable-5                        # main / planning model
+export ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5-20251001  # background / lightweight tasks
+```
+
+**② settings.json persistence** (global or per-project — one division of labor per project)
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://direct.evolink.ai",
+    "ANTHROPIC_AUTH_TOKEN": "your_EvoLink_API_Key",
+    "ANTHROPIC_MODEL": "claude-fable-5",
+    "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-4-5-20251001"
+  }
+}
+```
+
+**③ Subagent division of labor (finest-grained)** — under `.claude/agents/`, assign a cheaper model to your execution subagents. The main loop (Fable 5) plans and dispatches subagents to execute, so the bulk of the tokens lands on the cheap model:
+
+```markdown
+---
+name: executor
+description: Execution subagent, responsible for actual coding and tool calls
+model: claude-haiku-4-5-20251001
+---
+
+(the subagent's system prompt…)
+```
+
+<Warning>
+**The most common configuration mistake: setting only the main model and assuming subagents will use the cheap one automatically.** Subagents inherit the main model by default — if you don't explicitly write `model:` in `.claude/agents/*.md`, every subagent tool call is billed at Fable 5 prices. For the division of labor to actually save money, this line cannot be omitted.
+</Warning>
+
+Other ways: switch anytime in-session with `/model`, turn on the official hybrid mode with `/model opusplan`, or specify at launch with `claude --model claude-fable-5`.
+
+- Full integration and troubleshooting → [Claude Code Integration Guide](/en/integration-guide/claude-code-cli)
+
+### Hermes Agent — Main Model + 14 Auxiliary Slots
+
+Configure the main model in `config.yaml`'s `model.default`, then point the 14 auxiliary slots (context compression, session titles, web extraction, etc.) at cheaper models one by one, so lightweight tasks don't run up the main-model cost.
+
+- Full integration and troubleshooting → [Hermes Integration Guide](/en/integration-guide/hermes)
+
+### pi — A Multi-Model List with Prices
+
+Set up a priced multi-model list in `~/.pi/agent/models.json`, then switch planning/execution models in-session with `/model`.
+
+- Full integration and troubleshooting → [pi Integration Guide](/en/integration-guide/pi)
+
+### Kilo Code — Switch Between Configuration Profiles
+
+Create multiple OpenAI Compatible profiles (`default` = Fable 5 for planning / `budget` = Haiku for execution) and switch profiles to switch models.
+
+- Full integration and troubleshooting → [Kilo Code VS Code Guide](/en/integration-guide/kilo-code-vscode) or [Kilo Code CLI Guide](/en/integration-guide/kilo-code-cli)
+
+### Cline — Plan/Act Dual-Model Toggle
+
+**Plan (planning) uses Fable 5, Act (execution) uses a cheaper model** — the most intuitive form of the division of labor. We recommend the "single gateway + multiple Model IDs" approach to avoid the dual-mode silent-fallback issue.
+
+- Full integration and troubleshooting → [Cline Integration Guide](/en/integration-guide/cline)
+
+<Note>
+**Why does every tool's config point to a separate doc page?** Because configuration details (base_url, model IDs, authentication) should have exactly one authoritative source. This guide covers "how to divide the labor to save money"; every concrete step defers to the respective integration guide — so you never see inconsistent configs in different places and get tripped up.
+</Note>
+
+### ⚠️ The Five Tools Authenticate Differently (Copy the Wrong One and You Get a 401)
+
+This is a detail we hit in real testing that most guides won't tell you. **Don't copy one tool's key format into another:**
+
+| Tool | Protocol line | Key format | Consequence of copying wrong |
+|---|---|---|---|
+| Claude Code | Anthropic native | `ANTHROPIC_AUTH_TOKEN` (Bearer) or `ANTHROPIC_API_KEY` (x-api-key) | — |
+| Hermes | OpenAI compatible | `api_key` + required `api_mode: chat_completions` | Omit api_mode → "no final response" |
+| **pi** | OpenAI compatible | raw key + **manual** `authHeader: true` | Omit it → 401 |
+| **Kilo** | OpenAI compatible | **raw key, Bearer added automatically** | Manually add a `Bearer ` prefix → double Bearer → 401 |
+| **Cline** | OpenAI compatible | **raw key, Bearer added automatically**, no trailing whitespace | Prefix/whitespace → 401 |
+
+**The most counterintuitive point**: pi requires you to **manually enable** Bearer (`authHeader: true`), whereas Kilo / Cline take a **raw key and add Bearer for you** — exactly the opposite.
+
+## 3. The Bill Adds Up (and You Can Verify It Yourself)
+
+{/* 重定位核心：这一章不再主打"降本 X 倍"的震撼数字（已烂大街，且被 dativo 的 $25→$1.40 占了），改主打"可验证 + 诚实"。 */}
+
+### Actual Prices (EvoLink's Flat 10% Discount)
+
+Unit: USD per million tokens.
+
+| Model | Input | Output | Cache Read | Cache Write | Context | Max Out |
+|---|---|---|---|---|---|---|
+| `claude-fable-5` | $9.00 | $45.00 | $0.90 | $11.25 | 1,000,000 | 128,000 |
+| `claude-sonnet-5` | $2.70 | $13.50 | $0.27 | $3.375 | 1,000,000 | 64,000 |
+| `claude-haiku-4-5-20251001` | $0.90 | $4.50 | $0.09 | $1.125 | 200,000 | 64,000 |
+
+{/* 【发布前 / pre-publish】请产品核对以上为 EvoLink 真实挂牌价。首页可能出现的 "-40%" 是限时营销 banner，详情页实际计费仍是 9 折——一律按 9 折算，不引用 -40%。 */}
+
+The savings come from two stacked levers: **division of labor** (landing most tokens on the cheaper model) + **cache hits** (input billed at roughly 0.1× when it hits). The first lever is stable; the second — **depends on the hit rate, which is where this guide is most committed to being honest.**
+
+### Others Just Give You a Conclusion; We Teach You to Verify It
+
+Plenty of articles online throw out a stunning number ("save 80%," "$25 down to $1.40"). The problem: **you have no way to confirm whether your particular setup actually saved anything.** This is especially true of the cache lever — it only kicks in on a hit.
+
+So this guide gives you an actionable verification method: **look at the `cache_read` field in the API response.** When the cache hits, this field has a real value; when it doesn't, it's 0. Run it once yourself and you'll know the truth, without having to trust anyone's marketing.
+
+{/* 【截图位 / screenshot slot】API 响应 cache_read 命中字段实拍 → /images/guide/dual-model/cache-read.png（小载荷规划场景，预热后可稳定命中） */}
+
+<Warning>
+**On caching, we'll tell you the whole story: the hit rate is not stable.** Testing found that in small-context planning scenarios, the cache hits reliably after warm-up and you get the 0.1× discount; but **the larger the context (tens of K, big-repo scenarios), the more the hit rate visibly drops**, and this discount gets diluted. So:
+
+- Don't treat "cache 0.1×" as an unconditional across-the-board discount.
+- What saves money reliably is the **division of labor** lever; caching is **a bonus, and only when it hits.**
+- Use the `cache_read` method above to verify your own real scenario, rather than copying someone else's numbers.
+</Warning>
+
+### An Honest Caveat: The Division of Labor Isn't a Cure-All
+
+{/* 引用 Akita 反例，不回避——诚实本身是我们相对竞品的差异化。 */}
+
+The division of labor pays off most on tasks that are **cleanly decomposable, highly ambiguous, or long-running**; for **simple, direct** tasks, running the whole thing on a single cheap model may be more economical, and an extra planning layer is over-engineering. Some benchmarks (like Fabio Akita's three-round comparison) found that on certain tasks, the quality/cost of a single strong model actually beats the hybrid approach.
+
+**Bottom line**: the division of labor is a tool, not a creed. Use it on tasks that decompose cleanly and carry real workload; don't force it onto trivial ones. This is exactly why we teach you to **verify** rather than take it on faith.
+
+### A Concrete Bill
+
+{/* 【思瑶文案位 / copy slot】用一个具体场景做对照（全 Fable vs Fable 规划 + Haiku 执行），每个数字标出处，缓存部分标条件句。注意：避开和竞品雷同的 $25→$1.40 表述，用我们自己的实测场景与数字。王哥供数。 */}
+
+> _Place a copy-paste-able cost comparison here, with every number sourced and the cache portion stated conditionally; avoid numbers that mirror competitors, and use our own real-tested scenario._
+
+## 4. Just Want to Save Money Without Fussing Over the Division of Labor?
+
+If you don't want to set up the division of labor for now, EvoLink's full Claude lineup is still a 10%-off entry point — configure one base_url and you're using the same official models at a discount. You can come back to this guide anytime and set up the division of labor to cut costs further.
+
+<Tip>
+The full integration steps for each tool are in the [integration guides](/en/integration-guide/claude-code-cli). This guide covers the "save money by dividing the labor" workflow; the concrete config defers to each integration guide (the doc is the single source of truth).
+</Tip>
+
+<div style={{ height: "60vh" }} aria-hidden="true" />

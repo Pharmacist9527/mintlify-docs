@@ -1,0 +1,297 @@
+---
+title: "ComfyUI"
+description: "在 ComfyUI 中调用 EvoLink 图像生成（文生图 / 图生图），本地无需显卡"
+---
+
+## 概述
+
+<Frame caption="ComfyUI 官方 Desktop 主页：选择或新建一个实例即可进入画布（其他安装方式界面类似）">
+  ![ComfyUI Desktop 主页](/images/integration-guide/comfyui/desktop-home.jpg)
+</Frame>
+
+[ComfyUI](https://www.comfy.org/) 是目前最流行的**开源节点式 AI 绘图工具**：把"加载模型、写提示词、生成图片"等步骤拆成一个个节点，在画布上像搭积木一样连线组合，就能搭出高度自由、可复用的出图工作流。它免费开源、插件生态庞大，已成为 AI 图像创作的主流工作台。
+
+通过 **EvoLink 官方 ComfyUI 插件**，你可以在 ComfyUI 工作流里直接调用云端 `gpt-image-2` 模型出图——文生图、图生图都支持，**本地不需要显卡**。
+
+<Columns cols={2}>
+  <Frame caption="文生图：提示词直接出图">
+    ![文生图效果](/images/integration-guide/comfyui/text2img-result.png)
+  </Frame>
+  <Frame caption="图生图：重绘为动画风雪夜街景，柴犬主体与红围巾保持不变">
+    ![图生图效果](/images/integration-guide/comfyui/img2img-showcase.png)
+  </Frame>
+</Columns>
+
+**适用环境**：秋叶整合包（ComfyUI-aki）、ComfyUI 官方 Desktop、便携版、手动安装版均可。
+
+## 使用前准备
+
+### 获取 EvoLink API Key
+
+1. 登录 [EvoLink 控制台](https://evolink.ai/dashboard)
+2. 进入 [API Keys 管理页](https://evolink.ai/dashboard/keys)，点击"创建新 Key"并复制（以 `sk-` 开头）
+
+<Frame caption="API Keys 管理页 → 点右上角 Create New Key（创建新密钥）→ 复制生成的 Key">
+  ![创建 API Key](/images/integration-guide/comfyui/create-api-key.png)
+</Frame>
+
+<Warning>
+**API Key 等同于账户余额的钥匙**：只填在本机的节点配置里，不要发到聊天窗口、截图或任何公开场合。怀疑泄露时，立即到管理页删除并重建。
+</Warning>
+
+### 确认账户有余额
+
+出图消耗积分（credits）。到 [控制台](https://evolink.ai/dashboard) 确认余额充足；每笔消耗可在 [任务日志页](https://evolink.ai/zh/dashboard/logs) 查询。
+
+## 第一步：安装 EvoLink 官方插件
+
+<Tabs>
+  <Tab title="方式 A：ComfyUI 官方 Desktop">
+    1. 打开 ComfyUI Desktop → 点击顶部工具栏的 **Manager** → 打开节点管理器
+    2. 搜索 **`evolink`** → 选择 Created By 为 **evolink** 的 **EvoLink** → 点 **Install**
+    3. 按提示重启 ComfyUI
+
+    <Frame caption="Desktop 节点管理器搜索 EvoLink → 安装（图为安装完成后的节点信息面板）">
+      ![Desktop 安装 EvoLink](/images/integration-guide/comfyui/manager-install.png)
+    </Frame>
+
+    <Note>已上架 ComfyUI 官方 Registry（[registry.comfy.org/nodes/evolink-nodes](https://registry.comfy.org/nodes/evolink-nodes)），Desktop / 浏览器版 / 秋叶包内置的 Manager 均可直接搜到。</Note>
+  </Tab>
+  <Tab title="方式 B：秋叶整合包">
+    1. 绘世启动器「一键启动」后，在浏览器打开的 ComfyUI 里点顶部工具栏 **Manager** → **Custom Nodes Manager（自定义节点管理）**
+
+    <Frame caption="Manager 面板 → Custom Nodes Manager">
+      ![Manager 面板](/images/integration-guide/comfyui/manager-menu.png)
+    </Frame>
+
+    2. 搜索框输入 **`evolink`** → 找到 Author 为 **evolink** 的 **EvoLink** → 点 **Install**
+
+    <Frame caption="搜索 evolink → 认准 Author 为 evolink 的官方包 → Install">
+      ![Manager 搜索 EvoLink](/images/integration-guide/comfyui/manager-search-evolink.png)
+    </Frame>
+
+    3. Action 列变为 **Restart Required** 即安装成功 → 绘世启动器「终止进程」再「一键启动」→ **刷新浏览器**
+
+    <Note>
+    安装过程若弹出 `Neither 'pip' nor 'uv' are available for package management` 报错，**可以忽略**：本插件唯一依赖 `requests`，秋叶包环境已自带，不影响任何功能。只要 Action 列显示 **Restart Required**，就说明安装已成功。
+    </Note>
+  </Tab>
+  <Tab title="方式 C：git 安装">
+    在 `ComfyUI/custom_nodes` 目录下执行：
+
+    ```bash
+    git clone https://github.com/deeplearning-goethe/comfyui-evolink.git
+    ```
+
+    秋叶整合包用户：`custom_nodes` 在你的 `ComfyUI-aki-vX.X` 安装文件夹里；可以用秋叶启动器的终端，或在该目录打开 PowerShell 执行上面命令。
+  </Tab>
+  <Tab title="方式 D：下载 ZIP">
+    1. 打开 [插件页面](https://github.com/deeplearning-goethe/comfyui-evolink) → 绿色 **Code** 按钮 → **Download ZIP**，解压
+    2. 把解压出的文件夹放进 `ComfyUI/custom_nodes/`
+    3. **防嵌套检查（必做）**：打开 `custom_nodes/comfyui-evolink/`，应**直接看到** `__init__.py`；如果看到的是又一层同名文件夹（ZIP 解压常见问题），把内层文件夹移出来放到 `custom_nodes` 下，删掉外面的空壳
+
+    正确结构示例：
+
+    ```
+    ComfyUI-aki-v3.7\
+      └─ custom_nodes\
+           ├─ ComfyUI-Manager\
+           └─ comfyui-evolink\
+                ├─ __init__.py
+                └─ ...其他文件
+    ```
+  </Tab>
+</Tabs>
+
+插件唯一的依赖是 `requests`（ComfyUI 环境一般已自带，无需手动安装）。
+
+<Accordion title="方式 A / B 点 Install 报错 only custom nodes from the default channel can be installed？点开看解决方法">
+  <Frame caption="报错示例：当前安全级别配置下无法安装">
+    ![default channel 报错](/images/integration-guide/comfyui/manager-default-channel-error.png)
+  </Frame>
+
+  出现这个报错，是因为插件版本正在 ComfyUI 官方仓库做安全复核（云 API 类节点的常见流程），期间 Manager 的默认安全级别会拦截安装。可以**临时调整 Manager 安全级别**解决，装完再改回来：
+
+  **第 1 步：完全关闭 ComfyUI**
+  - 秋叶整合包：绘世启动器 → **终止进程**
+  - 官方 Desktop / 便携版 / 手动安装：完全退出应用，包括黑色控制台窗口
+
+  **第 2 步：修改 Manager 配置文件 `config.ini`**
+
+  按你的安装方式找到文件（找不到就在 ComfyUI 安装文件夹里搜索 `config.ini`，选路径里带 `manager` 字样的那一个）：
+
+  | 环境 | config.ini 位置 |
+  |---|---|
+  | 秋叶整合包 | `你的下载路径\ComfyUI-aki-vX.X\ComfyUI-aki-vX.X\ComfyUI\user\__manager\config.ini` |
+  | 官方版（Desktop / 便携 / 手动） | `ComfyUI 安装目录\user\default\ComfyUI-Manager\config.ini` |
+
+  用记事本打开，找到 `security_level` 这一行，把 `normal` 改成 `weak`：
+
+  ```ini
+  security_level = weak
+  ```
+
+  保存并关闭。
+
+  <Frame caption="把 security_level 的值改成 weak 后保存（其余行不要动）">
+    ![修改 security_level](/images/integration-guide/comfyui/manager-config-security-level.png)
+  </Frame>
+
+  **第 3 步：重启 ComfyUI，重新安装**
+
+  启动 ComfyUI → Manager → 搜 `evolink` → **Install**。这次会开始下载；若弹 `Neither 'pip' nor 'uv'...` 报错按上文说明忽略。看到 **Restart Required** 后再完全重启一次并刷新浏览器。
+
+  **第 4 步：验证并恢复安全级别**
+  - 按下方「[验证安装是否成功](#验证安装是否成功)」确认节点已加载
+  - ⚠️ **装完后建议把 `security_level` 改回 `normal`**（按第 1、2 步再操作一次），恢复 Manager 的默认安全防护
+</Accordion>
+
+### 验证安装是否成功
+
+完全重启并刷新浏览器后，在画布空白处**双击** → 搜索 `evolink`。能看到 **EvoLink GPT Image 2 (Official)** 和 **EvoLink Upload Image (Official)** 两个节点，即安装成功：
+
+<Frame caption="双击画布搜索 evolink：出现两个官方节点即安装成功（秋叶整合包实测截图）">
+  ![验证安装：搜索 evolink](/images/integration-guide/comfyui/search-nodes.png)
+</Frame>
+
+搜不到节点？先确认是**完全重启**（不是只刷新浏览器），仍不行见 [常见问题](#常见问题)。
+
+## 第二步：生成第一张图（文生图，5 分钟）
+
+1. 在画布空白处**双击**（或右键 → Add Node）→ 搜索 **`EvoLink`** → 添加 **EvoLink GPT Image 2 (Official)** 节点（上一步验证时已见过）
+
+2. 填写参数：
+   - `api_key`：粘贴你的 `sk-` Key。**只需填这一次**——首次运行后自动保存到本机配置文件，之后这个框留空即可（分享工作流前请确认已清空）
+   - `prompt`：画面描述，**支持中文**，例如 `一只戴红色围巾的柴犬坐在雪地里，扁平插画风格`
+   - 其余参数保持默认（`quality=low` 最省钱，适合调试）
+
+3. **连接显示节点（必做）**：鼠标按住节点右侧的 `image` 输出圆点，拖一条线到空白处松开，在弹出菜单里选 **预览图像（Preview Image）**；想把图存到本地就再连一个 **保存图像（Save Image）**（图片会写入 ComfyUI 的 `output` 文件夹）
+
+<Warning>
+**这是新手最容易漏的一步**：EvoLink 节点只负责生成、不负责显示。`image` 输出口不连任何节点的话，任务跑完了你也看不到图。
+</Warning>
+
+<Frame caption="参数填好、image 连上「预览图像」后的完整工作流（api_key 处首次填写后即可留空，截图已打码）">
+  ![文生图完整工作流](/images/integration-guide/comfyui/text2img-workflow.png)
+</Frame>
+
+4. 点右上角 **运行（Queue Prompt）**。节点自动完成"提交任务 → 轮询进度 → 取回图片"，进度条实时显示，结果直接显示在预览节点里（如上图）。
+
+## 第三步：图生图（3 步搞定）
+
+1. 添加 **加载图像（Load Image）** 节点，选择你的本地图片
+2. 把它的图像输出连到 EvoLink 节点的 **`image1`** 口
+3. `prompt` 里写修改要求 → 运行
+
+<Frame caption="图生图完整连线：加载图像 → image1，prompt 写修改要求（示例：改为吉卜力风格并把背景换成夜晚街道），构图保持不变">
+  ![图生图完整工作流](/images/integration-guide/comfyui/img2img-workflow.png)
+</Frame>
+
+<Note>
+你的图片经 **EvoLink 官方通道**自动上传换取临时链接（**72 小时后自动删除**），全程不经过任何第三方图床、无需额外注册任何服务。
+</Note>
+
+**进阶用法**：
+
+- **多参考图**：`image1`～`image4` 四个口都可以接图，还可以在 `image_urls` 文本框里每行贴一个公网图片 URL，两种方式可混用，合计最多 **16 张**
+- **组装复杂工作流**：插件另附 **EvoLink Upload Image (Official)** 节点，可把本地图批量换成 URL 文本输出（普通图生图用不到它）
+- **现成工作流**：[example_workflows](https://github.com/deeplearning-goethe/comfyui-evolink/tree/main/example_workflows) 提供文生图 / 图生图 / 多参考图三个示例。**每个示例的 PNG 效果图内嵌了完整工作流——下载图片直接拖进画布即可还原全部节点和连线**（ComfyUI 原生能力）；也可以用同名 JSON 文件导入
+
+## 参数详解
+
+| 参数 | 说明 |
+|---|---|
+| `prompt` | 画面描述 / 修改要求，支持中文，最长 32,000 字符 |
+| `model` | `gpt-image-2`（默认）/ `gpt-image-2-beta` |
+| `size` | `auto`（默认，模型自定构图）/ 比例如 `1:1`、`16:9` / 像素如 `1024x1024` |
+| `resolution` | `1K` / `2K` / `4K`，size 为比例或 auto 时生效 |
+| `quality` | `low` / `medium` / `high`，**越高越贵**，调试建议 `low` |
+| `n` | 一次生成几张（1–10） |
+| `api_key` | 首次填写后自动保存到本机，之后留空；也支持环境变量 `EVOLINK_API_KEY` |
+| `image1`～`image4` | 参考图输入口，接「加载图像」即图生图 |
+| `image_urls` | 进阶：已有公网图片 URL 时每行贴一个 |
+| `timeout_seconds` | 最长等待时间（默认 300 秒），超时失败的任务不扣费 |
+
+节点输出：`image`（结果图，已自动下载）、`task_id`（对账与报障凭证）、`status_info`（本次任务摘要：用时、消耗 credits 等）。
+
+## 计费与自查
+
+- **按用量计费，无订阅**：提交任务时预扣（`credits_reserved`），完成后按实际结算
+- **失败 / 超时任务不扣费**，积分自动退回
+- **缓存不扣费**：参数不变重复运行是 ComfyUI 本地缓存复用，不发起新请求
+- **每一笔可查**：[任务日志页](https://evolink.ai/zh/dashboard/logs) 按 `task_id`（节点的输出之一）查看状态与扣费；对某笔扣费有疑问，把 `task_id` 发给客服即可核查
+
+## 常见问题
+
+<AccordionGroup>
+  <Accordion title="搜索 EvoLink 找不到节点？">
+    按顺序检查：① 插件文件夹是否在 `custom_nodes` 下（回安装步骤）；② ZIP 是否嵌套了两层同名文件夹（打开后应直接看到 `__init__.py`）；③ 是否**完全重启**了 ComfyUI（关控制台窗口，不是只刷新浏览器）；④ 启动日志里搜 `evolink`，如有红色报错请截图发给客服。秋叶整合包用户还可以用绘世启动器左侧的「疑难解答」做一键环境扫描。
+  </Accordion>
+  <Accordion title="Manager 安装报错 only custom nodes from the default channel can be installed？">
+    插件版本正在 ComfyUI 官方仓库安全复核中，Manager 默认安全级别会暂时拦截安装。解决方法见 [安装章节](#第一步：安装-evolink-官方插件) 里的展开项：临时把 Manager 的 `security_level` 改为 `weak`，装完改回 `normal`；或者直接改用方式 C（git）/ 方式 D（ZIP）安装，功能完全一致。
+  </Accordion>
+  <Accordion title="Manager 安装时报 Neither pip nor uv are available？">
+    可以忽略。这只是 Manager 在尝试安装依赖时找不到包管理器；本插件唯一依赖 `requests` 是 ComfyUI 环境自带的，不需要额外安装。只要安装列表里出现 **Restart Required**，重启后节点即可正常使用。
+  </Accordion>
+  <Accordion title="任务显示完成了，但画面上看不到图？">
+    `image` 输出口没连「预览图像 / 保存图像」节点。补连后再点一次运行——走缓存瞬间显示，不重复扣费。
+  </Accordion>
+  <Accordion title="左侧媒体资产面板显示『未找到生成的文件』？">
+    只连了「预览图像」时属正常现象（预览不落盘）。要让图片出现在面板和 `output` 文件夹里，用「保存图像（Save Image）」节点。
+  </Accordion>
+  <Accordion title="报错 401 / Unauthorized？">
+    Key 填错、多了空格，或 Key 已被删除。到 [API Keys 管理页](https://evolink.ai/dashboard/keys) 核对或重建；重建后在节点 `api_key` 框重新填一次即可覆盖本机保存的旧 Key。
+  </Accordion>
+  <Accordion title="报错 402 / 余额不足？">
+    账户积分不足，请到 [控制台](https://evolink.ai/dashboard) 充值后重试。
+  </Accordion>
+  <Accordion title="报错 429 / 请求过于频繁？">
+    触发限流，稍等片刻再运行即可。
+  </Accordion>
+  <Accordion title="提示『内容审核』失败？">
+    提示词或参考图触发平台内容审核。调整后重试即可，**失败任务不扣费**。
+  </Accordion>
+  <Accordion title="图片链接过期了怎么办？">
+    生成结果的原始链接 **24 小时**过期、上传的参考图 **72 小时**过期——但节点已把结果图自动下载进工作流，用「保存图像」节点即可永久保存到本地 `output` 文件夹。
+  </Accordion>
+  <Accordion title="一直转圈很久不出图？">
+    高分辨率 / 高质量 / 多张（n 大）任务本身较慢，节点默认最长等 300 秒（可调 `timeout_seconds`）。超时失败**不扣费**，可到 [任务日志页](https://evolink.ai/zh/dashboard/logs) 核对任务最终状态。
+  </Accordion>
+  <Accordion title="之前用旧版官方节点 / 社区版节点，怎么迁移？">
+    **旧版官方节点**（带图像输入口）：用法一致，装本插件后照常"加载图像连 `image1`"即可。**社区版 `ComfyUI_EvoLink`**：参数同名直接照搬；它的 `Evolink Image Input` 节点和 imgbb 图床 key 不再需要——图直接连 `image1`；`poll_interval`/`max_polls` 合并为 `timeout_seconds`。两个插件可共存，不用先卸载。
+  </Accordion>
+  <Accordion title="浏览器打不开 127.0.0.1:8188？">
+    先确认控制台日志已出现 `To see the GUI go to` 字样（首次启动较慢）；仍打不开就试 `http://localhost:8188`，或检查系统代理 / VPN 是否劫持了本机地址（把 `127.0.0.1` 加入代理排除列表）。另外若使用代理，请将 `api.evolink.ai` 与 `files-api.evolink.ai` 设为直连。
+  </Accordion>
+  <Accordion title="支持哪些模型？视频什么时候支持？">
+    当前插件支持 `gpt-image-2` 系列。Nano Banana（Gemini 系列）、Seedream、视频模型（Veo / Sora / Kling）在路线图中；也可以先用 [API 直连](#附录：不装插件，直接调用-api)方式调用 [全部模型](https://evolink.ai/models)。
+  </Accordion>
+</AccordionGroup>
+
+遇到其他问题：把**任务 ID / 启动日志截图 / 报错原文**发给客服，或邮件 [support@evolink.ai](mailto:support@evolink.ai)。
+
+## 附录：不装插件，直接调用 API
+
+适合先验证 Key 是否可用，或想调用插件尚未覆盖的其他模型。
+
+**30 秒验证 Key（免费）**——Windows 用户打开 PowerShell，把 `sk-你的Key` 换成自己的：
+
+```powershell
+curl.exe -s -H "Authorization: Bearer sk-你的Key" https://api.evolink.ai/v1/models
+```
+
+返回模型列表（`{"data":[{"id":...`）说明 Key 可用；返回 `Unauthorized` 说明 Key 错误或已失效。
+
+**提交生成任务**：
+
+```powershell
+curl.exe -s -X POST https://api.evolink.ai/v1/images/generations -H "Authorization: Bearer sk-你的Key" -H "Content-Type: application/json" -d "{\"model\":\"gpt-image-2\",\"prompt\":\"a cute cat, watercolor style\",\"size\":\"1:1\",\"resolution\":\"1K\",\"quality\":\"low\",\"n\":1}"
+```
+
+记下返回的任务 `id`（`task-unified-` 开头），然后轮询直到 `status` 为 `completed`，`results` 数组即图片链接（24 小时内下载保存）：
+
+```powershell
+curl.exe -s -H "Authorization: Bearer sk-你的Key" https://api.evolink.ai/v1/tasks/任务ID
+```
+
+完整 API 文档：[图像生成](https://evolink.ai/docs/cn/api-manual/image-series/gpt-image-2/gpt-image-2-image-generation) ｜ [任务查询](https://evolink.ai/docs/cn/api-manual/task-management/get-task-detail) ｜ [文件上传](https://evolink.ai/docs/cn/api-manual/file-series/upload-base64)

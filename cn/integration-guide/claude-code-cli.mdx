@@ -92,20 +92,65 @@ Claude Code CLI 通过 `settings.json` 配置文件进行配置。
 
     从 [GitHub Releases](https://github.com/farion1231/cc-switch/releases) 下载对应平台的安装包并安装。
 
-    ### 2. 配置 EvoLink
+    ### 2. 配置 EvoLink（新建供应商）
 
-    1. 打开 CC Switch
-    2. 点击右上角的图标，进入配置页面
+    <Tip>
+    **推荐新建一个干净的供应商，严格按下面步骤填。** 全程只需填三个框，不要去动"高级选项 / 配置 JSON"——这是最不容易出错的方式。
+    </Tip>
+
+    **第 1 步：** 打开 CC Switch，点击右上角的图标进入配置页面。
+
     <Frame>
     ![CC Switch 打开配置](/images/integration-guide/cc-switch/cc-switch-install.png)
     </Frame>
-    3. 按照图片进行填入
+
+    **第 2 步：** 点击"添加新供应商"，只填以下**三项**（如图红框处）：
+
+    - **供应商名称**：填 `EvoLink.AI`
+    - **API Key**：填你的 EvoLink API Key（以 `sk-` 开头）
+    - **请求地址**：填 `https://direct.evolink.ai`（**不要以斜杠 `/` 结尾**）
+
     <Frame>
     ![CC Switch 配置 EvoLink](/images/integration-guide/cc-switch/cc-switch-config-zh.png)
     </Frame>
-    4. 点击"添加"
 
-    CC Switch 会自动将配置写入 `settings.json`，无需手动操作。
+    <Warning>
+    <div className="cc-switch-warning">
+
+    **只需填上面这三项就够了，请不要展开下方的"高级选项 / 配置 JSON"去手动修改。**
+
+    API Key 框下方有一行提示"只需要填这里，下方配置会自动填充"——CC Switch 会根据你填的三项**自动生成**正确的配置 JSON（API 格式、认证字段、模型映射等，保持默认即可）。
+
+    如果你手动去改配置 JSON（例如动了 `ANTHROPIC_BASE_URL`、`effortLevel`、认证字段或模型映射），这些手改内容会在保存时**覆盖自动生成的正确配置**，反而导致接入失败。
+
+    </div>
+    </Warning>
+
+    **第 3 步：** 点击"添加"。CC Switch 会自动将配置写入 `settings.json`，无需手动操作。
+
+    **配置成功长什么样：** 新供应商出现在列表中、可以切换启用。随后回到终端运行 `claude "你是谁"` 能得到正常回复，即表示接入成功。
+
+    ### 之前配置过、现在接不上？
+
+    <Warning>
+    <div className="cc-switch-warning">
+
+    如果你**以前配过** EvoLink 或别的服务、现在接不上，多半不是上面三项填错，而是**下方"高级选项 → 配置 JSON"里残留了旧内容**（例如旧的 `ANTHROPIC_BASE_URL` 地址、旧的 Key，或手动加过的 `effortLevel`、`skipDangerousModePermissionPrompt` 等非默认项）。这些残留会覆盖正确配置。
+
+    **最省心的解法：删掉旧的 EvoLink 供应商，严格按上面步骤新建一个干净的**，全程只填三项、不碰高级选项。
+
+    </div>
+    </Warning>
+
+    <Accordion title="想保留旧配置、手动排查？点这里">
+    如果你不想删旧配置，可以打开"编辑供应商" → 展开 **"高级选项"** → 检查 **"配置 JSON"**，确认以下几点：
+
+    - `env.ANTHROPIC_BASE_URL` 是 `https://direct.evolink.ai`（不是旧的地址）
+    - `env.ANTHROPIC_AUTH_TOKEN` 是你的 EvoLink API Key（不是旧的 Key）
+    - 删掉你不确定的手动添加项，让配置回到"只由上方三项自动生成"的状态
+
+    改完点"保存"。不过仍然推荐直接**删旧重建**——那样最不容易漏掉残留项。
+    </Accordion>
 
     <Tip>
     CC Switch 还支持系统托盘快捷切换、MCP 服务器管理、云端配置同步等功能。
@@ -295,14 +340,78 @@ claude
 claude "你是谁"
 ```
 
-**成功标志：**
-- 看到 AI 的回复内容（几行文字）
-- **没有**出现 `401`、`403`、`API Key invalid` 等错误
+**配置成功长什么样：**
+- 看到 AI 的正常回复内容（几行文字），且回复来自 Claude 模型。
+- **没有**出现 `401`、`403`、`API Key invalid`、弹出官方登录等异常。
 
-**如果看到错误：**
-- `401 Unauthorized`：API Key 未设置或无效 → 检查 settings.json
-- `403 Forbidden`：API Key 权限不足 → 检查 API Key 是否正确
-- `Network error`：网络问题 → 检查网络连接
+{/* TODO: 补 claude "你是谁" 成功返回的界面截图 → /images/integration-guide/claude-code-cli/claude-who-success.png */}
+
+<Tip>
+想进一步查看当前生效的模型、账户与连接状态，可在交互模式中运行 `/status`。确认其中的 API 接口地址为 `https://direct.evolink.ai` 即表示走的是 EvoLink。
+</Tip>
+
+如果没有得到正常回复，请对照下面的 [排错](#排错) 章节，按你实际看到的报错定位。
+
+## 排错
+
+以下按**你实际看到的报错/现象**分类，对号入座即可。
+
+### 弹出官方登录页 / 提示登录 Anthropic 账号
+
+**现象**：运行 `claude` 后没有走 EvoLink，反而弹出要求登录官方 Anthropic 账号的界面。
+
+**原因**：环境变量没生效，或本机存有官方登录的残留凭证，Claude Code 回落到了官方登录流程。
+
+**解决**：
+- 确认 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN` 已正确设置且在当前终端可读（改完配置后**重启终端**）。
+- 如果你之前登录过官方账号，清除残留：删除或覆盖 `ANTHROPIC_AUTH_TOKEN`，并检查是否残留了**其它会抢占请求的旧变量**（见下一条）。
+
+### 明明配了 EvoLink 却还是走了别的服务 / 旧凭证冲突
+
+**原因**：环境里残留了旧的 Key 变量，优先级高于你新配置的，劫持了请求。
+
+**解决（旧 Key 清理自查）**：接入 EvoLink 前，确认这些旧变量已清空或不冲突：
+- `ANTHROPIC_API_KEY`：如果你只用 `ANTHROPIC_AUTH_TOKEN` 接 EvoLink，把 `ANTHROPIC_API_KEY` 置空或删除，避免两个 Key 变量打架。
+- 任何指向其它服务的 `ANTHROPIC_BASE_URL` 旧值：确认当前值就是 `https://direct.evolink.ai`。
+- 检查 `~/.claude/settings.json` 的 `env` 段与 shell 配置文件（`.zshrc` / `.bashrc` 等）里是否有相互覆盖的旧配置。
+
+### 返回 `401 Unauthorized`
+
+**原因**：`ANTHROPIC_AUTH_TOKEN` 未设置或 API Key 无效。
+
+**解决**：检查 `~/.claude/settings.json` 里的 `ANTHROPIC_AUTH_TOKEN`，到 [EvoLink 控制台](https://evolink.ai/dashboard) 核对 Key 是否正确、是否被禁用。
+
+### 返回 `403 Forbidden`
+
+**原因**：API Key 权限不足或已过期。
+
+**解决**：到 [EvoLink 控制台](https://evolink.ai/dashboard) 检查 Key 状态，必要时重新创建。
+
+### 返回 `model_not_found`
+
+**现象**：`Model '...' is not available for this API key`。
+
+**原因**：模型 ID 拼错或该模型未开通。
+
+**解决**：核对模型名与 [下方模型表](#12-evolink-支持哪些-claude-模型？) 是否一致，用 `/model` 切换到可用模型。
+
+### 返回 `404 Invalid URL`（路径重复）
+
+**现象**：报错里出现类似 `/v1/messages/v1/messages` 的重复路径。
+
+**原因**：`ANTHROPIC_BASE_URL` **手动多拼了接口路径**。
+
+**解决**：`ANTHROPIC_BASE_URL` 只填到域名根 `https://direct.evolink.ai` 即可，**不要**手动加 `/v1/messages`——Claude Code 会自动拼接。
+
+### 执行后没有任何输出 / `Network error`
+
+**原因**：网络无法访问 API 服务器，或被防火墙/代理阻断。
+
+**解决**：检查网络连接与代理设置，确认能访问 `https://direct.evolink.ai`。
+
+<Note>
+**想同时用贵模型规划、便宜模型执行来省钱？** 参见教程 [双模型工作流：贵模型规划 + 便宜模型执行](/cn/guide/dual-model-workflow)，Claude Code 的 subagent 分工、`opusplan` 混合模式等省钱配置都在其中。
+</Note>
 
 ## 常见问题
 
@@ -348,6 +457,7 @@ Claude Code CLI 是 Anthropic 官方推出的命令行工具，允许用户在�
 - **401 错误**：`ANTHROPIC_AUTH_TOKEN` 未设置或 API Key 无效
 - **403 错误**：API Key 权限不足或已过期
 - 请检查 `ANTHROPIC_BASE_URL` 是否为 `https://direct.evolink.ai`
+- 更多按报错分类的定位方法见 [排错](#排错) 章节。
 
 ### 10. Claude Code CLI 适合哪些使用场景？又不适合哪些场景？
 **适合的场景：**
@@ -365,20 +475,24 @@ Claude Code CLI 是 Anthropic 官方推出的命令行工具，允许用户在�
 在交互模式中输入 `/model` 命令即可切换模型。
 
 ### 12. EvoLink 支持哪些 Claude 模型？
-EvoLink 支持以下 Claude 模型：
+EvoLink 支持以下 Claude 模型（同时也支持 GPT、Gemini 等系列，可在控制台查看）：
 
 | 模型名称 | 说明 |
 |---------|------|
-| `claude-haiku-4-5-20251001` | 快速响应 |
-| `claude-sonnet-4-5-20250929` | 平衡性能 |
-| `claude-opus-4-5-20251101` | 高级版本 |
-| `claude-sonnet-4-6` | 最新版本 |
-| `claude-sonnet-5` | 最新版本 |
-| `claude-fable-5` | 最新版本 |
-| `claude-opus-5` | 最新版本 |
-| `claude-opus-4-8` | 最新版本 |
-| `claude-opus-4-7` | 最新版本 |
+| `claude-fable-5` | 规划 / 复杂推理，能力最强 |
+| `claude-opus-5` | 深度推理，Opus 系列最新 |
+| `claude-sonnet-5` | 日常执行，性能均衡 |
+| `claude-haiku-4-5-20251001` | 轻量任务 / 快速响应 |
+| `claude-opus-4-8` | 高级版本 |
+| `claude-opus-4-7` | 高级版本 |
 | `claude-opus-4-6` | 高级版本 |
+| `claude-sonnet-4-6` | 上一代 Sonnet |
+| `claude-sonnet-4-5-20250929` | 上一代 Sonnet |
+| `claude-opus-4-5-20251101` | 上一代 Opus |
+
+<Tip>
+想用 `claude-fable-5` 规划、`claude-haiku-4-5-20251001` 执行来省钱？参见 [双模型工作流教程](/cn/guide/dual-model-workflow)。
+</Tip>
 
 ### 13. 怎么上传图片？
 - 方法一：直接引用图片路径
@@ -412,5 +526,5 @@ EvoLink 支持以下 Claude 模型：
 </Warning>
 
 <Tip>
-如果之前登录过官方账号，需要先清除 `ANTHROPIC_AUTH_TOKEN` 环境变量或在 `settings.json` 中覆盖。
+如果之前登录过官方账号或用过其它服务，接入 EvoLink 前请先做一次**旧 Key 清理自查**（清除 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` 残留、确认 `ANTHROPIC_BASE_URL` 指向 EvoLink），详见 [排错 - 旧凭证冲突](#排错) 章节。
 </Tip>

@@ -1,0 +1,300 @@
+---
+title: "ComfyUI"
+description: "ComfyUI で EvoLink の画像生成（テキストから画像 / 画像から画像）を利用 — ローカル GPU 不要"
+---
+
+## 概要
+
+<Frame caption="ComfyUI 公式 Desktop のホーム画面：インスタンスを選択または新規作成してキャンバスに入ります（他のインストール方式でも画面はほぼ同じです）">
+  ![ComfyUI Desktop ホーム](/images/integration-guide/comfyui/desktop-home.jpg)
+</Frame>
+
+[ComfyUI](https://www.comfy.org/) は現在最も人気のある**オープンソースのノードベース AI 画像生成ツール**です。「モデルの読み込み」「プロンプトの記述」「画像の生成」といった各ステップをノードとして分解し、キャンバス上でブロックを組み立てるように接続することで、自由度が高く再利用可能な画像生成ワークフローを構築できます。無料かつオープンソースで、巨大なプラグインエコシステムを持ち、AI 画像制作の主流ワークベンチとなっています。
+
+**EvoLink 公式 ComfyUI プラグイン**を使えば、ComfyUI のワークフローからクラウド上の `gpt-image-2` モデルを直接呼び出して画像を生成できます。テキストから画像・画像から画像の両方に対応し、**ローカルに GPU は不要**です。
+
+<Columns cols={2}>
+  <Frame caption="テキストから画像：プロンプトだけで生成">
+    ![テキストから画像の結果](/images/integration-guide/comfyui/text2img-result.png)
+  </Frame>
+  <Frame caption="画像から画像：アニメ風の雪の夜の街並みに描き直し。柴犬と赤いマフラーはそのまま保持">
+    ![画像から画像の結果](/images/integration-guide/comfyui/img2img-showcase.png)
+  </Frame>
+</Columns>
+
+**対応環境**：ComfyUI 公式 Desktop、ポータブル版、手動インストール版、および中国コミュニティの aki オールインワンパッケージ（ComfyUI-aki）のいずれでも利用できます。
+
+## 事前準備
+
+### EvoLink API Key の取得
+
+1. [EvoLink ダッシュボード](https://evolink.ai/dashboard)にログインします
+2. [API Keys 管理ページ](https://evolink.ai/dashboard/keys)を開き、「Create New Key」をクリックしてコピーします（`sk-` で始まります）
+
+<Frame caption="API Keys 管理ページ → 右上の Create New Key → 生成された Key をコピー">
+  ![API Key の作成](/images/integration-guide/comfyui/create-api-key.png)
+</Frame>
+
+<Warning>
+**API Key はアカウント残高への鍵と同じです。** ローカルのノード設定だけに入力し、チャット、スクリーンショット、公開の場には決して貼り付けないでください。漏えいが疑われる場合は、直ちに管理ページで削除して再作成してください。
+</Warning>
+
+### アカウント残高の確認
+
+画像生成にはクレジット（credits）を消費します。[ダッシュボード](https://evolink.ai/dashboard)で残高が十分にあることを確認してください。消費の内訳は[タスクログページ](https://evolink.ai/dashboard/logs)で確認できます。
+
+## ステップ 1：EvoLink 公式プラグインのインストール
+
+<Tabs>
+  <Tab title="方法 A：ComfyUI 公式 Desktop">
+    1. ComfyUI Desktop を開く → 上部ツールバーの **Manager** をクリックしてノードマネージャーを開きます
+    2. **`evolink`** を検索 → Created By が **evolink** の **EvoLink** を選択 → **Install** をクリックします
+    3. 指示に従って ComfyUI を再起動します
+
+    <Frame caption="Desktop のノードマネージャーで EvoLink を検索 → インストール（画像はインストール完了後のノード情報パネル）">
+      ![Desktop で EvoLink をインストール](/images/integration-guide/comfyui/manager-install.png)
+    </Frame>
+
+    <Note>ComfyUI 公式 Registry（[registry.comfy.org/nodes/evolink-nodes](https://registry.comfy.org/nodes/evolink-nodes)）に掲載済みです。Desktop / ブラウザ版 / aki パッケージ内蔵の Manager からそのまま検索できます。</Note>
+  </Tab>
+  <Tab title="方法 B：aki オールインワンパッケージ">
+    1. ランチャーから ComfyUI を起動した後、ブラウザで開いた ComfyUI の上部ツールバーで **Manager** → **Custom Nodes Manager** をクリックします
+
+    <Frame caption="Manager パネル → Custom Nodes Manager">
+      ![Manager パネル](/images/integration-guide/comfyui/manager-menu.png)
+    </Frame>
+
+    2. 検索ボックスに **`evolink`** と入力 → Author が **evolink** の **EvoLink** を選択 → **Install** をクリックします
+
+    <Frame caption="evolink を検索 → Author が evolink の公式パッケージを選ぶ → Install">
+      ![Manager で EvoLink を検索](/images/integration-guide/comfyui/manager-search-evolink.png)
+    </Frame>
+
+    3. Action 列が **Restart Required** になればインストール成功です → ランチャーでプロセスを終了して再起動 → **ブラウザを更新**します
+
+    <Note>
+    インストール中に `Neither 'pip' nor 'uv' are available for package management` というエラーが表示されても、**無視して構いません**。本プラグインの唯一の依存関係は `requests` で、パッケージ環境に同梱済みのため、機能に影響はありません。Action 列に **Restart Required** と表示されていれば、インストールは成功しています。
+    </Note>
+  </Tab>
+  <Tab title="方法 C：git でインストール">
+    `ComfyUI/custom_nodes` ディレクトリで次を実行します。
+
+    ```bash
+    git clone https://github.com/deeplearning-goethe/comfyui-evolink.git
+    ```
+
+    aki オールインワンパッケージのユーザー：`custom_nodes` は `ComfyUI-aki-vX.X` のインストールフォルダ内にあります。ランチャーのターミナル、またはそのディレクトリで開いた PowerShell から上記コマンドを実行してください。
+  </Tab>
+  <Tab title="方法 D：ZIP をダウンロード">
+    1. [プラグインのリポジトリ](https://github.com/deeplearning-goethe/comfyui-evolink)を開く → 緑色の **Code** ボタン → **Download ZIP** をクリックして解凍します
+    2. 解凍したフォルダを `ComfyUI/custom_nodes/` に移動します
+    3. **入れ子チェック（必須）**：`custom_nodes/comfyui-evolink/` を開いたとき、**直下に** `__init__.py` が見えるはずです。もし同名フォルダがもう 1 階層入っている場合（ZIP 解凍でよくある問題）、内側のフォルダを `custom_nodes` 直下に移動し、外側の空フォルダを削除してください
+
+    正しい構成の例：
+
+    ```
+    ComfyUI-aki-v3.7\
+      └─ custom_nodes\
+           ├─ ComfyUI-Manager\
+           └─ comfyui-evolink\
+                ├─ __init__.py
+                └─ ...その他のファイル
+    ```
+  </Tab>
+</Tabs>
+
+プラグインの唯一の依存関係は `requests` です（通常 ComfyUI 環境に同梱済みのため、手動インストールは不要です）。
+
+<Accordion title="方法 A / B で Install 時に only custom nodes from the default channel can be installed というエラーが出る場合はこちら">
+  <Frame caption="エラーの例：現在のセキュリティレベル設定ではインストールできない">
+    ![default channel エラー](/images/integration-guide/comfyui/manager-default-channel-error.png)
+  </Frame>
+
+  このエラーは、プラグインのバージョンが ComfyUI 公式レジストリのセキュリティ審査中（クラウド API 系ノードでは一般的なプロセス）であるため、その間 Manager のデフォルトのセキュリティレベルがインストールをブロックすることが原因です。**Manager のセキュリティレベルを一時的に下げる**ことで解決できます。インストール後は元に戻してください。
+
+  **手順 1：ComfyUI を完全に終了する**
+  - aki オールインワンパッケージ：ランチャー → **プロセスを終了**
+  - 公式 Desktop / ポータブル版 / 手動インストール版：黒いコンソールウィンドウを含め、アプリを完全に終了します
+
+  **手順 2：Manager の設定ファイル `config.ini` を編集する**
+
+  インストール方式に応じてファイルを探します（見つからない場合は ComfyUI のインストールフォルダ内で `config.ini` を検索し、パスに `manager` を含むものを選びます）。
+
+  | 環境 | config.ini の場所 |
+  |---|---|
+  | aki オールインワンパッケージ | `ダウンロード先\ComfyUI-aki-vX.X\ComfyUI-aki-vX.X\ComfyUI\user\__manager\config.ini` |
+  | 公式版（Desktop / ポータブル / 手動） | `ComfyUI インストールディレクトリ\user\default\ComfyUI-Manager\config.ini` |
+
+  メモ帳で開き、`security_level` の行を探して `normal` を `weak` に変更します。
+
+  ```ini
+  security_level = weak
+  ```
+
+  保存して閉じます。
+
+  <Frame caption="security_level の値を weak に変更して保存（他の行は変更しないでください）">
+    ![security_level の変更](/images/integration-guide/comfyui/manager-config-security-level.png)
+  </Frame>
+
+  **手順 3：ComfyUI を再起動して再インストールする**
+
+  ComfyUI を起動 → Manager → `evolink` を検索 → **Install**。今度はダウンロードが始まります。`Neither 'pip' nor 'uv'...` のエラーが出ても前述の説明どおり無視してください。**Restart Required** が表示されたら、もう一度完全に再起動してブラウザを更新します。
+
+  **手順 4：確認してセキュリティレベルを元に戻す**
+  - 下の「[インストールの確認](#インストールの確認)」に従ってノードが読み込まれていることを確認します
+  - ⚠️ **インストール後は `security_level` を `normal` に戻すことを推奨します**（手順 1・2 をもう一度実施）。これで Manager のデフォルトのセキュリティ保護が復元されます
+</Accordion>
+
+### インストールの確認
+
+完全に再起動しブラウザを更新した後、キャンバスの空白部分を**ダブルクリック** → `evolink` を検索します。**EvoLink GPT Image 2 (Official)** と **EvoLink Upload Image (Official)** の 2 つのノードが表示されれば、インストール成功です。
+
+<Frame caption="キャンバスをダブルクリックして evolink を検索：公式ノードが 2 つ表示されればインストール成功（aki パッケージでの実測スクリーンショット）">
+  ![インストールの確認：evolink を検索](/images/integration-guide/comfyui/search-nodes.png)
+</Frame>
+
+ノードが見つからない場合は、まず**完全に再起動**したか（ブラウザ更新だけではありません）を確認してください。それでも解決しない場合は[よくある質問](#よくある質問)をご覧ください。
+
+## ステップ 2：最初の 1 枚を生成する（テキストから画像、5 分）
+
+1. キャンバスの空白部分を**ダブルクリック**（または右クリック → Add Node）→ **`EvoLink`** を検索 → **EvoLink GPT Image 2 (Official)** ノードを追加します（前のステップの確認時に見たノードです）
+
+2. パラメータを入力します：
+   - `api_key`：`sk-` で始まる Key を貼り付けます。**入力は初回のみ**です。初回実行後にローカルの設定ファイルへ自動保存されるため、以降この欄は空のままで構いません（ワークフローを共有する前に空欄になっていることを確認してください）
+   - `prompt`：画像の説明です。**日本語にも対応**しています。例：`赤いマフラーを巻いた柴犬が雪の中に座っている、フラットイラスト風`
+   - その他のパラメータはデフォルトのままにします（`quality=low` が最も安価で、テストに最適です）
+
+3. **表示用ノードを接続する（必須）**：ノード右側の `image` 出力ポイントをドラッグして空白部分で離し、表示されるメニューから **Preview Image** を選択します。画像をローカルに保存したい場合は **Save Image** ノードも接続してください（画像は ComfyUI の `output` フォルダに書き込まれます）
+
+<Warning>
+**初心者が最も見落としやすいステップです**：EvoLink ノードは生成のみを行い、表示は行いません。`image` 出力をどのノードにも接続していないと、タスクが完了しても画像は表示されません。
+</Warning>
+
+<Frame caption="パラメータを入力し、image を Preview Image に接続した完全なワークフロー（api_key は初回入力後は空欄で可。スクリーンショットではマスク済み）">
+  ![テキストから画像の完全なワークフロー](/images/integration-guide/comfyui/text2img-workflow.png)
+</Frame>
+
+4. 右上の **Queue Prompt** をクリックします。ノードが「タスクの送信 → 進捗のポーリング → 画像の取得」を自動で行い、進捗バーがリアルタイムで表示され、結果は Preview ノードに直接表示されます（上図参照）。
+
+## ステップ 3：画像から画像（3 ステップで完了）
+
+1. **Load Image** ノードを追加し、ローカルの画像を選択します
+2. その画像出力を EvoLink ノードの **`image1`** ポートに接続します
+3. `prompt` に編集内容を記述 → 実行します
+
+<Frame caption="画像から画像の完全な接続：Load Image → image1、prompt に編集内容を記述（例：ジブリ風にして背景を夜の街並みに変更）。構図はそのまま保持">
+  ![画像から画像の完全なワークフロー](/images/integration-guide/comfyui/img2img-workflow.png)
+</Frame>
+
+<Note>
+画像は **EvoLink 公式チャネル**経由で自動アップロードされ、一時 URL に変換されます（**72 時間後に自動削除**）。サードパーティの画像ホスティングは一切経由せず、追加のサービス登録も不要です。
+</Note>
+
+**応用的な使い方**：
+
+- **複数の参照画像**：`image1`～`image4` の 4 つのポートすべてに画像を接続できるほか、`image_urls` テキストボックスに公開画像 URL を 1 行に 1 つずつ貼り付けることもできます。両方式の併用も可能で、合計**最大 16 枚**まで対応します
+- **複雑なワークフローの構築**：プラグインには **EvoLink Upload Image (Official)** ノードも同梱されており、ローカル画像をまとめて URL テキスト出力に変換できます（通常の画像から画像では不要です）
+- **すぐ使えるワークフロー**：[example_workflows](https://github.com/deeplearning-goethe/comfyui-evolink/tree/main/example_workflows) にテキストから画像 / 画像から画像 / 複数参照画像の 3 つのサンプルがあります。**各サンプルの PNG 結果画像には完全なワークフローが埋め込まれており、画像をダウンロードしてキャンバスにドラッグするだけで全ノードと接続を復元できます**（ComfyUI のネイティブ機能）。同名の JSON ファイルからのインポートも可能です
+
+## パラメータ詳細
+
+| パラメータ | 説明 |
+|---|---|
+| `prompt` | 画像の説明 / 編集内容。日本語対応、最大 32,000 文字 |
+| `model` | `gpt-image-2`（デフォルト）/ `gpt-image-2-beta` |
+| `size` | `auto`（デフォルト、モデルが構図を自動決定）/ `1:1`、`16:9` などの比率 / `1024x1024` などのピクセル指定 |
+| `resolution` | `1K` / `2K` / `4K`。size が比率または auto のときに有効 |
+| `quality` | `low` / `medium` / `high`。**高いほど高価**。テストには `low` を推奨 |
+| `n` | 1 回の生成枚数（1–10） |
+| `api_key` | 初回入力後にローカルへ自動保存され、以降は空欄で可。環境変数 `EVOLINK_API_KEY` にも対応 |
+| `image1`～`image4` | 参照画像の入力ポート。Load Image を接続すると画像から画像になります |
+| `image_urls` | 応用：公開画像 URL がある場合は 1 行に 1 つずつ貼り付け |
+| `timeout_seconds` | 最大待機時間（デフォルト 300 秒）。タイムアウトで失敗したタスクは課金されません |
+
+ノードの出力：`image`（結果画像、自動ダウンロード済み）、`task_id`（照合とサポート問い合わせの証跡）、`status_info`（今回のタスク概要：所要時間、消費 credits など）。
+
+## 課金とセルフチェック
+
+- **従量課金、サブスクリプションなし**：タスク送信時に仮押さえ（`credits_reserved`）され、完了後に実際の使用量で精算されます
+- **失敗 / タイムアウトしたタスクは課金されず**、クレジットは自動的に返還されます
+- **キャッシュは課金対象外**：パラメータを変えずに再実行した場合は ComfyUI のローカルキャッシュが再利用され、新しいリクエストは発生しません
+- **すべての消費を確認可能**：[タスクログページ](https://evolink.ai/dashboard/logs)で `task_id`（ノード出力の 1 つ）から状態と課金を確認できます。課金に疑問がある場合は、`task_id` をサポートに送信すれば調査してもらえます
+
+## よくある質問
+
+<AccordionGroup>
+  <Accordion title="EvoLink を検索してもノードが見つからない？">
+    順番に確認してください：① プラグインのフォルダが `custom_nodes` 直下にあるか（インストール手順に戻る）；② ZIP 解凍で同名フォルダが 2 重に入れ子になっていないか（開いたら直下に `__init__.py` が見えるはずです）；③ ComfyUI を**完全に再起動**したか（コンソールウィンドウも閉じる。ブラウザ更新だけでは不十分）；④ 起動ログで `evolink` を検索し、赤いエラーがあればスクリーンショットをサポートに送信してください。aki オールインワンパッケージのユーザーは、ランチャー左側のトラブルシューティング機能でワンクリック環境スキャンも利用できます。
+  </Accordion>
+  <Accordion title="Manager でのインストール時に only custom nodes from the default channel can be installed というエラーが出る？">
+    プラグインのバージョンが ComfyUI 公式レジストリのセキュリティ審査中で、Manager のデフォルトのセキュリティレベルが一時的にインストールをブロックしています。解決方法は[インストールの章](#ステップ-1：evolink-公式プラグインのインストール)内の展開項目を参照してください：Manager の `security_level` を一時的に `weak` に変更し、インストール後に `normal` へ戻します。あるいは方法 C（git）/ 方法 D（ZIP）でインストールしても機能は完全に同じです。
+  </Accordion>
+  <Accordion title="Manager のインストール時に Neither pip nor uv are available と表示される？">
+    無視して構いません。これは Manager が依存関係のインストール時にパッケージマネージャーを見つけられなかっただけです。本プラグインの唯一の依存関係 `requests` は ComfyUI 環境に同梱されているため、追加インストールは不要です。インストール一覧に **Restart Required** が表示されていれば、再起動後にノードは正常に使用できます。
+  </Accordion>
+  <Accordion title="タスクは完了と表示されるのに、画面に画像が出ない？">
+    `image` 出力ポートが Preview Image / Save Image ノードに接続されていません。接続してからもう一度実行してください。キャッシュから即座に表示され、追加課金はありません。
+  </Accordion>
+  <Accordion title="左側のメディアアセットパネルに「生成されたファイルが見つかりません」と表示される？">
+    Preview Image のみを接続している場合は正常な動作です（プレビューはディスクに保存されません）。画像をパネルと `output` フォルダに表示させるには、**Save Image** ノードを使用してください。
+  </Accordion>
+  <Accordion title="401 / Unauthorized エラーが出る？">
+    Key の入力ミス、余分なスペース、または Key が削除されています。[API Keys 管理ページ](https://evolink.ai/dashboard/keys)で確認または再作成してください。再作成後はノードの `api_key` 欄に一度入力し直せば、ローカルに保存された古い Key を上書きできます。
+  </Accordion>
+  <Accordion title="402 / 残高不足エラーが出る？">
+    アカウントのクレジットが不足しています。[ダッシュボード](https://evolink.ai/dashboard)でチャージしてから再試行してください。
+  </Accordion>
+  <Accordion title="429 / リクエスト過多エラーが出る？">
+    レート制限に達しました。少し待ってから再実行してください。
+  </Accordion>
+  <Accordion title="コンテンツ審査で失敗と表示される？">
+    プロンプトまたは参照画像がプラットフォームのコンテンツ審査に抵触しました。調整して再試行してください。**失敗したタスクは課金されません**。
+  </Accordion>
+  <Accordion title="画像リンクの有効期限が切れたら？">
+    生成結果の元リンクは **24 時間**、アップロードした参照画像は **72 時間**で期限切れになります。ただしノードは結果画像をワークフローに自動ダウンロード済みなので、**Save Image** ノードを使えばローカルの `output` フォルダに恒久的に保存できます。
+  </Accordion>
+  <Accordion title="長時間待っても画像が生成されない？">
+    高解像度 / 高品質 / 複数枚（n が大きい）のタスクはもともと時間がかかります。ノードはデフォルトで最大 300 秒待機します（`timeout_seconds` で調整可能）。タイムアウトによる失敗は**課金されません**。タスクの最終状態は[タスクログページ](https://evolink.ai/dashboard/logs)で確認できます。
+  </Accordion>
+  <Accordion title="旧版の公式ノード / コミュニティ版ノードからの移行方法は？">
+    **旧版公式ノード**（画像入力ポート付き）：使い方は同じです。本プラグインをインストール後、これまでどおり Load Image を `image1` に接続してください。**コミュニティ版 `ComfyUI_EvoLink`**：パラメータ名は同じなのでそのまま流用できます。コミュニティ版の `Evolink Image Input` ノードと imgbb 画像ホスティングの key は不要になり、画像は直接 `image1` に接続します。`poll_interval`/`max_polls` は `timeout_seconds` に統合されました。両プラグインは共存できるため、先にアンインストールする必要はありません。
+  </Accordion>
+  <Accordion title="ブラウザで 127.0.0.1:8188 が開けない？">
+    まずコンソールログに `To see the GUI go to` の文字列が表示されているか確認してください（初回起動は時間がかかります）。それでも開けない場合は `http://localhost:8188` を試すか、システムプロキシ / VPN がローカルアドレスを横取りしていないか確認してください（`127.0.0.1` をプロキシの除外リストに追加します）。また、プロキシを使用している場合は `api.evolink.ai` と `files-api.evolink.ai` を直接接続に設定してください。
+  </Accordion>
+  <Accordion title="対応モデルは？動画はいつ対応する？">
+    現在のプラグインは `gpt-image-2` シリーズに対応しています。Nano Banana（Gemini シリーズ）、Seedream、動画モデル（Veo / Sora / Kling）はロードマップに含まれています。それまでは [API 直接呼び出し](#付録：プラグインなしで-api-を直接呼び出す)で[全モデル](https://evolink.ai/models)を利用できます。
+  </Accordion>
+</AccordionGroup>
+
+その他の問題が発生した場合：**タスク ID / 起動ログのスクリーンショット / エラーの原文**をサポートに送信するか、[support@evolink.ai](mailto:support@evolink.ai) までメールでご連絡ください。
+
+## 付録：プラグインなしで API を直接呼び出す
+
+Key が有効か先に確認したい場合や、プラグインが未対応のモデルを呼び出したい場合に便利です。
+
+**30 秒で Key を検証（無料）**：`sk-あなたのキー` をご自身の Key に置き換えて実行します。
+
+```bash
+curl -s -H "Authorization: Bearer sk-あなたのキー" https://api.evolink.ai/v1/models
+```
+
+モデル一覧（`{"data":[{"id":...`）が返れば Key は有効です。`Unauthorized` が返る場合は Key が間違っているか失効しています。
+
+**生成タスクの送信**：
+
+```bash
+curl -s -X POST https://api.evolink.ai/v1/images/generations \
+  -H "Authorization: Bearer sk-あなたのキー" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-image-2","prompt":"a cute cat, watercolor style","size":"1:1","resolution":"1K","quality":"low","n":1}'
+```
+
+返却されたタスク `id`（`task-unified-` で始まります）を控え、`status` が `completed` になるまでポーリングします。`results` 配列が画像リンクです（24 時間以内にダウンロードして保存してください）。
+
+```bash
+curl -s -H "Authorization: Bearer sk-あなたのキー" https://api.evolink.ai/v1/tasks/タスクID
+```
+
+完全な API ドキュメント：[画像生成](https://evolink.ai/docs/ja/api-manual/image-series/gpt-image-2/gpt-image-2-image-generation) ｜ [タスク照会](https://evolink.ai/docs/ja/api-manual/task-management/get-task-detail) ｜ [ファイルアップロード](https://evolink.ai/docs/ja/api-manual/file-series/upload-base64)
