@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Reference-to-Video",
-        "description": "> 🚧 **Este modelo aun no esta disponible, mantente atento**\n\n- Ingrese imagenes de referencia (0-9) + videos de referencia (0-3) + audios de referencia (0-3) + indicaciones de texto para generar video\n- Admite multiples escenarios creativos como generacion nueva, edicion de video y extension de video\n- **Ahora compatible con materiales realistas de personas generados por IA (AIGC)**\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible",
+        "description": "- Ingrese imagenes de referencia (0-30) + videos de referencia (0-10) + audios de referencia (0-10) + indicaciones de texto para generar video; debe proporcionar al menos una imagen, un video o un audio de referencia\n- Indicado para generar contenido nuevo: las imagenes, los videos y el audio actuan como referencia de estilo, sujeto, movimiento de camara y musica\n- ⚠️ **Para reescribir o continuar un video existente, use [Video Edit](/es/api-manual/video-series/seedance2.5/seedance-2.5-video-edit) / [Video Extend](/es/api-manual/video-series/seedance2.5/seedance-2.5-video-extend)**: en cuanto el prompt de este modelo expresa una intencion de edicion o extension, la solicitud se valida como tarea de edicion / extension, se acepta sin error y la tarea solo falla mientras se genera\n- **Ahora compatible con materiales realistas de personas generados por IA (AIGC)**\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible",
         "operationId": "createSeedance25ReferenceToVideo",
         "tags": [
           "Generacion de video"
@@ -40,7 +40,7 @@
                   "summary": "Referencia multimodal (imagen + video + audio)",
                   "value": {
                     "model": "seedance-2.5-reference-to-video",
-                    "prompt": "Use the first-person perspective framing of video 1 throughout, use audio 1 as background music throughout. First-person perspective fruit tea promotional video...",
+                    "prompt": "Use the first-person perspective framing of @video1 throughout, and use @audio1 as background music throughout. First-person perspective fruit tea promotional video...",
                     "image_urls": [
                       "https://example.com/ref1.jpg",
                       "https://example.com/ref2.jpg"
@@ -58,26 +58,26 @@
                     "content_filter": true
                   }
                 },
-                "video_edit": {
-                  "summary": "Editar video (reemplazar elementos)",
+                "subject_reference": {
+                  "summary": "Referencia imagen + video (sujeto + movimiento de camara)",
                   "value": {
                     "model": "seedance-2.5-reference-to-video",
-                    "prompt": "Replace the perfume in the gift box in video 1 with the face cream in image 1, keep the camera movement unchanged",
+                    "prompt": "Make the face cream in @image1 the hero product, and follow the camera rhythm and lighting mood of @video1 to generate a clean product commercial",
                     "image_urls": [
                       "https://example.com/cream.jpg"
                     ],
                     "video_urls": [
-                      "https://example.com/original.mp4"
+                      "https://example.com/reference.mp4"
                     ],
                     "duration": 5,
                     "aspect_ratio": "16:9"
                   }
                 },
-                "video_extend": {
-                  "summary": "Extender video (concatenacion de segmentos)",
+                "multi_video": {
+                  "summary": "Referencia de varios videos (narrativa de varios planos)",
                   "value": {
                     "model": "seedance-2.5-reference-to-video",
-                    "prompt": "The arched window in video 1 opens, entering the art gallery interior, continuing with video 2, then the camera enters the painting, continuing with video 3",
+                    "prompt": "The arched window in @video1 opens into the art gallery interior, continuing with @video2; then the camera enters the painting, continuing with @video3",
                     "video_urls": [
                       "https://example.com/part1.mp4",
                       "https://example.com/part2.mp4",
@@ -113,7 +113,7 @@
                 },
                 "example": {
                   "error": {
-                    "code": "invalid_request",
+                    "code": "invalid_parameter",
                     "message": "Invalid request parameters",
                     "type": "invalid_request_error"
                   }
@@ -230,16 +230,17 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Indicacion de texto que describe el video deseado. Admite chino e ingles, se recomienda no exceder 500 caracteres en chino. Longitud maxima del prompt: 10000 tokens\n\n**Descripcion:**\n- Puede usar lenguaje natural para especificar el uso de cada material, como \"primer fotograma es imagen 1\", \"usar el movimiento de camara del video 1 en todo momento\", \"audio 1 como musica de fondo\"\n- El modelo comprendera automaticamente la correspondencia entre los numeros de material y sus usos",
-            "example": "Use the first-person perspective framing of video 1 throughout, use audio 1 as background music throughout. First-person perspective fruit tea promotional video..."
+            "description": "Indicacion de texto que describe el video deseado. Admite chino e ingles, se recomienda no exceder 500 caracteres en chino. Longitud maxima del prompt: 10000 tokens\n\n**Descripcion:**\n- Al hacer referencia a materiales de entrada en el prompt, use preferentemente etiquetas explicitas como `@image1`, `@video1` y `@audio1`, en lugar de depender solo de expresiones en lenguaje natural como \"imagen 1\", \"video 1\" o \"audio 1\"\n- La numeracion de las etiquetas sigue el orden del array de URL correspondiente y empieza en 1: el primer elemento de `image_urls` es `@image1`, el primero de `video_urls` es `@video1` y el primero de `audio_urls` es `@audio1`\n- La numeracion en lenguaje natural puede seguir siendo reconocida, pero las etiquetas explicitas establecen una correspondencia mas clara entre cada material y su uso\n\n**⚠️ Evite que la tarea se clasifique como edicion / extension:**\n- El tipo de tarea se deduce de la intencion del prompt: expresiones como \"editar el video\", \"anadir\", \"eliminar / quitar\", \"cambiar / reemplazar\" se interpretan como edicion de video; expresiones como \"extender hacia adelante / hacia atras\" o \"continuar\" se interpretan como extension de video\n- Una vez clasificada asi, `aspect_ratio` debe ser `adaptive` y, en la edicion de video, `duration` debe ser `-1`; de lo contrario la solicitud se acepta sin error y la tarea termina despues en `failed` (codigo de error `InvalidParameter.TaskTypeConstraint`). La cuota retenida se devuelve, pero el tiempo de espera se pierde\n- Si realmente necesita editar o extender, use directamente `seedance-2.5-video-edit` o `seedance-2.5-video-extend`: los parametros se validan al enviar la solicitud, por lo que un valor invalido devuelve un error sincrono inmediato\n- Para una generacion por referencia pura, reformule palabras como \"reemplazar\" o \"quitar\" de forma descriptiva, por ejemplo \"en la escena aparece ...\" o \"presentado con el estilo de @image1\"",
+            "example": "Use the first-person perspective framing of @video1 throughout, and use @audio1 as background music throughout. First-person perspective fruit tea promotional video..."
           },
           "image_urls": {
             "type": "array",
-            "description": "Array de URLs de imagenes de referencia, **0-30 imagenes**\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Imagen | `reference_image` | Referencia de estilo, imagen de producto, primer/ultimo fotograma (especificado mediante prompt) |\n\n**Requisitos de imagen:**\n- Formatos admitidos: `.jpeg`, `.png`, `.webp`\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Tamano por imagen: no mas de `30MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de imagenes deben ser accesibles directamente por el servidor",
+            "description": "Array de URLs de imagenes de referencia, **opcional; si se proporciona, debe contener de 1 a 30 imagenes**\n\n**Relacion obligatoria:** Debe proporcionar al menos uno de `image_urls`, `video_urls` o `audio_urls`.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Imagen | `reference_image` | Referencia de estilo, imagen de producto, primer/ultimo fotograma (especificado mediante prompt) |\n\n**Requisitos de imagen:**\n- Formatos admitidos: `.jpeg`, `.png`, `.webp`\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Tamano por imagen: no mas de `30MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de imagenes deben ser accesibles directamente por el servidor",
             "items": {
               "type": "string",
               "format": "uri"
             },
+            "minItems": 1,
             "maxItems": 30,
             "example": [
               "https://example.com/ref1.jpg",
@@ -248,11 +249,12 @@
           },
           "video_urls": {
             "type": "array",
-            "description": "Array de URLs de videos de referencia, **0-10 videos**\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Video | `reference_video` | Referencia de movimiento de camara, referencia de accion, video original para editar/extender |\n\n**Requisitos de video:**\n- Formatos admitidos: `.mp4`, `.mov`\n- Resolucion: 480p, 720p, 1080p\n- Duracion por video: `2` ~ `30` segundos, maximo 10, duracion total de todos los videos <= `30` segundos\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Pixeles de imagen (ancho x alto): `409,600` ~ `2,086,876` (ej. 640x640 ~ 2206x946)\n- Tamano por archivo: no mas de `50MB`\n- Velocidad de fotogramas: `24` ~ `60` FPS\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- El uso de referencia de video aumentara los costos (la duracion del video de entrada se incluye en la facturacion)\n- Las URLs de video deben ser accesibles directamente por el servidor",
+            "description": "Array de URLs de videos de referencia, **opcional; si se proporciona, debe contener de 1 a 10 videos**\n\n**Relacion obligatoria:** Debe proporcionar al menos uno de `image_urls`, `video_urls` o `audio_urls`.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Video | `reference_video` | Referencia de movimiento de camara, referencia de accion, video original para editar/extender |\n\n**Requisitos de video:**\n- Formatos admitidos: `.mp4`, `.mov`\n- Resolucion: 480p, 720p, 1080p, 4K\n- Duracion por video: `2` ~ `30` segundos, maximo 10, duracion total de todos los videos <= `30` segundos\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Pixeles de imagen (ancho x alto): `409,600` ~ `8,295,044` (ej. 640x640 ~ 3326x2494)\n- Tamano por archivo: no mas de `200MB`\n- Velocidad de fotogramas: `24` ~ `60` FPS\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- La validez del codec, la resolucion y otros detalles del material se comprueba adicionalmente por el modelo\n- El uso de referencia de video aumentara los costos (la duracion del video de entrada se incluye en la facturacion)\n- Las URLs de video deben ser accesibles directamente por el servidor",
             "items": {
               "type": "string",
               "format": "uri"
             },
+            "minItems": 1,
             "maxItems": 10,
             "example": [
               "https://example.com/reference.mp4"
@@ -260,11 +262,12 @@
           },
           "audio_urls": {
             "type": "array",
-            "description": "Array de URLs de audio de referencia, **0-10 segmentos**\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Audio | `reference_audio` | Musica de fondo, efectos de sonido, referencia de voz/dialogos |\n\n**Requisitos de audio:**\n- Formatos admitidos: `.wav`, `.mp3`\n- Duracion por segmento de audio: `2` ~ `30` segundos, maximo 10 segmentos, duracion total de todo el audio <= `30` segundos\n- Tamano por archivo: no mas de `15MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de audio deben ser accesibles directamente por el servidor",
+            "description": "Array de URLs de audio de referencia, **opcional; si se proporciona, debe contener de 1 a 10 segmentos**\n\n**Relacion obligatoria:** Debe proporcionar al menos uno de `image_urls`, `video_urls` o `audio_urls`.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Audio | `reference_audio` | Musica de fondo, efectos de sonido, referencia de voz/dialogos |\n\n**Requisitos de audio:**\n- Formatos admitidos: `.wav`, `.mp3`\n- Duracion por segmento de audio: `2` ~ `30` segundos, maximo 10 segmentos, duracion total de todo el audio <= `30` segundos\n- Tamano por archivo: no mas de `15MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de audio deben ser accesibles directamente por el servidor",
             "items": {
               "type": "string",
               "format": "uri"
             },
+            "minItems": 1,
             "maxItems": 10,
             "example": [
               "https://example.com/bgm.mp3"
@@ -272,10 +275,8 @@
           },
           "duration": {
             "type": "integer",
-            "description": "Duracion del video de salida (segundos), valor predeterminado `5` segundos\n\n**Descripcion:**\n- Admite cualquier valor entero entre `4` y `30` segundos\n- La duracion esta directamente relacionada con la facturacion",
+            "description": "Duracion del video de salida (segundos), valor predeterminado `5` segundos\n\n**Descripcion:**\n- Admite cualquier valor entero entre `4` y `30` segundos\n- `-1`: duracion automatica, el modelo elige una duracion entre `4` y `30` segundos y la facturacion sigue la duracion real de salida\n- La duracion esta directamente relacionada con la facturacion\n\n⚠️ Si el prompt se clasifica como tarea de edicion de video, solo `-1` es valido; indicar segundos concretos hace que la tarea falle mas tarde, sin error al enviarla",
             "default": 5,
-            "minimum": 4,
-            "maximum": 30,
             "example": 10
           },
           "quality": {
@@ -290,7 +291,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Relacion de aspecto del video, valor predeterminado `16:9`\n\n**Valores opcionales:**\n- `16:9` (horizontal), `9:16` (vertical), `1:1` (cuadrado), `4:3`, `3:4`, `21:9` (ultra ancho)\n- `adaptive`: determina segun la intencion de la indicacion, prioridad: video > imagen > indicacion\n\n**Valores de pixeles por resolucion:**\n\n| Relacion de aspecto | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
+            "description": "Relacion de aspecto del video, valor predeterminado `adaptive`\n\n**Valores opcionales:**\n- `16:9` (horizontal), `9:16` (vertical), `1:1` (cuadrado), `4:3`, `3:4`, `21:9` (ultra ancho)\n- `adaptive`: determina segun la intencion de la indicacion, prioridad: video > imagen > indicacion\n\n**Valores de pixeles por resolucion:**\n\n| Relacion de aspecto | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |\n\n⚠️ Si el prompt se clasifica como tarea de edicion / extension de video, solo `adaptive` es valido; una relacion fija hace que la tarea falle mas tarde, sin error al enviarla",
             "enum": [
               "16:9",
               "9:16",
@@ -300,7 +301,7 @@
               "21:9",
               "adaptive"
             ],
-            "default": "16:9",
+            "default": "adaptive",
             "example": "16:9"
           },
           "generate_audio": {
@@ -314,6 +315,16 @@
             "description": "Filtro de contenido, valor predeterminado `true`\n\n**Valores opcionales:**\n- `true`: verificacion estandar de seguridad de contenido, este es el valor predeterminado\n- `false`: relaja las restricciones de contenido, facturado con +10% (`1.1x`). El contenido ilegal y prohibido siempre se aplica independientemente de esta configuracion",
             "default": true,
             "example": true
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Formato de contenedor de salida, valor predeterminado `mp4`\n\n**Valores opcionales:**\n- `mp4`: codificacion H.264, la mejor compatibilidad y precision de color estandar; es el valor predeterminado\n- `mov`: H.264 + submuestreo de croma yuv444p + audio PCM, con mayor fidelidad de color, recomendado para etalonaje, recorte de croma y composicion. Es posible que el navegador no lo reproduzca en linea; descarguelo y reproduzcalo con VLC / mpv / ffplay. Sin cargo adicional",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
           },
           "callback_url": {
             "type": "string",

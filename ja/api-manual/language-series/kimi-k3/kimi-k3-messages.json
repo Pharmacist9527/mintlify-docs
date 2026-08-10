@@ -1,0 +1,641 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 - Anthropic 互換 API",
+    "description": "Anthropic Messages プロトコルで Kimi K3 を呼び出します。\n\n**初期リリースで確認済みの機能**：\n- モデル ID：`kimi-k3`\n- エンドポイント：`POST /v1/messages`\n- EvoLink API キーを Bearer Token として使用\n- system プロンプト、テキストの複数ターン会話、SSE ストリーミング、ツール利用をサポート\n- マルチモーダル入力（画像）をサポート：user content に image コンテンツブロックを渡す\n- 応答には `thinking`、`text`、`tool_use` コンテンツブロックが含まれる場合があります\n\n複数ターンの会話では、thinking、signature、tool_use を含む assistant の完全なコンテンツブロックを変更せずに返してください。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Kimi K3 Messages API（Anthropic 互換）",
+        "description": "Anthropic Messages プロトコルで `kimi-k3` を呼び出します。非ストリーミング JSON と Anthropic SSE イベントストリームをサポートします。",
+        "operationId": "createMessageKimiK3",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小リクエスト",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Kimi K3 を 3 文で紹介してください。"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "マルチモーダル入力（画像 + テキスト）",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": "/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "この画像を説明してください。"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system プロンプト",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "system": "あなたは正確な技術編集者です。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "コンテキストキャッシュについて説明してください。"
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "SSE ストリーミング出力",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "夏の夜について短い詩を書いてください。"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "ツール利用",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "北京の今日の天気を調べてください。"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "指定した都市の天気を取得",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "都市名"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message 応答。ストリーミングリクエストでは Anthropic SSE イベントストリームを返します",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "通常のイベント順序は message_start、content_block_*、message_delta、message_stop です。"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "モデル ID。"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "thinking と最終テキストを含む、この生成で使用できる最大 token 数。"
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Anthropic Messages のメッセージ一覧。複数ターンの会話では、assistant の完全なコンテンツブロックを変更せずに返してください。",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "system": {
+            "type": "string",
+            "description": "system プロンプト。Messages プロトコルでは system ロールではなく、トップレベルの system フィールドを使用します。"
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "Anthropic SSE イベントストリームを返すかどうか。"
+          },
+          "tools": {
+            "type": "array",
+            "description": "モデルが呼び出せるツール。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "メッセージのロール。user と assistant のみをサポートします。",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "description": "プレーンテキストまたは Anthropic コンテンツブロック配列としてのメッセージ内容。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "description": "テキスト、画像、推論、ツール呼び出し、またはツール結果を表す Anthropic コンテンツブロック。",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ThinkingBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultBlock"
+          }
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "コンテンツブロックの種類。text 固定です。",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "テキスト内容。"
+          }
+        }
+      },
+      "ImageBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "source"
+        ],
+        "description": "画像コンテンツブロック（マルチモーダル入力）。",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image"
+            ],
+            "description": "コンテンツブロックの種類。image 固定です。"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "description": "画像ソース。",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "ソースの種類：`base64` インラインエンコード、または `url` リンク。"
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/gif",
+                  "image/webp"
+                ],
+                "description": "`type=base64` のときの画像 MIME タイプ。"
+              },
+              "data": {
+                "type": "string",
+                "description": "`type=base64` のときの画像 Base64 データ（`data:` プレフィックスを含まない）。"
+              },
+              "url": {
+                "type": "string",
+                "description": "`type=url` のときの画像アドレス；Kimi のファイル参照 `ms://<file_id>` もサポートします。"
+              }
+            }
+          }
+        }
+      },
+      "ThinkingBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "thinking"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "コンテンツブロックの種類。thinking 固定です。",
+            "enum": [
+              "thinking"
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "モデルの推論内容。複数ターンの会話では signature と一緒に変更せず返してください。"
+          },
+          "signature": {
+            "type": "string",
+            "description": "複数ターンの会話では thinking ブロックと一緒に変更せず返してください。"
+          }
+        }
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "コンテンツブロックの種類。tool_use 固定です。",
+            "enum": [
+              "tool_use"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "結果を返すときに参照する tool_use ID。"
+          },
+          "name": {
+            "type": "string",
+            "description": "モデルが要求したツール名。"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "モデルが生成したツール入力オブジェクト。"
+          }
+        }
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "コンテンツブロックの種類。tool_result 固定です。",
+            "enum": [
+              "tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "対応する tool_use コンテンツブロックの ID。"
+          },
+          "content": {
+            "type": "string",
+            "description": "ツール実行結果。"
+          },
+          "is_error": {
+            "type": "boolean",
+            "default": false,
+            "description": "ツール実行が失敗したかどうか。"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "ツール名。"
+          },
+          "description": {
+            "type": "string",
+            "description": "モデルがツールを使用するタイミングを判断するための説明。"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "JSON Schema 形式のツールパラメータ定義。"
+          }
+        }
+      },
+      "ToolChoice": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "ツール選択方式。auto はモデルに任せ、any は任意のツールを必須にし、tool は指定したツールを必須にします。",
+            "enum": [
+              "auto",
+              "any",
+              "tool"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "type=tool のときに呼び出すツール名。"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MessageUsage"
+          }
+        }
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "キャッシュから提供されなかった入力 tokens。"
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュに書き込まれた入力 tokens。"
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュから提供された入力 tokens。"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "thinking tokens を含む出力 tokens。"
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "リクエストパラメータが無効です",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API キーがないか、無効です",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "レート制限超過またはクォータ不足",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "内部サービスエラー",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API で Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)で API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 互換 API"
+    }
+  ]
+}

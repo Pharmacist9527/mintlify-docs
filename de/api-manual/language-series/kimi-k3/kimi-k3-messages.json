@@ -1,0 +1,641 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 – Anthropic-kompatible API",
+    "description": "Kimi K3 über das Anthropic-Messages-Protokoll aufrufen.\n\n**Für die erste Version bestätigte Funktionen**:\n- Modell-ID: `kimi-k3`\n- Endpunkt: `POST /v1/messages`\n- Authentifizierung mit einem EvoLink-API-Schlüssel als Bearer Token\n- Unterstützt System-Prompts, textbasierte mehrstufige Gespräche, SSE-Streaming und Werkzeugaufrufe\n- Unterstützt multimodale Eingaben (Bild): user content übergibt einen image-Inhaltsblock\n- Antworten können die Inhaltsblöcke `thinking`, `text` und `tool_use` enthalten\n\nBei mehrstufigen Gesprächen müssen vollständige Assistant-Inhaltsblöcke einschließlich thinking, signature und tool_use unverändert zurückgesendet werden.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktion (Empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Kimi K3 Messages API (Anthropic-kompatibel)",
+        "description": "`kimi-k3` über das Anthropic-Messages-Protokoll aufrufen. Unterstützt nicht gestreamte JSON-Antworten und Anthropic-SSE-Ereignisströme.",
+        "operationId": "createMessageKimiK3",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Minimale Anfrage",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Stelle Kimi K3 in drei Sätzen vor."
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "Multimodale Eingabe (Bild + Text)",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": "/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "Beschreibe dieses Bild."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "System-Prompt",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "system": "Du bist ein präziser technischer Redakteur.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Erkläre Kontext-Caching."
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "SSE-Streaming-Ausgabe",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Schreibe ein kurzes Gedicht über eine Sommernacht."
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "Werkzeugaufruf",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Prüfe das heutige Wetter in Peking."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "Wetter für eine angegebene Stadt abrufen",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "Stadtname"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message-Antwort; Streaming-Anfragen liefern einen Anthropic-SSE-Ereignisstrom",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Die Ereignisfolge umfasst normalerweise message_start, content_block_*, message_delta und message_stop."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "Modell-ID."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximale Anzahl der Token für diese Generierung einschließlich thinking und finalem Text."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Anthropic-Messages-Nachrichtenliste. Bei mehrstufigen Gesprächen müssen vollständige Assistant-Inhaltsblöcke unverändert zurückgesendet werden.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "system": {
+            "type": "string",
+            "description": "System-Prompt. Das Messages-Protokoll verwendet ein system-Feld auf oberster Ebene statt einer system-Rolle."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ob ein Anthropic-SSE-Ereignisstrom zurückgegeben wird."
+          },
+          "tools": {
+            "type": "array",
+            "description": "Werkzeuge, die das Modell aufrufen kann.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Nachrichtenrolle. Unterstützt werden nur user und assistant.",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "description": "Nachrichteninhalt als Klartext oder als Array von Anthropic-Inhaltsblöcken.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "description": "Anthropic-Inhaltsblock für Text, Bilder, Schlussfolgerungen, Werkzeugaufrufe oder Werkzeugergebnisse.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ThinkingBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultBlock"
+          }
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf text eingestellt.",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Textinhalt."
+          }
+        }
+      },
+      "ImageBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "source"
+        ],
+        "description": "Bildinhaltsblock (multimodale Eingabe).",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image"
+            ],
+            "description": "Inhaltsblocktyp. Fest auf image eingestellt."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "description": "Bildquelle.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "Quellentyp: `base64` für Inline-Kodierung oder `url` für einen Link."
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/gif",
+                  "image/webp"
+                ],
+                "description": "Bild-MIME-Typ, wenn `type=base64`."
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-Bilddaten, wenn `type=base64` (ohne `data:`-Präfix)."
+              },
+              "url": {
+                "type": "string",
+                "description": "Bildadresse, wenn `type=url`; unterstützt auch Kimi-Dateireferenz `ms://<file_id>`."
+              }
+            }
+          }
+        }
+      },
+      "ThinkingBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "thinking"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf thinking eingestellt.",
+            "enum": [
+              "thinking"
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Schlussfolgerungsinhalt des Modells. Bei mehrstufigen Gesprächen unverändert zusammen mit der Signatur zurücksenden."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Bei mehrstufigen Gesprächen unverändert zusammen mit dem thinking-Block zurücksenden."
+          }
+        }
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf tool_use eingestellt.",
+            "enum": [
+              "tool_use"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "tool_use-ID, die beim Zurücksenden des Ergebnisses referenziert wird."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name des vom Modell angeforderten Werkzeugs."
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Vom Modell erzeugtes Eingabeobjekt für das Werkzeug."
+          }
+        }
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf tool_result eingestellt.",
+            "enum": [
+              "tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "ID des zugehörigen tool_use-Inhaltsblocks."
+          },
+          "content": {
+            "type": "string",
+            "description": "Ergebnis der Werkzeugausführung."
+          },
+          "is_error": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ob die Werkzeugausführung fehlgeschlagen ist."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Werkzeugname."
+          },
+          "description": {
+            "type": "string",
+            "description": "Beschreibung, anhand derer das Modell entscheidet, wann das Werkzeug verwendet wird."
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Definition der Werkzeugparameter im JSON-Schema-Format."
+          }
+        }
+      },
+      "ToolChoice": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Strategie zur Werkzeugauswahl: auto lässt das Modell entscheiden, any erzwingt ein Werkzeug und tool erzwingt das benannte Werkzeug.",
+            "enum": [
+              "auto",
+              "any",
+              "tool"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Name des aufzurufenden Werkzeugs, wenn type=tool ist."
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MessageUsage"
+          }
+        }
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Nicht aus dem Cache gelieferte Eingabe-Token."
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "In den Cache geschriebene Eingabe-Token."
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Aus dem Cache gelieferte Eingabe-Token."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Ausgabe-Token einschließlich thinking-Token."
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Ungültige Anfrageparameter",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API-Schlüssel fehlt oder ist ungültig",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Ratenlimit überschritten oder Kontingent nicht ausreichend",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Interner Dienstfehler",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle APIs erfordern eine Bearer-Token-Authentifizierung##\n\n**API-Schlüssel abrufen:**\n\nBesuchen Sie die [API-Schlüsselverwaltung](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel abzurufen\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic-Messages-kompatible API"
+    }
+  ]
+}

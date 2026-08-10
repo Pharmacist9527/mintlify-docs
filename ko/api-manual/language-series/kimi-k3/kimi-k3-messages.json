@@ -1,0 +1,641 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 - Anthropic 호환 API",
+    "description": "Anthropic Messages 프로토콜로 Kimi K3를 호출합니다.\n\n**초기 릴리스에서 확인된 기능**:\n- 모델 ID: `kimi-k3`\n- 엔드포인트: `POST /v1/messages`\n- EvoLink API Key를 Bearer Token으로 사용해 인증\n- system 프롬프트, 텍스트 기반 멀티턴 대화, SSE 스트리밍, 도구 사용 지원\n- 멀티모달 입력(이미지) 지원: user content에 image 콘텐츠 블록 전달\n- 응답에 `thinking`, `text`, `tool_use` 콘텐츠 블록이 포함될 수 있음\n\n여러 턴 대화에서는 thinking, signature, tool_use를 포함한 assistant의 전체 콘텐츠 블록을 변경하지 말고 다시 전달하세요.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션(권장)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Kimi K3 Messages API(Anthropic 호환)",
+        "description": "Anthropic Messages 프로토콜로 `kimi-k3`를 호출합니다. 비스트리밍 JSON과 Anthropic SSE 이벤트 스트림을 지원합니다.",
+        "operationId": "createMessageKimiK3",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "최소 요청",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Kimi K3를 세 문장으로 소개해 주세요."
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "멀티모달 입력(이미지 + 텍스트)",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": "/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "이 이미지를 설명해 주세요."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system 프롬프트",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "system": "당신은 정확한 기술 편집자입니다.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "컨텍스트 캐싱을 설명해 주세요."
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "SSE 스트리밍 출력",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "여름밤에 관한 짧은 시를 써 주세요."
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "도구 사용",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "오늘 베이징 날씨를 확인해 주세요."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "지정한 도시의 날씨 조회",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "도시 이름"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message 응답입니다. 스트리밍 요청은 Anthropic SSE 이벤트 스트림을 반환합니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "일반적인 이벤트 순서는 message_start, content_block_*, message_delta, message_stop입니다."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "모델 ID입니다."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "thinking과 최종 텍스트를 포함해 이번 생성에 허용되는 최대 token 수입니다."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Anthropic Messages 메시지 목록입니다. 여러 턴 대화에서는 assistant의 전체 콘텐츠 블록을 변경하지 말고 다시 전달하세요.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "system": {
+            "type": "string",
+            "description": "system 프롬프트입니다. Messages 프로토콜은 system 역할 대신 최상위 system 필드를 사용합니다."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "Anthropic SSE 이벤트 스트림 반환 여부입니다."
+          },
+          "tools": {
+            "type": "array",
+            "description": "모델이 호출할 수 있는 도구입니다.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "메시지 역할입니다. user와 assistant만 지원합니다.",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "description": "일반 텍스트 문자열 또는 Anthropic 콘텐츠 블록 배열 형식의 메시지 내용입니다.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "description": "텍스트, 이미지, 추론, 도구 사용 또는 도구 결과를 위한 Anthropic 콘텐츠 블록입니다.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ThinkingBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultBlock"
+          }
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "콘텐츠 블록 유형입니다. text로 고정됩니다.",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "텍스트 내용입니다."
+          }
+        }
+      },
+      "ImageBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "source"
+        ],
+        "description": "이미지 콘텐츠 블록(멀티모달 입력)입니다.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image"
+            ],
+            "description": "콘텐츠 블록 유형입니다. image로 고정됩니다."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "description": "이미지 출처입니다.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "출처 유형: `base64` 인라인 인코딩 또는 `url` 링크."
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/gif",
+                  "image/webp"
+                ],
+                "description": "`type=base64`일 때의 이미지 MIME 유형입니다."
+              },
+              "data": {
+                "type": "string",
+                "description": "`type=base64`일 때의 이미지 Base64 데이터입니다(`data:` 접두사 제외)."
+              },
+              "url": {
+                "type": "string",
+                "description": "`type=url`일 때의 이미지 주소입니다. Kimi 파일 참조 `ms://<file_id>`도 지원합니다."
+              }
+            }
+          }
+        }
+      },
+      "ThinkingBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "thinking"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "콘텐츠 블록 유형입니다. thinking으로 고정됩니다.",
+            "enum": [
+              "thinking"
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "모델의 추론 내용입니다. 여러 턴 대화에서는 signature와 함께 변경하지 말고 다시 전달하세요."
+          },
+          "signature": {
+            "type": "string",
+            "description": "여러 턴 대화에서는 thinking 블록과 함께 변경하지 말고 다시 전달하세요."
+          }
+        }
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "콘텐츠 블록 유형입니다. tool_use로 고정됩니다.",
+            "enum": [
+              "tool_use"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "결과를 반환할 때 참조하는 tool_use ID입니다."
+          },
+          "name": {
+            "type": "string",
+            "description": "모델이 요청한 도구 이름입니다."
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "모델이 생성한 도구 입력 객체입니다."
+          }
+        }
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "콘텐츠 블록 유형입니다. tool_result로 고정됩니다.",
+            "enum": [
+              "tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "대응하는 tool_use 콘텐츠 블록의 ID입니다."
+          },
+          "content": {
+            "type": "string",
+            "description": "도구 실행 결과입니다."
+          },
+          "is_error": {
+            "type": "boolean",
+            "default": false,
+            "description": "도구 실행 실패 여부입니다."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "도구 이름입니다."
+          },
+          "description": {
+            "type": "string",
+            "description": "모델이 도구를 언제 사용할지 판단하는 데 도움이 되는 설명입니다."
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "JSON Schema 형식의 도구 매개변수 정의입니다."
+          }
+        }
+      },
+      "ToolChoice": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "도구 선택 전략입니다. auto는 모델이 결정하고, any는 임의의 도구 호출을 요구하며, tool은 지정한 도구 호출을 요구합니다.",
+            "enum": [
+              "auto",
+              "any",
+              "tool"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "type=tool일 때 호출할 도구 이름입니다."
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MessageUsage"
+          }
+        }
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "캐시에서 제공되지 않은 입력 tokens입니다."
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "캐시에 기록된 입력 tokens입니다."
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "캐시에서 제공된 입력 tokens입니다."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "thinking tokens를 포함한 출력 tokens입니다."
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "잘못된 요청 매개변수",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API Key가 없거나 유효하지 않습니다",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "요청 한도 초과 또는 할당량 부족",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "내부 서비스 오류",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 API에는 Bearer Token 인증이 필요합니다##\n\n**API Key 발급:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에서 API Key를 발급받으세요\n\n**요청 헤더에 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 호환 API"
+    }
+  ]
+}

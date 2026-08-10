@@ -1,0 +1,641 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 Anthropic 兼容接口",
+    "description": "通过 Anthropic Messages 协议调用 Kimi K3。\n\n**首版已确认能力**：\n- 模型 ID：`kimi-k3`\n- 路径：`POST /v1/messages`\n- 使用 EvoLink API Key 进行 Bearer Token 鉴权\n- 支持 system、文本多轮对话、SSE 流式输出和工具调用\n- 支持多模态输入（图片）：user content 传 image 内容块\n- 响应可包含 `thinking`、`text` 和 `tool_use` 内容块\n\n多轮对话时，请原样回传完整 assistant 内容块，包括 thinking、signature 与 tool_use。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Kimi K3 Messages 接口（Anthropic 兼容）",
+        "description": "使用 Anthropic Messages 协议调用 `kimi-k3`。支持非流式 JSON 与 Anthropic SSE 事件流。",
+        "operationId": "createMessageKimiK3",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小请求",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "请用三句话介绍 Kimi K3。"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "多模态输入（图片 + 文本）",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": "/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "请描述这张图片。"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system 提示词",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "system": "你是一名严谨的中文技术编辑。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "解释什么是上下文缓存。"
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "SSE 流式输出",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "写一首关于夏夜的短诗。"
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "工具调用",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "查询北京今天的天气。"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "查询指定城市的天气",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "城市名称"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message 响应；流式请求返回 Anthropic SSE 事件流",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "事件顺序通常为 message_start、content_block_*、message_delta、message_stop。"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "模型 ID。"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "本次生成允许使用的最大 Token 数，包含 thinking 与最终文本。"
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Anthropic Messages 消息列表。多轮对话需原样回传完整 assistant 内容块。",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "system": {
+            "type": "string",
+            "description": "系统提示词。Messages 协议使用顶层 system，不使用 system role。"
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否使用 Anthropic SSE 事件流返回。"
+          },
+          "tools": {
+            "type": "array",
+            "description": "模型可调用的工具列表。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "消息角色，仅支持 user 或 assistant。",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "description": "消息内容，可以是纯文本字符串或 Anthropic 内容块数组。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "description": "Anthropic 内容块，可用于文本、图片、推理、工具调用或工具结果。",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ThinkingBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultBlock"
+          }
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "内容块类型，固定为 text。",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "文本内容。"
+          }
+        }
+      },
+      "ImageBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "source"
+        ],
+        "description": "图片内容块（多模态输入）。",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image"
+            ],
+            "description": "内容块类型，固定为 image。"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "description": "图片来源。",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "来源类型：`base64` 内联编码，或 `url` 链接。"
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/gif",
+                  "image/webp"
+                ],
+                "description": "`type=base64` 时的图片 MIME 类型。"
+              },
+              "data": {
+                "type": "string",
+                "description": "`type=base64` 时的图片 Base64 数据（不含 `data:` 前缀）。"
+              },
+              "url": {
+                "type": "string",
+                "description": "`type=url` 时的图片地址；也支持 Kimi 文件引用 `ms://<file_id>`。"
+              }
+            }
+          }
+        }
+      },
+      "ThinkingBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "thinking"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "内容块类型，固定为 thinking。",
+            "enum": [
+              "thinking"
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "模型的推理内容。多轮对话时应与 signature 一起原样回传。"
+          },
+          "signature": {
+            "type": "string",
+            "description": "多轮对话时必须与 thinking block 一起原样回传。"
+          }
+        }
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "内容块类型，固定为 tool_use。",
+            "enum": [
+              "tool_use"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "工具调用 ID，返回工具结果时通过 tool_use_id 关联。"
+          },
+          "name": {
+            "type": "string",
+            "description": "模型请求调用的工具名称。"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "模型为工具生成的参数对象。"
+          }
+        }
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "内容块类型，固定为 tool_result。",
+            "enum": [
+              "tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "对应的 tool_use 内容块 ID。"
+          },
+          "content": {
+            "type": "string",
+            "description": "工具执行结果。"
+          },
+          "is_error": {
+            "type": "boolean",
+            "default": false,
+            "description": "工具执行是否失败。"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "工具名称。"
+          },
+          "description": {
+            "type": "string",
+            "description": "工具用途说明，帮助模型判断何时调用。"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "JSON Schema 格式的工具参数定义。"
+          }
+        }
+      },
+      "ToolChoice": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "工具选择策略：auto 由模型决定，any 强制调用任一工具，tool 强制调用 name 指定的工具。",
+            "enum": [
+              "auto",
+              "any",
+              "tool"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "type=tool 时指定工具名称。"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MessageUsage"
+          }
+        }
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "缓存未命中的输入 Token。"
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "缓存写入 Token。"
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "缓存命中的输入 Token。"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "输出 Token，包含 thinking Token。"
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "请求参数错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API Key 无效或缺失",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "请求过于频繁或额度不足",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "服务内部错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 兼容接口"
+    }
+  ]
+}

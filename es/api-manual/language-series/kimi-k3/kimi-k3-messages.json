@@ -1,0 +1,641 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 - API compatible con Anthropic",
+    "description": "Llama a Kimi K3 mediante el protocolo Anthropic Messages.\n\n**Capacidades confirmadas para la versión inicial**:\n- ID del modelo: `kimi-k3`\n- Endpoint: `POST /v1/messages`\n- Autenticación con una API Key de EvoLink como Bearer Token\n- Admite prompts de sistema, conversaciones de texto de varios turnos, streaming SSE y uso de herramientas\n- Admite entrada multimodal (imagen): el content del usuario acepta un bloque de contenido image\n- Las respuestas pueden contener bloques `thinking`, `text` y `tool_use`\n\nEn conversaciones de varios turnos, devuelve sin cambios los bloques completos del assistant, incluidos thinking, signature y tool_use.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Producción (Recomendado)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternativa"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "API Messages de Kimi K3 (compatible con Anthropic)",
+        "description": "Llama a `kimi-k3` mediante Anthropic Messages. Admite JSON sin streaming y flujos de eventos Anthropic SSE.",
+        "operationId": "createMessageKimiK3",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Solicitud mínima",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Presenta Kimi K3 en tres frases."
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "Entrada multimodal (imagen + texto)",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": "/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "Describe esta imagen."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Prompt de sistema",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "system": "Eres un editor técnico preciso.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Explica el almacenamiento en caché del contexto."
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "Salida SSE en streaming",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Escribe un poema corto sobre una noche de verano."
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "Uso de herramientas",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 2048,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Consulta el tiempo de hoy en Pekín."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "Consultar el tiempo de una ciudad determinada",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "Nombre de la ciudad"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Respuesta Message; las solicitudes en streaming devuelven un flujo de eventos Anthropic SSE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "La secuencia de eventos suele incluir message_start, content_block_*, message_delta y message_stop."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "ID del modelo."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Número máximo de tokens permitidos para esta generación, incluidos thinking y el texto final."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Lista de mensajes de Anthropic Messages. En conversaciones de varios turnos, devuelve sin cambios los bloques de contenido completos del assistant.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "system": {
+            "type": "string",
+            "description": "Prompt de sistema. El protocolo Messages usa un campo system de nivel superior en lugar de un rol system."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "Indica si se devuelve un flujo de eventos Anthropic SSE."
+          },
+          "tools": {
+            "type": "array",
+            "description": "Herramientas que el modelo puede llamar.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Rol del mensaje. Solo se admiten user y assistant.",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "description": "Contenido del mensaje como texto plano o como array de bloques de contenido Anthropic.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "description": "Bloque de contenido de Anthropic para texto, imagen, razonamiento, uso de herramientas o resultados de herramientas.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ThinkingBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultBlock"
+          }
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tipo de bloque de contenido. Valor fijo: text.",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenido de texto."
+          }
+        }
+      },
+      "ImageBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "source"
+        ],
+        "description": "Bloque de contenido de imagen (entrada multimodal).",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image"
+            ],
+            "description": "Tipo de bloque de contenido. Valor fijo: image."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "description": "Origen de la imagen.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "Tipo de origen: `base64` codificado en línea, o enlace `url`."
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/gif",
+                  "image/webp"
+                ],
+                "description": "Tipo MIME de la imagen cuando `type=base64`."
+              },
+              "data": {
+                "type": "string",
+                "description": "Datos Base64 de la imagen cuando `type=base64` (sin el prefijo `data:`)."
+              },
+              "url": {
+                "type": "string",
+                "description": "Dirección de la imagen cuando `type=url`; también admite la referencia de archivo de Kimi `ms://<file_id>`."
+              }
+            }
+          }
+        }
+      },
+      "ThinkingBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "thinking"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tipo de bloque de contenido. Valor fijo: thinking.",
+            "enum": [
+              "thinking"
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Contenido de razonamiento del modelo. Devuélvelo sin cambios junto con la firma en conversaciones de varios turnos."
+          },
+          "signature": {
+            "type": "string",
+            "description": "En conversaciones de varios turnos, devuélvelo sin cambios junto con el bloque thinking."
+          }
+        }
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tipo de bloque de contenido. Valor fijo: tool_use.",
+            "enum": [
+              "tool_use"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tool_use referenciado al devolver el resultado."
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta solicitada por el modelo."
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Objeto de entrada de herramienta generado por el modelo."
+          }
+        }
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tipo de bloque de contenido. Valor fijo: tool_result.",
+            "enum": [
+              "tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "ID del bloque tool_use correspondiente."
+          },
+          "content": {
+            "type": "string",
+            "description": "Resultado de ejecución de la herramienta."
+          },
+          "is_error": {
+            "type": "boolean",
+            "default": false,
+            "description": "Indica si la ejecución de la herramienta ha fallado."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta."
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripción que ayuda al modelo a decidir cuándo usar la herramienta."
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Definición de parámetros de la herramienta en formato JSON Schema."
+          }
+        }
+      },
+      "ToolChoice": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Estrategia de selección: auto deja decidir al modelo, any exige una herramienta y tool exige la herramienta indicada.",
+            "enum": [
+              "auto",
+              "any",
+              "tool"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta que se llamará cuando type=tool."
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MessageUsage"
+          }
+        }
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Tokens de entrada no servidos desde caché."
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "Tokens de entrada escritos en caché."
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Tokens de entrada servidos desde caché."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Tokens de salida, incluidos los tokens de thinking."
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Parámetros de solicitud no válidos",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "La API Key no existe o no es válida",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Límite de solicitudes superado o cuota insuficiente",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Error interno del servicio",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las API requieren autenticación con Bearer Token##\n\n**Obtener la API Key:**\n\nVisita la [página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Añadir al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "API compatible con Anthropic Messages"
+    }
+  ]
+}

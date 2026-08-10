@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Reference-to-Video",
-        "description": "> 🚧 **This model is not yet available, stay tuned**\n\n- Input reference images (0–9) + reference videos (0–3) + reference audio (0–3) + text prompt to generate video\n- Supports various creative scenarios including new generation, video editing, and video extension\n- **Now supports AIGC realistic human materials**\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "description": "- Input reference images (0–30) + reference videos (0–10) + reference audio (0–10) + a text prompt to generate video; provide at least one image, video, or audio reference\n- Best suited for generating new footage: images, videos, and audio act as style, subject, camera-movement, and soundtrack references\n- ⚠️ **To rewrite or continue an existing video, switch to [Video Edit](/en/api-manual/video-series/seedance2.5/seedance-2.5-video-edit) / [Video Extend](/en/api-manual/video-series/seedance2.5/seedance-2.5-video-extend)**: once this model's prompt carries an editing or extension intent, the request is validated as an edit / extend task — it is accepted without an error and the task only fails while it runs\n- **Now supports AIGC realistic human materials**\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
         "operationId": "createSeedance25ReferenceToVideo",
         "tags": [
           "Video Generation"
@@ -40,7 +40,7 @@
                   "summary": "Multimodal reference (image + video + audio)",
                   "value": {
                     "model": "seedance-2.5-reference-to-video",
-                    "prompt": "Use the first-person perspective framing of video 1 throughout, use audio 1 as background music throughout. First-person perspective fruit tea promotional video...",
+                    "prompt": "Use the first-person perspective framing of @video1 throughout, and use @audio1 as background music throughout. First-person perspective fruit tea promotional video...",
                     "image_urls": [
                       "https://example.com/ref1.jpg",
                       "https://example.com/ref2.jpg"
@@ -58,26 +58,26 @@
                     "content_filter": true
                   }
                 },
-                "video_edit": {
-                  "summary": "Edit video (replace elements)",
+                "subject_reference": {
+                  "summary": "Image + video reference (subject + camera movement)",
                   "value": {
                     "model": "seedance-2.5-reference-to-video",
-                    "prompt": "Replace the perfume in the gift box in video 1 with the face cream in image 1, keep the camera movement unchanged",
+                    "prompt": "Make the face cream in @image1 the hero product, and follow the camera rhythm and lighting mood of @video1 to generate a clean product commercial",
                     "image_urls": [
                       "https://example.com/cream.jpg"
                     ],
                     "video_urls": [
-                      "https://example.com/original.mp4"
+                      "https://example.com/reference.mp4"
                     ],
                     "duration": 5,
                     "aspect_ratio": "16:9"
                   }
                 },
-                "video_extend": {
-                  "summary": "Extend video (multi-segment concatenation)",
+                "multi_video": {
+                  "summary": "Multi-video reference (multi-shot narrative)",
                   "value": {
                     "model": "seedance-2.5-reference-to-video",
-                    "prompt": "The arched window in video 1 opens, entering the art gallery interior, continuing with video 2, then the camera enters the painting, continuing with video 3",
+                    "prompt": "The arched window in @video1 opens into the art gallery interior, continuing with @video2; then the camera enters the painting, continuing with @video3",
                     "video_urls": [
                       "https://example.com/part1.mp4",
                       "https://example.com/part2.mp4",
@@ -113,7 +113,7 @@
                 },
                 "example": {
                   "error": {
-                    "code": "invalid_request",
+                    "code": "invalid_parameter",
                     "message": "Invalid request parameters",
                     "type": "invalid_request_error"
                   }
@@ -230,16 +230,17 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Text prompt describing the desired video. Supports both Chinese and English, recommended no more than 500 characters for Chinese. Maximum prompt length: 10000 tokens\n\n**Details:**\n- You can use natural language to specify the purpose of each material, e.g., \"use image 1 as the first frame\", \"use the camera movement from video 1 throughout\", \"use audio 1 as background music\"\n- The model will automatically understand the correspondence between material numbers and their intended uses",
-            "example": "Use the first-person perspective framing of video 1 throughout, use audio 1 as background music throughout. First-person perspective fruit tea promotional video..."
+            "description": "Text prompt describing the desired video. Supports both Chinese and English, recommended no more than 500 characters for Chinese. Maximum prompt length: 10000 tokens\n\n**Details:**\n- When referring to input materials in the prompt, prefer explicit tags such as `@image1`, `@video1`, and `@audio1` instead of relying only on natural-language references such as \"image 1\", \"video 1\", or \"audio 1\"\n- Tag numbers follow the order of the corresponding URL array and start at 1: the first `image_urls` item is `@image1`, the first `video_urls` item is `@video1`, and the first `audio_urls` item is `@audio1`\n- Natural-language numbering may still be understood, but explicit tags provide a clearer mapping between each material and its intended use\n\n**⚠️ Avoid being classified as an edit / extend task:**\n- The task type is inferred from the prompt intent: wording such as \"edit the video\", \"add\", \"remove / delete\", \"change / replace\" is treated as video editing; wording such as \"extend forward / backward\", \"continue\" is treated as video extension\n- Once classified as either task, `aspect_ratio` must be `adaptive`, and for video editing `duration` must be `-1`; otherwise the request is accepted without an error and the task later turns `failed` with error code `InvalidParameter.TaskTypeConstraint`. The pre-authorized quota is refunded, but the waiting time is wasted\n- If you really need editing / extension, use `seedance-2.5-video-edit` or `seedance-2.5-video-extend` instead: parameters are validated at submission, so invalid values return an immediate synchronous error\n- For pure reference generation, rephrase words like \"replace\" or \"remove\" descriptively, e.g. \"the shot features ...\" or \"rendered in the style of @image1\"",
+            "example": "Use the first-person perspective framing of @video1 throughout, and use @audio1 as background music throughout. First-person perspective fruit tea promotional video..."
           },
           "image_urls": {
             "type": "array",
-            "description": "Reference image URL array, **0–30 images**\n\n**Role description:**\n\n| Media Type | Role | Typical Usage |\n|---------|------|----------|\n| Image | `reference_image` | Style reference, product image, first/last frame (specified via prompt) |\n\n**Image requirements:**\n- Supported formats: `.jpeg`, `.png`, `.webp`\n- Aspect ratio (width/height): `0.4` ~ `2.5`\n- Width/height pixels: `300` ~ `6000` px\n- Max size per image: `30MB`\n- Total request body size must not exceed `64MB`, do not use Base64 encoding\n- Image URLs must be directly accessible by the server",
+            "description": "Reference image URL array, **optional; 1–30 images when provided**\n\n**Requirement:** At least one of `image_urls`, `video_urls`, or `audio_urls` must be provided.\n\n**Role description:**\n\n| Media Type | Role | Typical Usage |\n|---------|------|----------|\n| Image | `reference_image` | Style reference, product image, first/last frame (specified via prompt) |\n\n**Image requirements:**\n- Supported formats: `.jpeg`, `.png`, `.webp`\n- Aspect ratio (width/height): `0.4` ~ `2.5`\n- Width/height pixels: `300` ~ `6000` px\n- Max size per image: `30MB`\n- Total request body size must not exceed `64MB`, do not use Base64 encoding\n- Image URLs must be directly accessible by the server",
             "items": {
               "type": "string",
               "format": "uri"
             },
+            "minItems": 1,
             "maxItems": 30,
             "example": [
               "https://example.com/ref1.jpg",
@@ -248,11 +249,12 @@
           },
           "video_urls": {
             "type": "array",
-            "description": "Reference video URL array, **0–10 videos**\n\n**Role description:**\n\n| Media Type | Role | Typical Usage |\n|---------|------|----------|\n| Video | `reference_video` | Camera movement reference, motion reference, original video for editing/extension |\n\n**Video requirements:**\n- Supported formats: `.mp4`, `.mov`\n- Resolution: 480p, 720p, 1080p\n- Duration per video: `2` ~ `30` seconds, max 10 videos, total duration of all videos ≤ `30` seconds\n- Aspect ratio (width/height): `0.4` ~ `2.5`\n- Width/height pixels: `300` ~ `6000` px\n- Frame pixels (width × height): `409,600` ~ `2,086,876` (e.g., 640×640 ~ 2206×946)\n- Max size per video: `50MB`\n- Frame rate: `24` ~ `60` FPS\n- Total request body size must not exceed `64MB`, do not use Base64 encoding\n- Using video references will increase costs (input video duration is counted in billing)\n- Video URLs must be directly accessible by the server",
+            "description": "Reference video URL array, **optional; 1–10 videos when provided**\n\n**Requirement:** At least one of `image_urls`, `video_urls`, or `audio_urls` must be provided.\n\n**Role description:**\n\n| Media Type | Role | Typical Usage |\n|---------|------|----------|\n| Video | `reference_video` | Camera movement reference, motion reference, original video for editing/extension |\n\n**Video requirements:**\n- Supported formats: `.mp4`, `.mov`\n- Resolution: 480p, 720p, 1080p, 4K\n- Duration per video: `2` ~ `30` seconds, max 10 videos, total duration of all videos ≤ `30` seconds\n- Aspect ratio (width/height): `0.4` ~ `2.5`\n- Width/height pixels: `300` ~ `6000` px\n- Frame pixels (width × height): `409,600` ~ `8,295,044` (e.g., 640×640 ~ 3326×2494)\n- Max size per video: `200MB`\n- Frame rate: `24` ~ `60` FPS\n- Total request body size must not exceed `64MB`, do not use Base64 encoding\n- Specific codec, resolution, and other media validity checks are performed by the model\n- Using video references will increase costs (input video duration is counted in billing)\n- Video URLs must be directly accessible by the server",
             "items": {
               "type": "string",
               "format": "uri"
             },
+            "minItems": 1,
             "maxItems": 10,
             "example": [
               "https://example.com/reference.mp4"
@@ -260,11 +262,12 @@
           },
           "audio_urls": {
             "type": "array",
-            "description": "Reference audio URL array, **0–10 clips**\n\n**Role description:**\n\n| Media Type | Role | Typical Usage |\n|---------|------|----------|\n| Audio | `reference_audio` | Background music, sound effects, voice/dialogue reference |\n\n**Audio requirements:**\n- Supported formats: `.wav`, `.mp3`\n- Duration per clip: `2` ~ `30` seconds, max 10 clips, total duration of all audio ≤ `30` seconds\n- Max size per clip: `15MB`\n- Total request body size must not exceed `64MB`, do not use Base64 encoding\n- Audio URLs must be directly accessible by the server",
+            "description": "Reference audio URL array, **optional; 1–10 clips when provided**\n\n**Requirement:** At least one of `image_urls`, `video_urls`, or `audio_urls` must be provided.\n\n**Role description:**\n\n| Media Type | Role | Typical Usage |\n|---------|------|----------|\n| Audio | `reference_audio` | Background music, sound effects, voice/dialogue reference |\n\n**Audio requirements:**\n- Supported formats: `.wav`, `.mp3`\n- Duration per clip: `2` ~ `30` seconds, max 10 clips, total duration of all audio ≤ `30` seconds\n- Max size per clip: `15MB`\n- Total request body size must not exceed `64MB`, do not use Base64 encoding\n- Audio URLs must be directly accessible by the server",
             "items": {
               "type": "string",
               "format": "uri"
             },
+            "minItems": 1,
             "maxItems": 10,
             "example": [
               "https://example.com/bgm.mp3"
@@ -272,10 +275,8 @@
           },
           "duration": {
             "type": "integer",
-            "description": "Output video duration (seconds), defaults to `5` seconds\n\n**Details:**\n- Supports any integer value between `4`–`30` seconds\n- Duration directly affects billing",
+            "description": "Output video duration (seconds), defaults to `5` seconds\n\n**Details:**\n- Supports any integer value between `4`–`30` seconds\n- `-1`: automatic duration, the model picks a length within `4`–`30` seconds and billing follows the actual output length\n- Duration directly affects billing\n\n⚠️ If the prompt is classified as a video edit task, only `-1` is accepted; an explicit number of seconds makes the task fail later, with no error at submission",
             "default": 5,
-            "minimum": 4,
-            "maximum": 30,
             "example": 10
           },
           "quality": {
@@ -290,7 +291,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video aspect ratio, defaults to `16:9`\n\n**Options:**\n- `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`, `21:9` (ultrawide)\n- `adaptive`: Determined based on prompt intent, priority: video > image > prompt\n\n**Pixel values per resolution:**\n\n| Aspect Ratio | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
+            "description": "Video aspect ratio, defaults to `adaptive`\n\n**Options:**\n- `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`, `21:9` (ultrawide)\n- `adaptive`: Determined based on prompt intent, priority: video > image > prompt\n\n**Pixel values per resolution:**\n\n| Aspect Ratio | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |\n\n⚠️ If the prompt is classified as a video edit / extend task, only `adaptive` is accepted; a fixed ratio makes the task fail later, with no error at submission",
             "enum": [
               "16:9",
               "9:16",
@@ -300,7 +301,7 @@
               "21:9",
               "adaptive"
             ],
-            "default": "16:9",
+            "default": "adaptive",
             "example": "16:9"
           },
           "generate_audio": {
@@ -314,6 +315,16 @@
             "description": "Content filter, enabled by default `true`\n\n**Options:**\n- `true`: Standard content safety check, this is the default\n- `false`: Relaxes content restrictions, billed at +10% (`1.1x`). Illegal and prohibited content is always enforced regardless of this setting",
             "default": true,
             "example": true
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Output container format, defaults to `mp4`\n\n**Options:**\n- `mp4`: H.264 encoding with the best compatibility and standard color precision, this is the default\n- `mov`: H.264 + yuv444p chroma sampling + PCM audio for higher color fidelity, recommended for color grading, keying and compositing workflows. Browser inline playback may not support it; download and play with VLC / mpv / ffplay. No extra charge",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
           },
           "callback_url": {
             "type": "string",

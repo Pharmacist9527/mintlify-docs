@@ -1,0 +1,614 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 OpenAI-Compatible API",
+    "description": "Call Kimi K3 through the OpenAI Chat Completions protocol.\n\n**Capabilities confirmed for the initial release**:\n- Model ID: `kimi-k3`\n- Context window: 1,048,576 tokens\n- K3 always performs reasoning, returned through `reasoning_content`\n- `reasoning_effort` currently supports only `max`\n- Supports multi-turn conversations, SSE streaming, and Function Calling\n- Supports multimodal input (text + image + video): pass an array of content blocks in `content`\n\nFor multi-turn conversations, include the complete assistant message from the previous turn in `messages`, including any `reasoning_content` and `tool_calls` fields.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (Recommended)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Kimi K3 Chat API (OpenAI-Compatible)",
+        "description": "Call `kimi-k3` through the OpenAI Chat Completions protocol. Supports both non-streaming JSON and streaming SSE responses. K3 always performs reasoning, and `reasoning_effort` currently supports only `max`.",
+        "operationId": "createChatCompletionKimiK3",
+        "tags": [
+          "Chat Completions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Minimal request",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Introduce Kimi K3 in three sentences."
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "Multimodal input (image + text)",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "Describe this image."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "Streaming output with usage",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Write a short poem about a summer night."
+                      }
+                    ],
+                    "stream": true,
+                    "stream_options": {
+                      "include_usage": true
+                    }
+                  }
+                },
+                "tool_calling": {
+                  "summary": "Function Calling",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Check today's weather in Beijing."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "get_weather",
+                          "description": "Get the weather for a specified city",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "city": {
+                                "type": "string",
+                                "description": "City name"
+                              }
+                            },
+                            "required": [
+                              "city"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat completion response; streaming requests return an SSE event stream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE data in OpenAI Chat Completions format, ending with `data: [DONE]`."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "Model ID."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Conversation messages. For multi-turn conversations, include complete historical assistant messages.",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1048576,
+            "default": 131072,
+            "description": "Maximum number of tokens allowed for the generated content. The default for Kimi K3 is 131,072 and the maximum is 1,048,576. Reasoning tokens count toward this limit."
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "max"
+            ],
+            "default": "max",
+            "description": "Reasoning effort. Kimi K3 always performs reasoning and currently supports only `max`."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to return the response as an SSE stream."
+          },
+          "stream_options": {
+            "$ref": "#/components/schemas/StreamOptions",
+            "description": "Streaming response options. These options apply only when `stream=true` and do not change token prices or generated token counts."
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "description": "Functions that the model may call.",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/NamedToolChoice"
+              }
+            ],
+            "description": "Controls whether the model calls tools or forces a specific function call."
+          }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Message role: system, user, assistant, or tool.",
+            "enum": [
+              "system",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "description": "Message content. Pass a string for plain text; pass an array of content blocks (text + image + video) for multimodal input. Assistant content may be null in tool-call scenarios.",
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Plain text message content."
+              },
+              {
+                "type": "array",
+                "description": "Array of multimodal content blocks.",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "The assistant's reasoning content. Return it unchanged as part of the complete assistant message in multi-turn conversations."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Tool calls returned by the assistant. Return them unchanged in subsequent tool-use turns.",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "ID of the corresponding tool call when `role=tool`."
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "Multimodal content block. `type` determines which field is used.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url",
+              "video_url"
+            ],
+            "description": "Content block type."
+          },
+          "text": {
+            "type": "string",
+            "description": "Text content when `type=text`."
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "Image when `type=image_url`; a URL string may also be passed directly.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "Image address. Supports a Base64 Data URL (`data:image/png;base64,...`) or a Kimi platform file reference (`ms://<file_id>`)."
+              }
+            }
+          },
+          "video_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "Video when `type=video_url`; a URL string may also be passed directly.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "Video address. Supports a Base64 Data URL (`data:video/mp4;base64,...`) or a Kimi platform file reference (`ms://<file_id>`)."
+              }
+            }
+          }
+        }
+      },
+      "StreamOptions": {
+        "type": "object",
+        "properties": {
+          "include_usage": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, returns a final usage chunk to the caller before `[DONE]`. This option only controls whether the caller receives that chunk and does not add billable tokens or change prices."
+          }
+        }
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tool type. Currently fixed to function.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "Function definition available to the model.",
+            "required": [
+              "name",
+              "parameters"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Function name."
+              },
+              "description": {
+                "type": "string",
+                "description": "Description that helps the model decide when to call the function."
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Function parameter definition in JSON Schema format."
+              },
+              "strict": {
+                "type": "boolean",
+                "description": "Whether function arguments must strictly follow the JSON Schema in parameters."
+              }
+            }
+          }
+        }
+      },
+      "NamedToolChoice": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Named tool choice type. Fixed to function.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "Function that the model must call.",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the function that the model must call."
+              }
+            }
+          }
+        }
+      },
+      "ToolCall": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "function"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Tool call ID used to associate a subsequent tool message through tool_call_id."
+          },
+          "type": {
+            "type": "string",
+            "description": "Tool call type. Fixed to function.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "Function and arguments requested by the model.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Function name."
+              },
+              "arguments": {
+                "type": "string",
+                "description": "Function arguments encoded as a JSON string."
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                },
+                "finish_reason": {
+                  "type": "string",
+                  "enum": [
+                    "stop",
+                    "length",
+                    "tool_calls"
+                  ]
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ChatUsage"
+          }
+        }
+      },
+      "ChatUsage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Total input tokens, including tokens served from cache."
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "Includes reasoning tokens."
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total input and output tokens."
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Input tokens served from cache."
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Reasoning tokens, already included in completion_tokens."
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API key is missing or invalid",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Rate limit exceeded or insufficient quota",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal service error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completions",
+      "description": "OpenAI Chat Completions-compatible API"
+    }
+  ]
+}

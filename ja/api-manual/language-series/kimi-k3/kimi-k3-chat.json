@@ -1,0 +1,614 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 - OpenAI 互換 API",
+    "description": "OpenAI Chat Completions プロトコルで Kimi K3 を呼び出します。\n\n**初期リリースで確認済みの機能**：\n- モデル ID：`kimi-k3`\n- コンテキストウィンドウ：1,048,576 tokens\n- K3 は常に推論を行い、`reasoning_content` で返します\n- `reasoning_effort` は現在 `max` のみをサポート\n- 複数ターン会話、SSE ストリーミング、Function Calling をサポート\n- マルチモーダル入力（テキスト + 画像 + 動画）をサポート：`content` に内容ブロック配列を渡す\n\n複数ターンの会話では、前のターンの完全な assistant メッセージを `reasoning_content` と `tool_calls` を含めて `messages` に追加してください。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Kimi K3 Chat API（OpenAI 互換）",
+        "description": "OpenAI Chat Completions プロトコルで `kimi-k3` を呼び出します。非ストリーミング JSON と SSE ストリーミング応答をサポートします。K3 は常に推論し、`reasoning_effort` は現在 `max` のみをサポートします。",
+        "operationId": "createChatCompletionKimiK3",
+        "tags": [
+          "Chat Completions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小リクエスト",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Kimi K3 を 3 文で紹介してください。"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "マルチモーダル入力（画像 + テキスト）",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "この画像を説明してください。"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "usage 付きストリーミング出力",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "夏の夜について短い詩を書いてください。"
+                      }
+                    ],
+                    "stream": true,
+                    "stream_options": {
+                      "include_usage": true
+                    }
+                  }
+                },
+                "tool_calling": {
+                  "summary": "Function Calling",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "北京の今日の天気を調べてください。"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "get_weather",
+                          "description": "指定した都市の天気を取得",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "city": {
+                                "type": "string",
+                                "description": "都市名"
+                              }
+                            },
+                            "required": [
+                              "city"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat Completion 応答。ストリーミングリクエストでは SSE イベントストリームを返します",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "OpenAI Chat Completions 形式の SSE データ。`data: [DONE]` で終了します。"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "モデル ID。"
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "会話メッセージ。複数ターンの会話では、過去の完全な assistant メッセージを含めてください。",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1048576,
+            "default": 131072,
+            "description": "生成コンテンツに使用できる最大 token 数。Kimi K3 のデフォルトは 131,072、最大は 1,048,576 です。推論 tokens もこの上限に含まれます。"
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "max"
+            ],
+            "default": "max",
+            "description": "推論強度。Kimi K3 は常に推論を行い、現在は `max` のみをサポートします。"
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "応答を SSE ストリームで返すかどうか。"
+          },
+          "stream_options": {
+            "$ref": "#/components/schemas/StreamOptions",
+            "description": "ストリーミング応答オプション。`stream=true` の場合のみ有効で、token の価格や生成数は変わりません。"
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "description": "モデルが呼び出せる関数。",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/NamedToolChoice"
+              }
+            ],
+            "description": "モデルがツールを呼び出すか、特定の関数を強制するかを制御します。"
+          }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "メッセージのロール：system、user、assistant、tool。",
+            "enum": [
+              "system",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "description": "メッセージ内容。プレーンテキストの場合は文字列を渡します；マルチモーダル入力の場合は内容ブロック配列（テキスト + 画像 + 動画）を渡します。ツール呼び出しの場合、assistant の content は null にできます。",
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "プレーンテキストのメッセージ内容。"
+              },
+              {
+                "type": "array",
+                "description": "マルチモーダル内容ブロックの配列。",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "assistant の推論内容。複数ターンの会話では、完全な assistant メッセージの一部として変更せず返してください。"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "assistant が返したツール呼び出し。後続のツール利用ターンで変更せず返してください。",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "`role=tool` のときに対応するツール呼び出し ID。"
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "マルチモーダル内容ブロック。`type` でどのフィールドを使用するかが決まります。",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url",
+              "video_url"
+            ],
+            "description": "内容ブロックのタイプ。"
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=text` のときのテキスト内容。"
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=image_url` のときの画像；URL 文字列を直接渡すこともできます。",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "画像アドレス。Base64 Data URL（`data:image/png;base64,...`）または Kimi プラットフォームのファイル参照（`ms://<file_id>`）をサポートします。"
+              }
+            }
+          },
+          "video_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=video_url` のときの動画；URL 文字列を直接渡すこともできます。",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "動画アドレス。Base64 Data URL（`data:video/mp4;base64,...`）または Kimi プラットフォームのファイル参照（`ms://<file_id>`）をサポートします。"
+              }
+            }
+          }
+        }
+      },
+      "StreamOptions": {
+        "type": "object",
+        "properties": {
+          "include_usage": {
+            "type": "boolean",
+            "default": false,
+            "description": "true の場合、`[DONE]` の前に最終 usage チャンクを呼び出し元へ返します。このオプションはチャンクの表示だけを制御し、課金対象 token や価格を増やしません。"
+          }
+        }
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "ツールの種類。現在は function 固定です。",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "モデルが利用できる関数定義。",
+            "required": [
+              "name",
+              "parameters"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "関数名。"
+              },
+              "description": {
+                "type": "string",
+                "description": "モデルが関数を呼び出すタイミングを判断するための説明。"
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "JSON Schema 形式の関数パラメータ定義。"
+              },
+              "strict": {
+                "type": "boolean",
+                "description": "関数引数が parameters の JSON Schema に厳密に従う必要があるかどうか。"
+              }
+            }
+          }
+        }
+      },
+      "NamedToolChoice": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "名前付きツール選択の種類。function 固定です。",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "モデルが必ず呼び出す関数。",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "モデルが必ず呼び出す関数名。"
+              }
+            }
+          }
+        }
+      },
+      "ToolCall": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "function"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "後続の tool メッセージを tool_call_id で関連付けるツール呼び出し ID。"
+          },
+          "type": {
+            "type": "string",
+            "description": "ツール呼び出しの種類。function 固定です。",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "モデルが要求した関数と引数。",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "関数名。"
+              },
+              "arguments": {
+                "type": "string",
+                "description": "JSON 文字列としてエンコードされた関数引数。"
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                },
+                "finish_reason": {
+                  "type": "string",
+                  "enum": [
+                    "stop",
+                    "length",
+                    "tool_calls"
+                  ]
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ChatUsage"
+          }
+        }
+      },
+      "ChatUsage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "キャッシュから提供された分を含む入力 tokens の合計。"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "推論 tokens を含みます。"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "入力と出力の合計 tokens。"
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "キャッシュから提供された入力 tokens。"
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "推論 tokens。completion_tokens に含まれています。"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "リクエストパラメータが無効です",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API キーがないか、無効です",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "レート制限超過またはクォータ不足",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "内部サービスエラー",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API で Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)で API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completions",
+      "description": "OpenAI Chat Completions 互換 API"
+    }
+  ]
+}

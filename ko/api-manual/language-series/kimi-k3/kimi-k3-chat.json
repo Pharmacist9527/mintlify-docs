@@ -1,0 +1,614 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3 - OpenAI 호환 API",
+    "description": "OpenAI Chat Completions 프로토콜로 Kimi K3를 호출합니다.\n\n**초기 릴리스에서 확인된 기능**:\n- 모델 ID: `kimi-k3`\n- 컨텍스트 윈도우: 1,048,576 tokens\n- K3는 항상 추론하며 `reasoning_content`로 반환\n- `reasoning_effort`는 현재 `max`만 지원\n- 멀티턴 대화, SSE 스트리밍, Function Calling 지원\n- 멀티모달 입력 지원(텍스트 + 이미지 + 비디오): `content`에 콘텐츠 블록 배열 전달\n\n여러 턴 대화에서는 이전 턴의 전체 assistant 메시지를 `reasoning_content`와 `tool_calls`를 포함해 `messages`에 넣으세요.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션(권장)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Kimi K3 Chat API(OpenAI 호환)",
+        "description": "OpenAI Chat Completions 프로토콜로 `kimi-k3`를 호출합니다. 비스트리밍 JSON과 SSE 스트리밍 응답을 지원합니다. K3는 항상 추론하며 `reasoning_effort`는 현재 `max`만 지원합니다.",
+        "operationId": "createChatCompletionKimiK3",
+        "tags": [
+          "Chat Completions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "최소 요청",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Kimi K3를 세 문장으로 소개해 주세요."
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "멀티모달 입력(이미지 + 텍스트)",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "이 이미지를 설명해 주세요."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "usage가 포함된 스트리밍 출력",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "여름밤에 관한 짧은 시를 써 주세요."
+                      }
+                    ],
+                    "stream": true,
+                    "stream_options": {
+                      "include_usage": true
+                    }
+                  }
+                },
+                "tool_calling": {
+                  "summary": "Function Calling",
+                  "value": {
+                    "model": "kimi-k3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "오늘 베이징 날씨를 확인해 주세요."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "get_weather",
+                          "description": "지정한 도시의 날씨 조회",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "city": {
+                                "type": "string",
+                                "description": "도시 이름"
+                              }
+                            },
+                            "required": [
+                              "city"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat completion 응답입니다. 스트리밍 요청은 SSE 이벤트 스트림을 반환합니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "OpenAI Chat Completions 형식의 SSE 데이터이며 `data: [DONE]`으로 끝납니다."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3"
+            ],
+            "description": "모델 ID입니다."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "대화 메시지입니다. 여러 턴 대화에서는 과거 assistant 메시지 전체를 포함하세요.",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1048576,
+            "default": 131072,
+            "description": "생성 콘텐츠에 허용되는 최대 token 수입니다. Kimi K3의 기본값은 131,072이고 최대값은 1,048,576입니다. 추론 tokens도 이 한도에 포함됩니다."
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "max"
+            ],
+            "default": "max",
+            "description": "추론 강도입니다. Kimi K3는 항상 추론하며 현재 `max`만 지원합니다."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "응답을 SSE 스트림으로 반환할지 여부입니다."
+          },
+          "stream_options": {
+            "$ref": "#/components/schemas/StreamOptions",
+            "description": "스트리밍 응답 옵션입니다. `stream=true`일 때만 적용되며 token 가격이나 생성량을 변경하지 않습니다."
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "description": "모델이 호출할 수 있는 함수입니다.",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/NamedToolChoice"
+              }
+            ],
+            "description": "모델이 도구를 호출할지 또는 특정 함수를 강제로 호출할지 제어합니다."
+          }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "메시지 역할: system, user, assistant 또는 tool.",
+            "enum": [
+              "system",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "description": "메시지 내용입니다. 순수 텍스트는 문자열로 전달하며, 멀티모달 입력은 콘텐츠 블록 배열(텍스트 + 이미지 + 비디오)로 전달합니다. 도구 호출 시 assistant content는 null일 수 있습니다.",
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "순수 텍스트 메시지 내용입니다."
+              },
+              {
+                "type": "array",
+                "description": "멀티모달 콘텐츠 블록 배열입니다.",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "assistant의 추론 내용입니다. 여러 턴 대화에서는 전체 assistant 메시지의 일부로 변경하지 말고 다시 전달하세요."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "assistant가 반환한 도구 호출입니다. 이후 도구 사용 턴에서 변경하지 말고 다시 전달하세요.",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "`role=tool`일 때 대응하는 도구 호출 ID입니다."
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "멀티모달 콘텐츠 블록입니다. `type`이 사용할 필드를 결정합니다.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url",
+              "video_url"
+            ],
+            "description": "콘텐츠 블록 유형입니다."
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=text`일 때의 텍스트 내용입니다."
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=image_url`일 때의 이미지입니다. URL 문자열을 직접 전달할 수도 있습니다.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "이미지 주소입니다. Base64 Data URL(`data:image/png;base64,...`) 또는 Kimi 플랫폼 파일 참조(`ms://<file_id>`)를 지원합니다."
+              }
+            }
+          },
+          "video_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "description": "`type=video_url`일 때의 비디오입니다. URL 문자열을 직접 전달할 수도 있습니다.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "비디오 주소입니다. Base64 Data URL(`data:video/mp4;base64,...`) 또는 Kimi 플랫폼 파일 참조(`ms://<file_id>`)를 지원합니다."
+              }
+            }
+          }
+        }
+      },
+      "StreamOptions": {
+        "type": "object",
+        "properties": {
+          "include_usage": {
+            "type": "boolean",
+            "default": false,
+            "description": "true이면 `[DONE]` 전에 최종 usage 청크를 호출자에게 반환합니다. 이 옵션은 해당 청크의 표시 여부만 제어하며 과금 tokens나 가격을 늘리지 않습니다."
+          }
+        }
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "도구 유형입니다. 현재 function으로 고정됩니다.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "모델이 사용할 수 있는 함수 정의입니다.",
+            "required": [
+              "name",
+              "parameters"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "함수 이름입니다."
+              },
+              "description": {
+                "type": "string",
+                "description": "모델이 함수를 언제 호출할지 판단하는 데 도움이 되는 설명입니다."
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "JSON Schema 형식의 함수 매개변수 정의입니다."
+              },
+              "strict": {
+                "type": "boolean",
+                "description": "함수 인수가 parameters의 JSON Schema를 엄격히 따라야 하는지 여부입니다."
+              }
+            }
+          }
+        }
+      },
+      "NamedToolChoice": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "이름으로 지정한 도구 선택 유형입니다. function으로 고정됩니다.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "모델이 반드시 호출해야 하는 함수입니다.",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "모델이 반드시 호출해야 하는 함수 이름입니다."
+              }
+            }
+          }
+        }
+      },
+      "ToolCall": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "function"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "이후 tool 메시지를 tool_call_id로 연결하는 도구 호출 ID입니다."
+          },
+          "type": {
+            "type": "string",
+            "description": "도구 호출 유형입니다. function으로 고정됩니다.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "type": "object",
+            "description": "모델이 요청한 함수와 인수입니다.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "함수 이름입니다."
+              },
+              "arguments": {
+                "type": "string",
+                "description": "JSON 문자열로 인코딩된 함수 인수입니다."
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                },
+                "finish_reason": {
+                  "type": "string",
+                  "enum": [
+                    "stop",
+                    "length",
+                    "tool_calls"
+                  ]
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ChatUsage"
+          }
+        }
+      },
+      "ChatUsage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "캐시에서 제공된 부분을 포함한 전체 입력 tokens입니다."
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "추론 tokens를 포함합니다."
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "입력과 출력 tokens의 합계입니다."
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "캐시에서 제공된 입력 tokens입니다."
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "추론 tokens이며 completion_tokens에 이미 포함되어 있습니다."
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "잘못된 요청 매개변수",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API Key가 없거나 유효하지 않습니다",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "요청 한도 초과 또는 할당량 부족",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "내부 서비스 오류",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 API에는 Bearer Token 인증이 필요합니다##\n\n**API Key 발급:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에서 API Key를 발급받으세요\n\n**요청 헤더에 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completions",
+      "description": "OpenAI Chat Completions 호환 API"
+    }
+  ]
+}
