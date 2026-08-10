@@ -1,0 +1,169 @@
+---
+title: "Cline"
+description: "将 Cline 连接到 EvoLink.AI"
+---
+
+## 概述
+
+{/* TODO: 补 Cline 面板总览截图 → /images/integration-guide/cline/cline-overview.png */}
+
+Cline 是一款流行的开源 **VS Code 扩展**式 AI 编程助手，支持多种模型供应商，并提供 **OpenAI Compatible（OpenAI 兼容）** 供应商类型。它最有特色的能力是 **Plan / Act 双模式**——可以为"规划（Plan）"和"执行（Act）"分别指定不同模型，天然契合"贵模型规划 + 便宜模型执行"的省钱工作流。
+
+通过把 Cline 的供应商设为 **OpenAI Compatible** 并指向 EvoLink，你就能在 VS Code 里直接使用 EvoLink 提供的 Claude 系列模型。
+
+## 使用前准备
+
+### 1. 安装 Cline 扩展
+
+在 VS Code 扩展市场搜索 **Cline** 并安装。安装后侧边栏会出现 Cline 图标。
+
+### 2. 获取 EvoLink API Key
+
+- 登录 [EvoLink 控制台](https://evolink.ai/dashboard)
+- 在控制台中找到 API Keys，点击"创建新Key"按钮，然后复制生成的 Key
+- API Key 通常以 `sk-` 开头，请妥善保存
+
+## 第一步：配置 OpenAI Compatible 供应商
+
+打开 Cline 设置，在 **API Provider** 中选择 **OpenAI Compatible**，然后填写：
+
+- **Base URL**：`https://direct.evolink.ai/v1`（填到 `/v1` 根，**不要**加 `/chat/completions`）
+- **API Key**：填入你的 EvoLink API Key（**裸 Key，不带 `Bearer ` 前缀，注意不要有尾部空格**）
+- **Model ID**：从 EvoLink 的 `/v1/models` 里**原样复制**模型 ID，例如 `claude-fable-5`
+
+{/* TODO: 补 Cline OpenAI Compatible 配置表单截图 → /images/integration-guide/cline/cline-config.png */}
+
+<Warning>
+**Model ID 要精确复制。** `claude-fable-5` 与 `anthropic/claude-fable-5` 对 API 来说是**两个不同的字符串**，写错会返回 `model_not_found`。以 `/v1/models` 返回的原文为准。
+</Warning>
+
+<Note>
+API Key 填**裸 Key**，Cline 会自动加 `Bearer` 认证头。这一点和 pi 相反（pi 需要手动开启 Bearer），配置时以本页为准。
+</Note>
+
+## 第二步：自定义端点的关键设置
+
+OpenAI Compatible 自定义端点下，Cline 检测不到模型能力，`Model Configuration` 折叠区里有几项需要你手动处理。
+
+### 1. 手动填 Context Window Size
+
+自定义端点下 Cline **检测不到上下文窗口**，会回落到 128K 的保守默认值，导致长会话被提前截断或上游报错。请在 **Context Window Size** 里手动填真实值：
+
+| 模型 | Context Window Size |
+|---|---|
+| `claude-fable-5` | 1000000 |
+| `claude-sonnet-5` | 1000000 |
+| `claude-haiku-4-5-20251001` | 200000 |
+
+### 2.（可选）Max Output Tokens
+
+同一处的 **Max Output Tokens** 默认为 `-1`（未设置，交由服务端决定），一般无需改动。若网关对单次输出有硬上限、或你想控制成本，可手动填（参考值：`claude-fable-5` 填 `128000`，其余填 `64000`）。
+
+### 3. Supports Images —— 按需，且和文件编辑无关
+
+`Model Configuration` 里的 **Supports Images** 开关控制的是**图像输入**与**浏览器工具**（`browser_action`）——只有让模型看图、或操作浏览器时才需要打开。
+
+<Note>
+**文件编辑不依赖任何能力开关。** Cline 的文件读写走自有的 `write_to_file` / `replace_in_file` 文本工具，在任何设置下都能改文件——既不需要开 Supports Images，Cline 里也**没有**所谓的 "Computer Use" 开关。若模型"只回答、不改文件"，通常是模型本身能力不足，而非某个开关没开（见下方「排错」）。
+</Note>
+
+## 第三步：Plan / Act 双模型分工
+
+Cline 的 Plan / Act 双模式是它最有价值的能力：**规划阶段用贵模型（如 `claude-fable-5`）、执行阶段用便宜模型（如 `claude-haiku-4-5-20251001`）**，兼顾质量与成本。
+
+<Warning>
+**已知坑：Plan/Act 可能静默回落到单模型。** 在部分版本（如 v3.88.1）中，当你开启"Plan/Act 用不同模型"且 Act 用 OpenAI Compatible 端点时，Cline 可能**静默忽略 Act 模型、全程使用 Plan 模型**，且没有任何提示（见 [cline#11357](https://github.com/cline/cline/issues/11357)）。你以为分工生效了，实际上没有。据维护者在该 issue 中说明，此问题随一次架构迁移（harness migration）修复，较新版本（v4.0 及以后）已不再复现；旧版本仍可能遇到。
+
+**规避方法（推荐）：单网关 + 多 Model ID。** EvoLink 用同一个 Base URL 和同一个 Key 就能暴露 `claude-fable-5` / `claude-haiku-4-5-20251001` / `claude-sonnet-5` 等多个 Model ID。在 Cline 里为 Plan 与 Act 分别切换 **Model** 值即可，不必依赖易出问题的双档案机制。
+</Warning>
+
+### 如何验证分工真的生效
+
+新建一个 task，分别在 **Plan** 模式和 **Act** 模式里问模型：
+
+```
+你是哪个模型
+```
+
+- 两个模式回答的模型**不同** → 分工生效 ✅
+- 两个模式回答的模型**相同** → 踩到了静默回落，检查 Model 配置
+
+{/* TODO: 补 Cline Plan/Act 分别自报模型的验证截图 → /images/integration-guide/cline/cline-plan-act.png */}
+
+## 第四步：验证配置
+
+完成上面设置后，在 Cline 对话框输入一个简单问题：
+
+```
+你是谁
+```
+
+**配置成功长什么样：**
+
+- 模型正常回复内容。
+- 让它改一个文件时，**文件真的被改动**。
+- **没有**出现 `401`、`404`、`model_not_found` 等错误。
+
+## 排错
+
+以下按**你实际看到的现象**分类。
+
+### 返回 `401 unauthorized`（Invalid API key）
+
+```
+{"code":"unauthorized","message":"Invalid API key (request id: ...)"}
+```
+
+可能原因：
+
+- **API Key 带了 `Bearer ` 前缀或尾部空格**：填裸 Key，去掉前后多余字符。
+- Key 无效或已被禁用：到 [EvoLink 控制台](https://evolink.ai/dashboard) 核对。
+
+### 返回 `404 model_not_found`
+
+```
+{"code":"model_not_found","message":"Model '...' is not available for this API key ... Call GET /v1/models ..."}
+```
+
+原因：Model ID 拼错（如把 `claude-fable-5` 写成 `anthropic/claude-fable-5`，或反之），或该模型未开通。以 `/v1/models` 返回的原文为准。
+
+### 模型"回答了"但没有真正改文件
+
+Cline 的文件编辑走自有的文本工具，**不依赖任何能力开关**（Cline 里也没有 "Computer Use" 这类开关）。如果模型只回答、不动文件，通常是：
+
+- **模型本身能力不够**：Cline 的提示词较复杂，能力较弱的模型可能无法稳定完成工具调用。换用更强的模型（如 `claude-fable-5` / `claude-sonnet-5`）。
+- **Plan 模式下不会改文件**：Plan 模式只讨论方案、不落地。切到 **Act** 模式再让它执行。
+
+### 长会话被提前截断 / 上游报上下文超限
+
+原因：**没手动填 Context Window Size**，Cline 用了 128K 保守默认值。按[第二步](#1-手动填-context-window-size)填真实上下文窗口。
+
+### Plan 和 Act 用的是同一个模型（分工没生效）
+
+原因：踩到 Plan/Act 静默回落坑。改用"单网关 + 多 Model ID"，在 Plan 与 Act 分别切换 Model 值；用[上面的验证方法](#如何验证分工真的生效)确认两个模式自报的模型不同。
+
+## 常见问题
+
+### 1. API Key 要不要带 `Bearer` 前缀？
+不要。填**裸 Key**，Cline 会自动加 `Bearer`。带前缀或尾部空格会导致 `401`。
+
+### 2. Model ID 怎么填？
+从 `/v1/models` 原样复制。注意 `claude-fable-5` 与 `anthropic/claude-fable-5` 是两个不同字符串，别写混。
+
+### 3. 为什么我让它改文件却没反应？
+Cline 的文件编辑不依赖任何能力开关（也没有 "Computer Use" 开关）。常见原因是**当前在 Plan 模式**（只讨论不落地，切到 Act 再试），或**模型能力不足**（换更强的模型）。
+
+### 4. Plan 和 Act 怎么用不同模型？
+推荐"单网关 + 多 Model ID"：同一个 EvoLink Base URL 和 Key 下，为 Plan 与 Act 分别切 Model 值（如 Plan=`claude-fable-5`、Act=`claude-haiku-4-5-20251001`）。配好后用"分别问模型身份"的方法验证是否真的分工。
+
+### 5. EvoLink 支持哪些常用模型？
+Claude 全系列（也支持 GPT、Gemini 等，可在控制台查看）。常用：`claude-fable-5`（规划）、`claude-sonnet-5`（执行）、`claude-haiku-4-5-20251001`（轻量）。
+
+### 6. 如何查看用量？
+登录 [EvoLink 控制台](https://evolink.ai/dashboard) 即可查看请求量、消耗与 Token 使用情况。
+
+<Tip>
+更多用法与配置可参考 [Cline 官方文档](https://docs.cline.bot)。
+</Tip>
+
+<div style={{ height: "60vh" }} aria-hidden="true" />

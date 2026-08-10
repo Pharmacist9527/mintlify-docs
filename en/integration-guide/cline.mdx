@@ -1,0 +1,169 @@
+---
+title: "Cline"
+description: "Connect Cline to EvoLink.AI"
+---
+
+## Overview
+
+{/* TODO: Add Cline panel overview screenshot → /images/integration-guide/cline/cline-overview.png */}
+
+Cline is a popular open-source AI coding assistant that ships as a **VS Code extension**. It supports a variety of model providers and offers an **OpenAI Compatible** provider type. Its most distinctive capability is its **Plan / Act dual mode** — you can assign different models to "planning (Plan)" and "execution (Act)" respectively, a natural fit for the cost-saving workflow of "expensive model for planning + cheap model for execution."
+
+By setting Cline's provider to **OpenAI Compatible** and pointing it at EvoLink, you can use the Claude family of models provided by EvoLink directly inside VS Code.
+
+## Before You Begin
+
+### 1. Install the Cline Extension
+
+Search for **Cline** in the VS Code Extension Marketplace and install it. Once installed, a Cline icon appears in the sidebar.
+
+### 2. Get an EvoLink API Key
+
+- Log in to the [EvoLink console](https://evolink.ai/dashboard)
+- Find API Keys in the console, click the "Create New Key" button, then copy the generated key
+- The API Key usually starts with `sk-`. Please keep it safe.
+
+## Step 1: Configure the OpenAI Compatible Provider
+
+Open Cline's settings, select **OpenAI Compatible** under **API Provider**, then fill in the following:
+
+- **Base URL**: `https://direct.evolink.ai/v1` (enter it up to the `/v1` root; do **not** append `/chat/completions`)
+- **API Key**: enter your EvoLink API Key (**the raw key, with no `Bearer ` prefix, and make sure there is no trailing whitespace**)
+- **Model ID**: **copy the model ID verbatim** from EvoLink's `/v1/models`, for example `claude-fable-5`
+
+{/* TODO: Add Cline OpenAI Compatible configuration form screenshot → /images/integration-guide/cline/cline-config.png */}
+
+<Warning>
+**Copy the Model ID exactly.** To the API, `claude-fable-5` and `anthropic/claude-fable-5` are **two different strings**; getting it wrong returns `model_not_found`. Always defer to the exact text returned by `/v1/models`.
+</Warning>
+
+<Note>
+Enter the **raw key** for the API Key; Cline automatically adds the `Bearer` authorization header. This is the opposite of pi (pi requires manually enabling Bearer) — when configuring, follow this page.
+</Note>
+
+## Step 2: Key Settings for a Custom Endpoint
+
+With an OpenAI Compatible custom endpoint, Cline can't detect the model's capabilities, so there are a few items in the `Model Configuration` collapsible section that you need to handle manually.
+
+### 1. Manually Set the Context Window Size
+
+With a custom endpoint, Cline **can't detect the context window** and falls back to a conservative default of 128K, which causes long sessions to be truncated early or the upstream to error out. Manually enter the real value in **Context Window Size**:
+
+| Model | Context Window Size |
+|---|---|
+| `claude-fable-5` | 1000000 |
+| `claude-sonnet-5` | 1000000 |
+| `claude-haiku-4-5-20251001` | 200000 |
+
+### 2. (Optional) Max Output Tokens
+
+The **Max Output Tokens** field in the same place defaults to `-1` (unset, left to the server to decide) and generally doesn't need to be changed. If the gateway has a hard cap on a single output, or you want to control costs, you can set it manually (reference values: `128000` for `claude-fable-5`, `64000` for the rest).
+
+### 3. Supports Images — Optional, and Unrelated to File Editing
+
+The **Supports Images** toggle in `Model Configuration` controls **image input** and the **browser tool** (`browser_action`) — you only need to turn it on when you want the model to view images or operate the browser.
+
+<Note>
+**File editing does not depend on any capability toggle.** Cline reads and writes files through its own `write_to_file` / `replace_in_file` text tools, which can modify files under any settings — it neither requires enabling Supports Images, nor does Cline have any so-called "Computer Use" toggle. If the model "only replies but doesn't edit files," it's usually because the model itself isn't capable enough, not because some toggle is off (see "Troubleshooting" below).
+</Note>
+
+## Step 3: Plan / Act Dual-Model Division of Labor
+
+Cline's Plan / Act dual mode is its most valuable capability: **use an expensive model (such as `claude-fable-5`) for the planning phase and a cheap model (such as `claude-haiku-4-5-20251001`) for the execution phase**, balancing quality and cost.
+
+<Warning>
+**Known pitfall: Plan/Act may silently fall back to a single model.** In some versions (such as v3.88.1), when you enable "use different models for Plan/Act" and Act uses an OpenAI Compatible endpoint, Cline may **silently ignore the Act model and use the Plan model throughout**, with no indication whatsoever (see [cline#11357](https://github.com/cline/cline/issues/11357)). You think the division of labor is in effect, but it isn't. According to the maintainer's explanation in that issue, this problem was fixed as part of a harness migration and no longer reproduces in newer versions (v4.0 and later); older versions may still hit it.
+
+**Workaround (recommended): a single gateway with multiple Model IDs.** With EvoLink, the same Base URL and the same key expose multiple Model IDs such as `claude-fable-5` / `claude-haiku-4-5-20251001` / `claude-sonnet-5`. In Cline, simply switch the **Model** value separately for Plan and Act — there's no need to rely on the error-prone dual-profile mechanism.
+</Warning>
+
+### How to Verify the Division of Labor Actually Works
+
+Create a new task and ask the model in both **Plan** mode and **Act** mode:
+
+```
+which model are you
+```
+
+- The two modes report **different** models → the division of labor is working ✅
+- The two modes report the **same** model → you've hit the silent fallback; check the Model configuration
+
+{/* TODO: Add screenshot of Cline Plan/Act each self-reporting their model → /images/integration-guide/cline/cline-plan-act.png */}
+
+## Step 4: Verify the Configuration
+
+After completing the settings above, enter a simple question in the Cline chat box:
+
+```
+who are you
+```
+
+**What a successful configuration looks like:**
+
+- The model replies with content normally.
+- When you ask it to modify a file, **the file actually gets changed**.
+- **No** errors such as `401`, `404`, or `model_not_found` appear.
+
+## Troubleshooting
+
+The following is organized by **the symptom you actually see**.
+
+### Returns `401 unauthorized` (Invalid API key)
+
+```
+{"code":"unauthorized","message":"Invalid API key (request id: ...)"}
+```
+
+Possible causes:
+
+- **The API Key includes a `Bearer ` prefix or trailing whitespace**: enter the raw key and remove any extra leading or trailing characters.
+- The key is invalid or has been disabled: verify it in the [EvoLink console](https://evolink.ai/dashboard).
+
+### Returns `404 model_not_found`
+
+```
+{"code":"model_not_found","message":"Model '...' is not available for this API key ... Call GET /v1/models ..."}
+```
+
+Cause: the Model ID is misspelled (such as writing `claude-fable-5` as `anthropic/claude-fable-5`, or vice versa), or the model isn't enabled. Always defer to the exact text returned by `/v1/models`.
+
+### The Model "Replied" but Didn't Actually Edit the File
+
+Cline's file editing goes through its own text tools and **does not depend on any capability toggle** (there is no "Computer Use" toggle in Cline either). If the model only replies and doesn't touch files, it's usually one of the following:
+
+- **The model itself isn't capable enough**: Cline's prompts are fairly complex, and weaker models may not reliably complete tool calls. Switch to a stronger model (such as `claude-fable-5` / `claude-sonnet-5`).
+- **Plan mode doesn't edit files**: Plan mode only discusses the approach without implementing it. Switch to **Act** mode and then have it execute.
+
+### Long Sessions Get Truncated Early / Upstream Reports Context Limit Exceeded
+
+Cause: **the Context Window Size wasn't set manually**, so Cline used the conservative 128K default. Follow [Step 2](#1-manually-set-the-context-window-size) to set the real context window.
+
+### Plan and Act Use the Same Model (Division of Labor Not Working)
+
+Cause: you've hit the Plan/Act silent-fallback pitfall. Switch to "a single gateway with multiple Model IDs" and set the Model value separately for Plan and Act; use [the verification method above](#how-to-verify-the-division-of-labor-actually-works) to confirm the two modes self-report different models.
+
+## FAQ
+
+### 1. Does the API Key need a `Bearer` prefix?
+No. Enter the **raw key**; Cline adds `Bearer` automatically. A prefix or trailing whitespace will cause a `401`.
+
+### 2. How should I fill in the Model ID?
+Copy it verbatim from `/v1/models`. Note that `claude-fable-5` and `anthropic/claude-fable-5` are two different strings — don't mix them up.
+
+### 3. Why is there no response when I ask it to edit a file?
+Cline's file editing doesn't depend on any capability toggle (there's no "Computer Use" toggle either). Common causes are that **you're currently in Plan mode** (which only discusses without implementing — switch to Act and try again), or that **the model isn't capable enough** (switch to a stronger model).
+
+### 4. How do I use different models for Plan and Act?
+We recommend "a single gateway with multiple Model IDs": under the same EvoLink Base URL and key, set the Model value separately for Plan and Act (such as Plan=`claude-fable-5`, Act=`claude-haiku-4-5-20251001`). Once configured, use the "ask each one for its model identity" method to verify that the division of labor is really in effect.
+
+### 5. Which common models does EvoLink support?
+The full Claude family (it also supports GPT, Gemini, and more, which you can view in the console). Common ones: `claude-fable-5` (planning), `claude-sonnet-5` (execution), `claude-haiku-4-5-20251001` (lightweight).
+
+### 6. How do I check usage?
+Log in to the [EvoLink console](https://evolink.ai/dashboard) to view request volume, consumption, and token usage.
+
+<Tip>
+For more usage and configuration, refer to the [Cline official documentation](https://docs.cline.bot).
+</Tip>
+
+<div style={{ height: "60vh" }} aria-hidden="true" />

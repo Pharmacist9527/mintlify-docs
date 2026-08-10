@@ -5,14 +5,16 @@ description: "Pi Coding Agent mit EvoLink.AI verbinden"
 
 ## Überblick
 
-{/* TODO: add Pi TUI overview screenshot → /images/integration-guide/pi/pi-overview.png */}
+![Die Pi-Startseite](/images/integration-guide/pi/tui.png)
+
+Der Slogan auf der Pi-Startseite lautet „There are many agent harnesses, but this one is yours" – Pi positioniert sich als bewusst minimalistisches Agent-Harness, das sich an Ihre Arbeitsabläufe anpasst, und nicht umgekehrt.
 
 Pi Coding Agent (dessen Befehls- und Konfigurationsverzeichnisname `pi` ist) ist ein terminal-nativer Open-Source-Coding-Agent (ein Befehlszeilentool) von [Earendil Works](https://github.com/earendil-works/pi). Es unterstützt mehrere Modellanbieter, benutzerdefinierte Anbieter und austauschbare Tools und eignet sich daher gut für Codeunterstützung und Aufgabenautomatisierung über die Befehlszeile.
 
 Pi unterstützt benutzerdefinierte Modellanbieter und die **Anthropic Messages API**. Durch die Konfiguration von EvoLink als benutzerdefinierter Anbieter in `~/.pi/agent/models.json` können Sie die Claude-Modellfamilie von EvoLink in Pi verwenden und gleichzeitig die vollständigen Agent-Tool-Aufruffunktionen von Pi beibehalten.
 
 <Note>
-Der offizielle Fokus von Pi liegt auf der **Terminal-CLI** (vier Ausführungsmodi: interaktiv / Drucken / RPC / SDK), und dieser Leitfaden folgt der CLI.
+Der offizielle Fokus von Pi liegt auf der **Terminal-CLI** (vier Ausführungsmodi: interaktiv / Print / JSON / RPC, plus Einbettung über das Node.js-SDK), und dieser Leitfaden folgt der CLI.
 </Note>
 
 ## Bevor Sie beginnen
@@ -22,7 +24,7 @@ Bevor Sie mit der Konfiguration beginnen, stellen Sie sicher, dass Sie die folge
 ### 1. Installieren Sie die Pi Coding Agent-CLI
 
 <Note>
-Pi erfordert **Node.js ≥ 22.19.0**. Überprüfen Sie zunächst Ihre Version mit `node -v`; Unterhalb dieser Version meldet `npm install -g` `EBADENGINE`. Aktualisieren Sie daher zuerst den Knoten.
+Pi erfordert **Node.js ≥ 22.19.0**. Überprüfen Sie zunächst Ihre Version mit `node -v`; unterhalb dieser Version gibt `npm install -g` eine `EBADENGINE`-Warnung aus und die installierte CLI startet möglicherweise nicht – aktualisieren Sie daher zuerst Node.
 </Note>
 
 <Tabs>
@@ -43,7 +45,7 @@ Pi erfordert **Node.js ≥ 22.19.0**. Überprüfen Sie zunächst Ihre Version mi
     <Note>
     Wenn Sie während der Installation eine **Veraltungswarnung** wie `npm warn deprecated node-domexception@1.0.0` sehen, können Sie diese getrost ignorieren – sie stammt von einer Upstream-Abhängigkeit und hat keinen Einfluss auf die Installation oder Nutzung. Solange am Ende `added N packages` angezeigt wird und `pi --version` eine Versionsnummer ausgibt, war die Installation erfolgreich.
 
-    Der offizielle Installationsbefehl enthält `--ignore-scripts` (wodurch die Lebenszyklusskripte von Abhängigkeiten während der Installation übersprungen werden; die normale Installation von Pi benötigt sie nicht). Beim ersten Start lädt Pi bei Bedarf automatisch native Tools wie Ripgrep und FD herunter.
+    Der offizielle Installationsbefehl enthält `--ignore-scripts` (wodurch die Lebenszyklusskripte von Abhängigkeiten während der Installation übersprungen werden; die normale Installation von Pi benötigt sie nicht). Beim ersten Start lädt Pi bei Bedarf automatisch zwei native Tools herunter – ripgrep und fd.
 
     Stellen Sie sicher, dass Sie den Paketnamen `@earendil-works/pi-coding-agent` richtig wählen – npm hat auch einen gleichnamigen Fork `@oh-my-pi/pi-coding-agent` (eine andere Versionslinie) und den veralteten `@mariozechner/pi-coding-agent` (dessen Betreuer darauf hingewiesen hat, dass Sie zur Version „earendil-works“ wechseln sollten). Installieren Sie nicht das Falsche.
     </Note>
@@ -118,7 +120,7 @@ Diese Datei ist standardmäßig **nicht** vorhanden (der Ordner `.pi` wird norma
           "models": [
             { "id": "claude-fable-5",            "reasoning": true,  "contextWindow": 1000000, "maxTokens": 128000,
               "cost": {"input": 9.0, "output": 45.0, "cacheRead": 0.9, "cacheWrite": 11.25} },
-            { "id": "claude-sonnet-5",           "reasoning": false, "contextWindow": 1000000, "maxTokens": 64000,
+            { "id": "claude-sonnet-5",           "reasoning": true,  "contextWindow": 1000000, "maxTokens": 128000,
               "cost": {"input": 2.7, "output": 13.5, "cacheRead": 0.27, "cacheWrite": 3.375} },
             { "id": "claude-haiku-4-5-20251001", "reasoning": false, "contextWindow": 200000,  "maxTokens": 64000,
               "cost": {"input": 0.9, "output": 4.5, "cacheRead": 0.09, "cacheWrite": 1.125} }
@@ -139,11 +141,11 @@ Diese Datei ist standardmäßig **nicht** vorhanden (der Ordner `.pi` wird norma
 
 - **`api: "anthropic-messages"`** – verwendet die mit Anthropic Messages kompatible Route von EvoLink, sodass Pi das native `tool_use`/`tool_result`-Protokoll von Claude verwendet.
 - **Legen Sie `baseUrl` nur auf den Domänenstamm fest** `https://direct.evolink.ai` – fügen Sie `/v1` oder `/v1/messages` **nicht** manuell hinzu. Pi hängt `/v1/messages` automatisch an; Durch manuelles Hinzufügen wird der Pfad dupliziert und ein `404 Invalid URL` verursacht.
-- **`authHeader: true` ist erforderlich.** Das Anthropic SDK von Pi verwendet standardmäßig `x-api-key`, während `/v1/messages` von EvoLink `Authorization: Bearer <your-key>` erwartet. Dieses Feld veranlasst Pi, den korrekten Bearer-Authentifizierungsheader zu senden.
+- **`authHeader: true` ist erforderlich.** Dieses Feld veranlasst Pi, einen `Authorization: Bearer <your-key>`-Request-Header mitzusenden. `/v1/messages` von EvoLink akzeptiert ausschließlich Bearer-Authentifizierung, während das integrierte Anthropic SDK von Pi standardmäßig nur `x-api-key` sendet – wenn Sie dieses Feld weglassen, wird ein `401` zurückgegeben.
 - **`apiKey` hat zwei Formen – wählen Sie eine aus:**
   - **Option 1 · Fügen Sie den Schlüssel direkt ein (am einfachsten, gut für den lokalen persönlichen Gebrauch)**: Ersetzen Sie `"$EVOLINK_API_KEY"` in der Konfiguration durch Ihren echten Schlüssel, z. B. `"apiKey": "sk-your-real-key"`. In einem Schritt erledigt, keine Umgebungsvariable erforderlich; Der Nachteil ist, dass sich der Schlüssel im **Klartext** in der Konfigurationsdatei befindet. Geben Sie diese Datei also nicht weiter und übergeben Sie sie nicht an Git.
   - **Option 2 · Interpolation von Umgebungsvariablen (sicherer, empfohlen)**: Lassen Sie `"$EVOLINK_API_KEY"` unverändert und fügen Sie den echten Schlüssel in eine Umgebungsvariable ein (siehe „Festlegen der API-Schlüssel-Umgebungsvariablen“ unten). Dadurch bleibt der Klartextschlüssel aus der Konfigurationsdatei fern.
-  - **(Fortgeschritten)** Pis `apiKey` unterstützt auch `${EVOLINK_API_KEY}` (Äquivalent; verwenden Sie geschweifte Klammern, um eindeutig zu sein, wenn auf den Variablennamen unmittelbar ein wörtlicher Text folgt) und `!command` (ein führender `!` führt einen Befehl aus und verwendet seine Ausgabe als Schlüssel, zum Beispiel beim Lesen aus einem Passwort-Manager: `"!op read 'op://vault/item/credential'"`). Wenn Sie im Wert ein Literal `**(Fortgeschritten)** Pis `apiKey` unterstützt auch `${EVOLINK_API_KEY}` (Äquivalent; verwenden Sie geschweifte Klammern, um eindeutig zu sein, wenn auf den Variablennamen unmittelbar ein wörtlicher Text folgt) und `!command` (ein führender `!` führt einen Befehl aus und verwendet seine Ausgabe als Schlüssel, zum Beispiel beim Lesen aus einem Passwort-Manager: `"!op read 'op://vault/item/credential'"`). Wenn Sie im Wert ein Literal  oder `!` benötigen, maskieren Sie diese als `$` und `$!`.
+  - **(Fortgeschritten)** Pis `apiKey` unterstützt außerdem `${EVOLINK_API_KEY}` (gleichwertig; verwenden Sie geschweifte Klammern zur Unterscheidung, wenn auf den Variablennamen unmittelbar Literaltext folgt) sowie `!command` (ein führendes `!` führt einen Befehl aus und verwendet dessen Ausgabe als Key, z. B. zum Auslesen aus einem Passwort-Manager: `"!op read 'op://vault/item/credential'"`). Wenn Sie ein literales `$` oder `!` im Wert benötigen, escapen Sie sie als `$$` und `$!`.
 
 <Note>
 Sie möchten den Schlüssel in der Konfigurationsdatei nicht berühren? Sie können `/login` auch im interaktiven Modus verwenden, um diesen Anbieter auszuwählen und den Schlüssel in `~/.pi/agent/auth.json` zu speichern – die Wirkung ist gleich.
@@ -208,9 +210,19 @@ Führen Sie den folgenden Befehl in Ihrem Terminal aus, um Pi zu starten:
 pi
 ```
 
-Geben Sie in der Pi-Sitzung `/model` ein, um die Modellauswahl zu öffnen, und wählen Sie dann das oben konfigurierte EvoLink-Modell aus (z. B. `claude-fable-5`).
+Geben Sie innerhalb der Pi-Sitzung `/model` in die Befehlspalette ein und drücken Sie die Eingabetaste, um die Modellauswahl zu öffnen:
 
-{/* TODO: add screenshot of the in-session /model selector in Pi (showing the model list under the evolink provider) → /images/integration-guide/pi/pi-model-select.png */}
+![Eingabe des /model-Befehls innerhalb einer Pi-Sitzung](/images/integration-guide/pi/model.png)
+
+Die Auswahl listet alle in `models.json` konfigurierten EvoLink-Modelle auf (gekennzeichnet mit `[evolink]`). Markieren Sie mit den Pfeiltasten das gewünschte Modell (z. B. `claude-fable-5`) und drücken Sie zur Bestätigung die Eingabetaste:
+
+![Die Modellauswahl mit den drei unter dem Anbieter evolink konfigurierten Modellen](/images/integration-guide/pi/model2.png)
+
+Sobald ein Modell ausgewählt ist, zeigt die Statusleiste unten das aktuelle Modell, die Denkstufe und die Kontextnutzung an (zum Beispiel `claude-fable-5 · medium` und `0.0%/1.0M`) – die Bestätigung, dass der Modellkatalog erfolgreich geladen wurde.
+
+<Note>
+Der gelbe Hinweis „Only showing models from configured providers. Use /login to add providers." ist zu erwarten – Pi listet nur Modelle von Anbietern auf, die Sie konfiguriert haben. Für die Verbindung über den benutzerdefinierten EvoLink-Anbieter ist kein `/login` erforderlich.
+</Note>
 
 ### 2. Überprüfen Sie die Konfiguration
 
@@ -325,10 +337,10 @@ Cache Read ist der Preis, wenn der Cache erreicht wird (ca. 0,1× der Eingabe). 
 Weil der `anthropic-messages`-Anbieter von Pi automatisch `/v1/messages` nach `baseUrl` anhängt. Durch manuelles Hinzufügen von `/v1` oder `/v1/messages` wird der Pfad dupliziert und `404 Invalid URL` zurückgegeben. Verwenden Sie nur `https://direct.evolink.ai`.
 
 ### 2. Muss ich `authHeader: true` einstellen?
-Ja. Das Anthropic SDK von Pi verwendet standardmäßig `x-api-key`, während `/v1/messages` von EvoLink ein Bearer-Token verwendet. `authHeader: true` lässt Pi `Authorization: Bearer <your-key>` senden; Wenn Sie es weglassen, kann es zu einem `401` kommen.
+Ja. `authHeader: true` veranlasst Pi, zusätzlich einen `Authorization: Bearer <your-key>`-Request-Header mitzusenden; `/v1/messages` von EvoLink verwendet Bearer-Authentifizierung, während das integrierte Anthropic SDK von Pi standardmäßig nur `x-api-key` sendet – wenn Sie das Feld weglassen, führt das daher zu einem `401`.
 
 ### 3. Warum folgt dieses Handbuch der Terminal-CLI?
-Die offizielle Primärform von Pi ist die **Terminal-CLI** (vier Ausführungsmodi: interaktiv / Drucken / RPC / SDK). Die Konfiguration und Überprüfung der EvoLink-Integration erfolgt vollständig über die CLI, die stabil und zuverlässig ist. Alle Schritte in dieser Anleitung folgen der CLI.
+Die offizielle Primärform von Pi ist die **Terminal-CLI** (vier Ausführungsmodi: interaktiv / Print / JSON / RPC, plus Einbettung über das Node.js-SDK). Die Konfiguration und Überprüfung der EvoLink-Integration erfolgt vollständig über die CLI, die stabil und zuverlässig ist. Alle Schritte in dieser Anleitung folgen der CLI.
 
 ### 4. Wie vermeide ich, den API-Schlüssel in der Konfiguration im Klartext zu schreiben?
 Verwenden Sie die Interpolation von Umgebungsvariablen im Feld `apiKey` (z. B. `"$EVOLINK_API_KEY"`) und behalten Sie den tatsächlichen Schlüssel in einer Umgebungsvariablen bei.
