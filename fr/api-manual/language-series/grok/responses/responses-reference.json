@@ -1,0 +1,477 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API tous modèles Grok - Référence complète Responses",
+    "description": "Référence complète des paramètres pour appeler les modèles de texte xAI Grok via l'API Responses compatible OpenAI, avec les outils côté serveur.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommandée)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternative"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Grok Responses (tous modèles, paramètres complets)",
+        "description": "- Point de terminaison Responses compatible OpenAI pour les modèles de texte xAI Grok ; sélection du modèle via le paramètre `model` (toutes les valeurs figurent dans le tableau du paramètre `model`)\n- `grok-4.5` : fenêtre de contexte de 500K tokens ; à partir de 200K tokens dans le prompt, tous les types de tokens sont facturés au double du tarif\n- La mise en cache du prompt est automatique : les tokens servis depuis le cache sont facturés au tarif d'entrée en cache, moins élevé\n- Modes synchrone et streaming (SSE)\n- Les outils côté serveur de xAI s'exécutent sur l'infrastructure xAI et sont facturés par appel réussi : `web_search`, `x_search`, `code_execution`, `attachment_search`, `collections_search`\n- Les outils `function` classiques (appels de fonctions côté client) sont également pris en charge et n'entraînent aucun frais par appel",
+        "operationId": "grokResponsesReference",
+        "tags": [
+          "Responses"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Réponse générée avec succès (objet JSON, ou flux d'événements SSE se terminant par `response.completed` lorsque `stream=true`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides (y compris les valeurs `tools[].type` non reconnues, rejetées avant d'atteindre le modèle)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autorisé, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Quota insuffisant. La déclaration d'outils côté serveur payants réserve à l'avance le budget d'outils dans le pire des cas ; la réservation non utilisée est remboursée lors du règlement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de débit dépassée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporairement indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modèle à appeler :\n\n| ID du modèle | Positionnement |\n|---|---|\n| `grok-4.5` | Modèle xAI de raisonnement et d'appel d'outils, fenêtre de contexte de 500K |",
+            "enum": [
+              "grok-4.5"
+            ],
+            "example": "grok-4.5"
+          },
+          "input": {
+            "description": "Entrée pour le modèle : une chaîne simple, ou un tableau d'éléments d'entrée OpenAI Responses (par ex. `{\"role\":\"user\",\"content\":[...]}`), transmis tel quel.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ],
+            "example": "Search the web for the latest SpaceX launch and summarize it in one sentence."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Indique s'il faut renvoyer une réponse en streaming (événements SSE, se terminant par `response.completed`). Par défaut `false`.",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "Nombre maximal de tokens à générer (tokens de raisonnement inclus).",
+            "example": 2048
+          },
+          "tools": {
+            "type": "array",
+            "description": "Déclarations d'outils. Outils côté serveur de xAI (facturés par appel réussi, frais non affectés par le multiplicateur de contexte long) :\n\n| Type d'outil | Rôle | Prix par appel |\n|---|---|---|\n| `web_search` | Rechercher sur Internet et consulter des pages web | $0.005 |\n| `x_search` | Rechercher des publications, profils et fils X | $0.005 |\n| `code_execution` | Exécuter du Python dans un bac à sable (`code_interpreter` accepté comme alias) | $0.005 |\n| `attachment_search` | Rechercher dans les fichiers joints à la conversation (peut être activé automatiquement lorsque l'entrée contient des fichiers) | $0.01 |\n| `collections_search` | Interroger des collections de documents téléversées (`file_search` accepté comme alias) | $0.0025 |\n\nLes outils `function` classiques (appels de fonctions côté client) sont également pris en charge et n'entraînent aucun frais par appel.\n\n⚠️ `image_generation` n'est actuellement pas disponible : sa déclaration est acceptée par compatibilité, mais l'outil est supprimé avant que la requête n'atteigne le modèle. Les types d'outils non reconnus sont rejetés avec un `400`.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "example": [
+              {
+                "type": "web_search"
+              }
+            ]
+          },
+          "tool_choice": {
+            "description": "Contrôle la sélection de l'outil : `\"auto\"` (par défaut) / `\"none\"` / `\"required\"`, ou un objet imposant un outil précis, par ex. `{\"type\": \"web_search\"}`.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "Nombre maximal d'appels d'outils côté serveur pour cette requête. En l'absence de valeur (ou avec `null`), la plateforme applique automatiquement un plafond pouvant aller jusqu'à 10 appels selon votre solde disponible. Les outils payants déclarés réservent à l'avance leur budget dans le pire des cas ; la partie non utilisée est remboursée lors du règlement.",
+            "example": 5
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Type d'outil",
+            "enum": [
+              "web_search",
+              "x_search",
+              "code_execution",
+              "code_interpreter",
+              "attachment_search",
+              "collections_search",
+              "file_search",
+              "function"
+            ],
+            "example": "web_search"
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifiant unique de la réponse",
+            "example": "55d44212-8d5e-90cc-975f-36d341ce21f5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "response"
+            ],
+            "description": "Type de réponse",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "Statut de la réponse",
+            "enum": [
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle réellement utilisé",
+            "example": "grok-4.5"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Horodatage de création",
+            "example": 1786538000
+          },
+          "output": {
+            "type": "array",
+            "description": "Éléments de sortie dans l'ordre de génération : éléments `reasoning` (résumé du raisonnement), éléments d'appel d'outils côté serveur tels que `web_search_call` / `code_interpreter_call` (le statut `completed` indique un appel réussi et facturable), puis un élément `message` final avec un contenu `output_text`.",
+            "items": {
+              "$ref": "#/components/schemas/OutputItem"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "OutputItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifiant de l'élément de sortie"
+          },
+          "type": {
+            "type": "string",
+            "description": "Type de l'élément de sortie",
+            "enum": [
+              "reasoning",
+              "message",
+              "web_search_call",
+              "x_search_call",
+              "code_interpreter_call",
+              "code_execution_call",
+              "attachment_search_call",
+              "file_search_call",
+              "function_call"
+            ],
+            "example": "web_search_call"
+          },
+          "status": {
+            "type": "string",
+            "description": "Statut de l'élément de sortie ; seuls les appels d'outils `completed` sont facturés",
+            "example": "completed"
+          },
+          "content": {
+            "type": "array",
+            "description": "Parties du contenu du message (`output_text`), présentes sur les éléments `message`",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Statistiques d'utilisation des tokens et des outils. À partir de 200K tokens dans le prompt, tous les types de tokens sont facturés au double ; les frais d'outils ne sont pas affectés par ce multiplicateur.",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens d'entrée",
+            "example": 10329
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens de sortie (tokens de raisonnement inclus)",
+            "example": 299
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Nombre total de jetons",
+            "example": 10628
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "Informations détaillées sur les tokens d'entrée",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Nombre de tokens du prompt servis depuis le cache (facturés au tarif d'entrée en cache, moins élevé ; la mise en cache est automatique)",
+                "example": 6016
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "Informations détaillées sur les tokens de sortie",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Nombre de tokens de raisonnement",
+                "example": 128
+              }
+            }
+          },
+          "num_server_side_tools_used": {
+            "type": "integer",
+            "description": "Nombre total d'appels d'outils côté serveur dans cette réponse",
+            "example": 2
+          },
+          "server_side_tool_usage_details": {
+            "type": "object",
+            "description": "Nombre d'appels par outil (certaines routes tierces peuvent omettre cet objet ; la facturation se rabat alors sur le décompte des éléments de sortie d'appels d'outils terminés)",
+            "properties": {
+              "web_search_calls": {
+                "type": "integer",
+                "example": 2
+              },
+              "x_search_calls": {
+                "type": "integer",
+                "example": 0
+              },
+              "code_interpreter_calls": {
+                "type": "integer",
+                "example": 0
+              },
+              "document_search_calls": {
+                "type": "integer",
+                "description": "Appels de recherche de pièces jointes",
+                "example": 0
+              },
+              "file_search_calls": {
+                "type": "integer",
+                "description": "Appels de recherche de collections",
+                "example": 0
+              },
+              "mcp_calls": {
+                "type": "integer",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "Code d'erreur de statut HTTP"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              },
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur"
+              },
+              "param": {
+                "type": "string",
+                "description": "Nom du paramètre concerné"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Suggestion lorsqu'une erreur se produit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API :**\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête :**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Responses",
+      "description": "OpenAI Responses API avec outils côté serveur xAI"
+    }
+  ]
+}

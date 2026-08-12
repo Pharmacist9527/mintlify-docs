@@ -1,0 +1,477 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Grok 全モデルインターフェース - Responses 完全なパラメータ",
+    "description": "サーバーサイドツールを含む、OpenAI 互換の Responses API で xAI Grok テキストモデルを呼び出すための完全なパラメータリファレンス。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Grok Responses（全モデル、完全なパラメータ）",
+        "description": "- xAI Grok テキストモデル向けの OpenAI 互換 Responses エンドポイント。モデルは `model` パラメータで選択（全指定値は `model` パラメータの対照表を参照）\n- `grok-4.5`：コンテキストウィンドウ 500K トークン。プロンプトが 200K トークン以上になると、すべてのトークン種別が 2 倍の料金で課金されます\n- プロンプトキャッシュは自動的に有効：キャッシュにヒットした入力トークンはより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- xAI のサーバーサイドツールは xAI のインフラ上で実行され、成功した呼び出しごとに課金されます：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`\n- 通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません",
+        "operationId": "grokResponsesReference",
+        "tags": [
+          "Responses"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "レスポンス生成成功（JSON オブジェクト、または `stream=true` の場合は `response.completed` で終わる SSE イベントストリーム）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "無効なリクエストパラメータ（未認識の `tools[].type` を含む。モデルに到達する前に拒否されます）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認可、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足。有料のサーバーサイドツールを宣言すると、最悪ケースのツール予算が事前に確保され、未使用分は精算時に返還されます。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限を超過しました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部サーバーエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービス一時利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル：\n\n| モデル ID | 位置づけ |\n|---|---|\n| `grok-4.5` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K |",
+            "enum": [
+              "grok-4.5"
+            ],
+            "example": "grok-4.5"
+          },
+          "input": {
+            "description": "モデルへの入力：単純な文字列、または OpenAI Responses の入力アイテムの配列（例：`{\"role\":\"user\",\"content\":[...]}`）。そのまま透過的に渡されます。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ],
+            "example": "Search the web for the latest SpaceX launch and summarize it in one sentence."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "ストリーミングでレスポンスを返すかどうか（SSE イベント。`response.completed` で終了）。デフォルトは `false`。",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "生成するトークンの最大数（推論トークンを含む）。",
+            "example": 2048
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツールの宣言。xAI のサーバーサイドツール（成功した呼び出しごとに課金。料金はロングコンテキストの倍率の影響を受けません）：\n\n| ツールタイプ | 機能 | 1 回あたりの料金 |\n|---|---|---|\n| `web_search` | インターネットを検索し、ウェブページを閲覧 | $0.005 |\n| `x_search` | X の投稿・プロフィール・スレッドを検索 | $0.005 |\n| `code_execution` | サンドボックス内で Python を実行（`code_interpreter` もエイリアスとして使用可能） | $0.005 |\n| `attachment_search` | 会話に添付されたファイルを検索（入力にファイルが含まれる場合は自動的に有効になることがあります） | $0.01 |\n| `collections_search` | アップロード済みのドキュメントコレクションを検索（`file_search` もエイリアスとして使用可能） | $0.0025 |\n\n通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません。\n\n⚠️ `image_generation` は現在利用できません：互換性のため宣言は受け付けますが、リクエストがモデルに届く前に削除されます。未認識のツールタイプは `400` で拒否されます。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "example": [
+              {
+                "type": "web_search"
+              }
+            ]
+          },
+          "tool_choice": {
+            "description": "ツールの選択を制御します：`\"auto\"`（デフォルト）/ `\"none\"` / `\"required\"`、または特定のツールを指定するオブジェクト（例：`{\"type\": \"web_search\"}`）。",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "このリクエストで許可するサーバーサイドツール呼び出しの上限。指定しない場合（または `null` の場合）、プラットフォームが利用可能残高に応じて最大 10 回までの上限を自動的に適用します。宣言された有料ツールは最悪ケースの予算を事前に確保し、未使用分は精算時に返還されます。",
+            "example": 5
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "ツールタイプ",
+            "enum": [
+              "web_search",
+              "x_search",
+              "code_execution",
+              "code_interpreter",
+              "attachment_search",
+              "collections_search",
+              "file_search",
+              "function"
+            ],
+            "example": "web_search"
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "レスポンスの一意の識別子",
+            "example": "55d44212-8d5e-90cc-975f-36d341ce21f5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "response"
+            ],
+            "description": "レスポンスタイプ",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "応答ステータス",
+            "enum": [
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "grok-4.5"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "作成タイムスタンプ",
+            "example": 1786538000
+          },
+          "output": {
+            "type": "array",
+            "description": "生成順に並んだ出力アイテム：`reasoning` アイテム（思考の要約）、`web_search_call` / `code_interpreter_call` などのサーバーサイドツール呼び出しアイテム（ステータス `completed` は成功した課金対象の呼び出しを示します）、最後に `output_text` を含む `message` アイテム。",
+            "items": {
+              "$ref": "#/components/schemas/OutputItem"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "OutputItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "出力アイテムの識別子"
+          },
+          "type": {
+            "type": "string",
+            "description": "出力アイテムのタイプ",
+            "enum": [
+              "reasoning",
+              "message",
+              "web_search_call",
+              "x_search_call",
+              "code_interpreter_call",
+              "code_execution_call",
+              "attachment_search_call",
+              "file_search_call",
+              "function_call"
+            ],
+            "example": "web_search_call"
+          },
+          "status": {
+            "type": "string",
+            "description": "出力アイテムのステータス。課金対象は `completed` のツール呼び出しです",
+            "example": "completed"
+          },
+          "content": {
+            "type": "array",
+            "description": "メッセージ内容のパート（`output_text`）。`message` アイテムに出力されます",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "トークンとツールの使用統計。プロンプトが 200K トークン以上の場合、すべてのトークン種別が 2 倍で課金されます。ツール料金は倍率の影響を受けません。",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "入力トークン数",
+            "example": 10329
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力トークン数（推論トークンを含む）",
+            "example": 299
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "トークンの合計数",
+            "example": 10628
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "入力トークンの詳細情報",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "キャッシュにヒットしたプロンプトトークン数（より安いキャッシュ料金で課金。キャッシュは自動的に有効）",
+                "example": 6016
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "出力トークンの詳細情報",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "推論トークン数",
+                "example": 128
+              }
+            }
+          },
+          "num_server_side_tools_used": {
+            "type": "integer",
+            "description": "このレスポンスにおけるサーバーサイドツール呼び出しの合計回数",
+            "example": 2
+          },
+          "server_side_tool_usage_details": {
+            "type": "object",
+            "description": "ツールごとの呼び出し回数（一部のサードパーティ経路ではこのオブジェクトが返らない場合があり、その際は完了したツール呼び出しアイテムの数で課金します）",
+            "properties": {
+              "web_search_calls": {
+                "type": "integer",
+                "example": 2
+              },
+              "x_search_calls": {
+                "type": "integer",
+                "example": 0
+              },
+              "code_interpreter_calls": {
+                "type": "integer",
+                "example": 0
+              },
+              "document_search_calls": {
+                "type": "integer",
+                "description": "添付ファイル検索の呼び出し回数",
+                "example": 0
+              },
+              "file_search_calls": {
+                "type": "integer",
+                "description": "コレクション検索の呼び出し回数",
+                "example": 0
+              },
+              "mcp_calls": {
+                "type": "integer",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP ステータスエラーコード"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              },
+              "param": {
+                "type": "string",
+                "description": "関連パラメータ名"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "エラー発生時の提案"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIにBearer Token認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Responses",
+      "description": "xAI サーバーサイドツール対応 OpenAI Responses API"
+    }
+  ]
+}

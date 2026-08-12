@@ -1,0 +1,453 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Grok All-Model API - Chat Completions Reference",
+    "description": "Full parameter reference for calling xAI Grok text models through the OpenAI-compatible Chat Completions API.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommended)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Grok Chat Completions (All Models, Full Parameters)",
+        "description": "- OpenAI-compatible Chat Completions endpoint for xAI Grok text models; pick the model via the `model` parameter (see the table on the `model` parameter for all values)\n- `grok-4.5`: 500K-token context window; prompts of 200K tokens or more are billed at 2x for all token types\n- Prompt caching is automatic: cached prompt tokens are billed at the lower cached-input rate\n- Synchronous and streaming (SSE) modes\n- Regular `function` tool calling is supported; xAI server-side tools are available on the [Responses API](../responses/responses-reference) only",
+        "operationId": "grokChatCompletionsReference",
+        "tags": [
+          "Chat Completion"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat completion generated successfully (JSON object, or an SSE stream of `chat.completion.chunk` events when `stream=true`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized, invalid or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota, recharge required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model to call:\n\n| Model ID | Positioning |\n|---|---|\n| `grok-4.5` | xAI reasoning + tool-use model, 500K context window |",
+            "enum": [
+              "grok-4.5"
+            ],
+            "example": "grok-4.5"
+          },
+          "messages": {
+            "type": "array",
+            "description": "List of chat messages. Supports `system`, `user`, and `assistant` roles.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "minItems": 1,
+            "example": [
+              {
+                "role": "system",
+                "content": "You are a concise assistant."
+              },
+              {
+                "role": "user",
+                "content": "Explain prompt caching in one sentence."
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Whether to return a streaming response (SSE, `chat.completion.chunk` events). Default `false`.",
+            "default": false,
+            "example": false
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Maximum number of tokens to generate. Passed through to the model as-is.",
+            "example": 1024
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Sampling temperature (0-2). Higher values produce more random output.",
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus sampling parameter (0-1).",
+            "example": 0.95
+          },
+          "tools": {
+            "type": "array",
+            "description": "Regular OpenAI `function` tool definitions (client-side function calling, no extra per-call fee). xAI server-side tools are only available on the Responses API.",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Controls function selection: `\"auto\"` / `\"none\"` / `\"required\"`, or an object pinning a specific function.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Message role",
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "Message content"
+          }
+        }
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "description": "Tool type; the Chat Completions endpoint accepts `function` only"
+          },
+          "function": {
+            "type": "object",
+            "description": "Function definition: `name`, `description`, and a JSON Schema `parameters` object"
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the chat completion",
+            "example": "chatcmpl-20260812164515123456789AbCdEfGh"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model name actually used",
+            "example": "grok-4.5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "chat.completion"
+            ],
+            "description": "Response type",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Creation timestamp",
+            "example": 1786538000
+          },
+          "choices": {
+            "type": "array",
+            "description": "List of chat completion choices",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Choice index",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "Finish reason",
+            "enum": [
+              "stop",
+              "length",
+              "tool_calls",
+              "content_filter"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Message sender role",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "AI response message content",
+            "example": "Prompt caching reuses previously processed prompt prefixes so repeated context is billed at a lower rate."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Function calls requested by the model (present when using `function` tools)",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token usage statistics. Prompts of 200K tokens or more are billed at 2x for all token types (input, cached input, output).",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Number of tokens in input content",
+            "example": 504
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "Number of tokens in output content",
+            "example": 2
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total number of tokens",
+            "example": 526
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Detailed input token information",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Number of cached prompt tokens hit (billed at the lower cached-input rate; caching is automatic)",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP status error code"
+              },
+              "message": {
+                "type": "string",
+                "description": "Error description"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type"
+              },
+              "param": {
+                "type": "string",
+                "description": "Related parameter name"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Suggestion when error occurs"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completion",
+      "description": "AI chat completion related APIs"
+    }
+  ]
+}

@@ -1,0 +1,453 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Grok 全模型接口 - Chat Completions 完整参数",
+    "description": "通过 OpenAI 兼容的 Chat Completions 接口调用 xAI Grok 系列文本模型的完整参数手册。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Grok 对话补全（全模型，完整参数）",
+        "description": "- xAI Grok 系列文本模型的 OpenAI 兼容 Chat Completions 接口，通过 `model` 选择具体模型（全部可选值见 `model` 参数的对照表）\n- `grok-4.5`：50 万 token 上下文窗口；Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费\n- Prompt 缓存自动生效：命中缓存的输入 token 按更低的缓存价计费\n- 支持同步与流式（SSE）两种模式\n- 支持普通 `function` 工具调用；xAI 服务端工具仅在 [Responses 接口](../responses/responses-reference)提供",
+        "operationId": "grokChatCompletionsReference",
+        "tags": [
+          "Chat Completion"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "对话生成成功（JSON 对象；`stream=true` 时为 `chat.completion.chunk` 的 SSE 事件流）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，Token 无效或已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "额度不足，需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "要调用的模型：\n\n| 模型 ID | 定位 |\n|---|---|\n| `grok-4.5` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口 |",
+            "enum": [
+              "grok-4.5"
+            ],
+            "example": "grok-4.5"
+          },
+          "messages": {
+            "type": "array",
+            "description": "对话消息列表，支持 `system`、`user`、`assistant` 角色。",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "minItems": 1,
+            "example": [
+              {
+                "role": "system",
+                "content": "你是一个简洁的助手。"
+              },
+              {
+                "role": "user",
+                "content": "用一句话解释什么是 Prompt 缓存。"
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否流式返回（SSE，`chat.completion.chunk` 事件）。默认 `false`。",
+            "default": false,
+            "example": false
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "生成的最大 token 数，原样透传给模型。",
+            "example": 1024
+          },
+          "temperature": {
+            "type": "number",
+            "description": "采样温度（0-2），越大输出越随机。",
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核采样参数（0-1）。",
+            "example": 0.95
+          },
+          "tools": {
+            "type": "array",
+            "description": "普通 OpenAI `function` 工具定义（客户端函数调用，无按次费用）。xAI 服务端工具仅在 Responses 接口提供。",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "函数选择控制：`\"auto\"` / `\"none\"` / `\"required\"`，或用对象指定某个函数。",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "消息角色",
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "消息内容"
+          }
+        }
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "description": "工具类型；Chat Completions 接口仅接受 `function`"
+          },
+          "function": {
+            "type": "object",
+            "description": "函数定义：`name`、`description` 和 JSON Schema 格式的 `parameters`"
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "对话补全的唯一标识",
+            "example": "chatcmpl-20260812164515123456789AbCdEfGh"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "grok-4.5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "chat.completion"
+            ],
+            "description": "响应类型",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "创建时间戳",
+            "example": 1786538000
+          },
+          "choices": {
+            "type": "array",
+            "description": "对话补全选项列表",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "选项索引",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "结束原因",
+            "enum": [
+              "stop",
+              "length",
+              "tool_calls",
+              "content_filter"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "消息发送者角色",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "AI 回复的消息内容",
+            "example": "Prompt 缓存会复用已处理过的输入前缀，重复上下文按更低价格计费。"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "模型发起的函数调用（使用 `function` 工具时出现）",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 用量统计。Prompt 达到 20 万 token 起，全部 token（输入、缓存输入、输出）按 2 倍价格计费。",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "输入内容的 token 数",
+            "example": 504
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "输出内容的 token 数",
+            "example": 2
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "总 token 数",
+            "example": 526
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "输入 token 明细",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "命中缓存的 token 数（按更低的缓存输入价计费；缓存自动生效）",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 状态错误码"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": "string",
+                "description": "相关参数名"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "出错时的处理建议"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需 Bearer Token 认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取你的 API Key\n\n**添加到请求头：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completion",
+      "description": "AI 对话补全相关接口"
+    }
+  ]
+}
