@@ -27,7 +27,7 @@
     "/v1/responses": {
       "post": {
         "summary": "Grok Responses（全モデル、完全なパラメータ）",
-        "description": "- xAI Grok テキストモデル向けの OpenAI 互換 Responses エンドポイント。モデルは `model` パラメータで選択（全指定値は `model` パラメータの対照表を参照）\n- `grok-4.5`：コンテキストウィンドウ 500K トークン。プロンプトが 200K トークン以上になると、すべてのトークン種別が 2 倍の料金で課金されます\n- プロンプトキャッシュは自動的に有効：キャッシュにヒットした入力トークンはより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- xAI のサーバーサイドツールは xAI のインフラ上で実行され、成功した呼び出しごとに課金されます：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`\n- 通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません",
+        "description": "- xAI Grok テキストモデル向けの OpenAI 互換 Responses エンドポイント。モデルは `model` パラメータで選択（全指定値は `model` パラメータの対照表を参照）\n- コンテキストウィンドウ 500K トークン。プロンプトが 200K トークン以上になると、すべてのトークン種別が 2 倍の料金で課金されます\n- プロンプトキャッシュは自動的に有効：キャッシュにヒットした入力トークンはより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- xAI のサーバーサイドツールは xAI のインフラ上で実行され、成功した呼び出しごとに課金されます：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`\n- 通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません",
         "operationId": "grokResponsesReference",
         "tags": [
           "Responses"
@@ -88,7 +88,7 @@
             }
           },
           "402": {
-            "description": "クォータ不足。有料のサーバーサイドツールを宣言すると、最悪ケースのツール予算が事前に確保され、未使用分は精算時に返還されます。",
+            "description": "クォータ不足。",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,14 +174,15 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "呼び出すモデル：\n\n| モデル ID | 位置づけ |\n|---|---|\n| `grok-4.5` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K |",
+            "description": "呼び出すモデル：\n\n| モデル ID | 位置づけ |\n|---|---|\n| `grok-4.6` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K；`xhigh` 推論レベルに追加対応；知識のカットオフは 2026-02-01 |\n| `grok-4.5` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K；推論レベルは `high` まで（`xhigh` は受理されますが `high` に降格されます） |",
             "enum": [
+              "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.5"
+            "example": "grok-4.6"
           },
           "input": {
-            "description": "モデルへの入力：単純な文字列、または OpenAI Responses の入力アイテムの配列（例：`{\"role\":\"user\",\"content\":[...]}`）。そのまま透過的に渡されます。",
+            "description": "モデルへの入力：単純な文字列、または OpenAI Responses の入力アイテムの配列（例：`{\"role\":\"user\",\"content\":[...]}`）。",
             "oneOf": [
               {
                 "type": "string"
@@ -205,6 +206,22 @@
             "type": "integer",
             "description": "生成するトークンの最大数（推論トークンを含む）。",
             "example": 2048
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "推論の深さの制御。オブジェクト形式：`{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`。既定値は `high` で、推論は無効化できません。`xhigh` は `grok-4.6` のみ対応で、`grok-4.5` は値を受理しますが `high` に降格します。推論トークンは出力トークンとして課金され、`usage.output_tokens_details.reasoning_tokens` に計上されます。",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "default": "high"
+              }
+            }
           },
           "tools": {
             "type": "array",
@@ -233,11 +250,6 @@
                 "type": "object"
               }
             ]
-          },
-          "max_tool_calls": {
-            "type": "integer",
-            "description": "このリクエストで許可するサーバーサイドツール呼び出しの上限。指定しない場合（または `null` の場合）、プラットフォームが利用可能残高に応じて最大 10 回までの上限を自動的に適用します。宣言された有料ツールは最悪ケースの予算を事前に確保し、未使用分は精算時に返還されます。",
-            "example": 5
           }
         }
       },
@@ -293,7 +305,7 @@
           "model": {
             "type": "string",
             "description": "実際に使用されたモデル名",
-            "example": "grok-4.5"
+            "example": "grok-4.6"
           },
           "created_at": {
             "type": "integer",
