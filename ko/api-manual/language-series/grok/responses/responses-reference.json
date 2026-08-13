@@ -27,7 +27,7 @@
     "/v1/responses": {
       "post": {
         "summary": "Grok Responses (전체 모델, 전체 매개변수)",
-        "description": "- xAI Grok 텍스트 모델용 OpenAI 호환 Responses 엔드포인트. 모델은 `model` 매개변수로 선택 (전체 값은 `model` 매개변수의 대조표 참조)\n- `grok-4.5`: 컨텍스트 윈도우 500K 토큰. 프롬프트가 200K 토큰 이상이면 모든 토큰 유형이 2배 요금으로 과금됩니다\n- 프롬프트 캐싱은 자동 적용: 캐시에 적중한 입력 토큰은 더 저렴한 캐시 입력 요금으로 과금됩니다\n- 동기 및 스트리밍(SSE) 모드 지원\n- xAI 서버 측 도구는 xAI 인프라에서 실행되며 성공한 호출당 과금됩니다: `web_search`, `x_search`, `code_execution`, `attachment_search`, `collections_search`\n- 일반 `function` 도구(클라이언트 측 함수 호출)도 지원하며 호출당 추가 요금은 없습니다",
+        "description": "- xAI Grok 텍스트 모델용 OpenAI 호환 Responses 엔드포인트. 모델은 `model` 매개변수로 선택 (전체 값은 `model` 매개변수의 대조표 참조)\n- 컨텍스트 윈도우 500K 토큰. 프롬프트가 200K 토큰 이상이면 모든 토큰 유형이 2배 요금으로 과금됩니다\n- 프롬프트 캐싱은 자동 적용: 캐시에 적중한 입력 토큰은 더 저렴한 캐시 입력 요금으로 과금됩니다\n- 동기 및 스트리밍(SSE) 모드 지원\n- xAI 서버 측 도구는 xAI 인프라에서 실행되며 성공한 호출당 과금됩니다: `web_search`, `x_search`, `code_execution`, `attachment_search`, `collections_search`\n- 일반 `function` 도구(클라이언트 측 함수 호출)도 지원하며 호출당 추가 요금은 없습니다",
         "operationId": "grokResponsesReference",
         "tags": [
           "Responses"
@@ -88,7 +88,7 @@
             }
           },
           "402": {
-            "description": "할당량 부족. 유료 서버 측 도구를 선언하면 최악의 경우에 해당하는 도구 예산이 먼저 예약되며, 사용하지 않은 예약분은 정산 시 환불됩니다.",
+            "description": "할당량 부족.",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,14 +174,15 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "호출할 모델:\n\n| 모델 ID | 포지셔닝 |\n|---|---|\n| `grok-4.5` | xAI 추론 + 도구 호출 모델, 컨텍스트 윈도우 500K |",
+            "description": "호출할 모델:\n\n| 모델 ID | 포지셔닝 |\n|---|---|\n| `grok-4.6` | xAI 추론 + 도구 호출 모델, 컨텍스트 윈도우 500K; `xhigh` 추론 레벨 추가 지원; 지식 컷오프 2026-02-01 |\n| `grok-4.5` | xAI 추론 + 도구 호출 모델, 컨텍스트 윈도우 500K; 추론 레벨은 `high`까지(`xhigh`는 허용되지만 `high`로 강등됨) |",
             "enum": [
+              "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.5"
+            "example": "grok-4.6"
           },
           "input": {
-            "description": "모델에 전달할 입력: 일반 문자열 또는 OpenAI Responses 입력 항목 배열(예: `{\"role\":\"user\",\"content\":[...]}`). 그대로 전달됩니다.",
+            "description": "모델에 전달할 입력: 일반 문자열 또는 OpenAI Responses 입력 항목 배열(예: `{\"role\":\"user\",\"content\":[...]}`).",
             "oneOf": [
               {
                 "type": "string"
@@ -205,6 +206,22 @@
             "type": "integer",
             "description": "생성할 최대 토큰 수 (추론 토큰 포함).",
             "example": 2048
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "추론 깊이 제어, 객체 형식: `{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`. 기본값은 `high`이며 추론은 비활성화할 수 없습니다. `xhigh`는 `grok-4.6`에서만 지원되며, `grok-4.5`는 값을 받아들이지만 `high`로 강등합니다. 추론 토큰은 출력 토큰으로 과금되며 `usage.output_tokens_details.reasoning_tokens`에 보고됩니다.",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "default": "high"
+              }
+            }
           },
           "tools": {
             "type": "array",
@@ -233,11 +250,6 @@
                 "type": "object"
               }
             ]
-          },
-          "max_tool_calls": {
-            "type": "integer",
-            "description": "이 요청에서 허용할 서버 측 도구 호출의 최대 횟수. 생략하거나 `null`로 두면 플랫폼이 사용 가능한 잔액에 따라 최대 10회까지 자동으로 상한을 적용합니다. 선언된 유료 도구는 최악의 경우 예산을 먼저 예약하며, 사용하지 않은 부분은 정산 시 환불됩니다.",
-            "example": 5
           }
         }
       },
@@ -293,7 +305,7 @@
           "model": {
             "type": "string",
             "description": "실제 사용된 모델 이름",
-            "example": "grok-4.5"
+            "example": "grok-4.6"
           },
           "created_at": {
             "type": "integer",

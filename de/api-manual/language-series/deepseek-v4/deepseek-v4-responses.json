@@ -1,0 +1,812 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepSeek V4 Vollständige Parameterdokumentation (Responses API)",
+    "description": "Vollständige API-Referenz für den Responses-Endpunkt der DeepSeek-V4-Reihe (`deepseek-v4-flash` / `deepseek-v4-pro`).\n\n**Modellfähigkeiten**:\n- Kontextlänge: **1.000.000 Tokens** (1M)\n- Maximale Ausgabe: **384.000 Tokens** (384K)\n- Denkmodus: über `reasoning.effort` gesteuert; `deepseek-v4-pro` eignet sich für komplexes Schlussfolgern\n- Kontext-Festplattencache: Treffer erfolgen automatisch, Treffer und Fehlschläge werden getrennt abgerechnet\n- Integrierte Websuche: Das Werkzeug `web_search` wird serverseitig ausgeführt, ohne Beteiligung des Clients\n\n**Protokollhinweis**: Dieser Endpunkt ist vollständig zum OpenAI-Responses-API-Protokoll kompatibel. Der Anfragetext bleibt unverändert erhalten, Felder werden weder umsortiert noch entfernt, sodass nicht deklarierte Erweiterungsfelder und das Cache-Präfix unberührt bleiben.\n\n**Zustandslos**: DeepSeek Responses speichert keine Sitzungen; bei mehrstufigen Dialogen muss der Client bei jeder Anfrage den vollständigen Verlauf mitsenden.\n\n**Preisstufen (UC/1K Tokens, EvoLink-interne Einheit)**:\n| Modell | Eingabe Cache-Treffer | Eingabe ohne Cache-Treffer | Ausgabe |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 2 | 100 | 200 |\n| deepseek-v4-pro | 3 | 300 | 600 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktion (empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Chat-Generierung",
+      "description": "Endpunkte für KI-Chat-Generierung"
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "tags": [
+          "Chat-Generierung"
+        ],
+        "summary": "DeepSeek V4 Responses-API (OpenAI-kompatibel)",
+        "description": "- Aufruf der DeepSeek-V4-Modelle über das OpenAI-Responses-Protokoll\n- Unterstützt `deepseek-v4-flash` (schnell und universell) und `deepseek-v4-pro` (tiefes Schlussfolgern)\n- **Eingabeformen**: `input` kann reiner Text oder ein Array von Eingabeelementen sein (Nachricht, Funktionsaufruf, Funktionsergebnis, Denkinhalt, Suchprotokoll)\n- **Systemanweisungen**: über `instructions` übergeben, entspricht einer vorangestellten system-Nachricht\n- **Denkmodus**: über `reasoning.effort` gesteuert; der Denkinhalt wird als Ausgabeelement `reasoning` zurückgegeben\n- **Streaming-Ausgabe**: unterstützt semantische SSE-Ereignisse und endet mit `response.completed`; **`[DONE]` wird nicht gesendet**\n- **Werkzeugaufrufe**: unterstützt Function Calling und die integrierte Websuche `web_search`\n- **Strukturierte Ausgabe**: über `text.format` als JSON-Objekt oder JSON Schema aktivierbar\n- **Kontext-Cache**: Anfragen mit gleichem Präfix treffen den Cache automatisch und senken die Eingabekosten erheblich\n\n**Streaming-Ereignisse**: `response.created`, `response.output_item.added`, `response.reasoning_text.delta`, `response.output_text.delta`; Abschlussereignisse sind `response.completed` / `response.incomplete` / `response.failed`. Jedes Ereignis enthält zur Sortierung ein `sequence_number`.\n\n**Felder ohne Wirkung**: Die folgenden OpenAI-Felder können ohne Fehler gesendet werden, haben jedoch keine tatsächliche Wirkung.\n\n| Feld | Verhalten |\n| --- | --- |\n| `store` | Stets `false`, Antworten werden nicht gespeichert |\n| `previous_response_id` | Stets `null`, Fortsetzen einer Unterhaltung wird nicht unterstützt |\n| `conversation` | Nicht unterstützt |\n| `background` / `metadata` / `include` | Ignoriert |\n| `prompt` / `truncation` / `service_tier` | Ignoriert |\n| `safety_identifier` / `context_management` | Ignoriert |\n| `stream_options` | Ignoriert |\n| `parallel_tool_calls` | Ignoriert, parallele Werkzeugaufrufe sind stets aktiv |\n| `max_tool_calls` | Ignoriert |\n| Werkzeuge `file_search` / `code_interpreter` / `mcp` | Ignoriert |\n\n**Weitere Einschränkungen**:\n- Benutzerdefinierte Werkzeuge (`type: custom`) unterstützen ausschließlich `apply_patch`\n- Das Werkzeug `web_search` ignoriert `search_context_size` und `user_location`\n- Bild- und Dateiblöcke werden in Platzhalter umgewandelt; DeepSeek V4 ist kein Bildmodell\n- Übersteigt die Eingabe das Kontextfenster, wird direkt 400 zurückgegeben, ohne automatisches Kürzen",
+        "operationId": "createResponseDeepSeekV4",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "Einzelne Textkonversation (Flash)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Stelle Hangzhou in einem Satz vor."
+                  }
+                },
+                "with_instructions": {
+                  "summary": "Systemanweisungen verwenden",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "instructions": "Du bist ein sorgfältiger technischer Redakteur. Halte die Antworten knapp.",
+                    "input": "Erkläre, was Kontext-Caching ist."
+                  }
+                },
+                "multi_turn": {
+                  "summary": "Mehrstufige Unterhaltung (Array von Eingabeelementen)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "Schlage mir drei Produktnamen vor."
+                      },
+                      {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": "Wolkenrast, Morgenstern, Federwind."
+                      },
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "Nenne mir fünf Synonyme für den zweiten Namen."
+                      }
+                    ]
+                  }
+                },
+                "reasoning_effort": {
+                  "summary": "Pro-Modell mit hoher Denkintensität",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "input": "Ein Becken hat ein Zulaufrohr, das es in 3 Stunden füllt, und ein Ablaufrohr, das es in 5 Stunden leert. Wie lange dauert das Füllen, wenn beide gleichzeitig geöffnet sind? Bitte zeige den Rechenweg.",
+                    "reasoning": {
+                      "effort": "high"
+                    }
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "Denken deaktiviert (nur direkte Antwort)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Wie lange dauert der Hochgeschwindigkeitszug von Peking nach Shanghai ungefähr?",
+                    "reasoning": {
+                      "effort": "none"
+                    }
+                  }
+                },
+                "json_schema": {
+                  "summary": "Strukturierte Ausgabe (JSON Schema)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Extrahiere Person und Stadt aus diesem Satz: Zhang Wei reist nächste Woche geschäftlich nach Chengdu.",
+                    "text": {
+                      "format": {
+                        "type": "json_schema",
+                        "name": "extraction",
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "person": {
+                              "type": "string"
+                            },
+                            "city": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "person",
+                            "city"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "function_calling": {
+                  "summary": "Function Calling Werkzeugaufruf",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Wie ist das Wetter in Hangzhou gerade?",
+                    "tools": [
+                      {
+                        "type": "function",
+                        "name": "get_weather",
+                        "description": "Fragt das aktuelle Wetter einer bestimmten Stadt ab",
+                        "parameters": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "Name der Stadt"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "web_search": {
+                  "summary": "Integrierte Websuche (serverseitig ausgeführt)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Fasse die wichtigen Nachrichten dieser Woche aus dem Bereich künstliche Intelligenz zusammen.",
+                    "tools": [
+                      {
+                        "type": "web_search"
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "Streaming-Ausgabe",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Schreibe ein kurzes Gedicht über den Herbst.",
+                    "stream": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generierung erfolgreich",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                },
+                "example": {
+                  "id": "resp_9f2c1a4b8e7d",
+                  "object": "response",
+                  "created_at": 1755000000,
+                  "status": "completed",
+                  "model": "deepseek-v4-flash",
+                  "output": [
+                    {
+                      "id": "rs_2b7f",
+                      "type": "reasoning",
+                      "summary": [],
+                      "content": [
+                        {
+                          "type": "reasoning_text",
+                          "text": "Der Nutzer möchte eine Vorstellung in einem Satz, die Geografie und Kultur abdeckt."
+                        }
+                      ]
+                    },
+                    {
+                      "id": "msg_5d1a",
+                      "type": "message",
+                      "role": "assistant",
+                      "status": "completed",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "Hangzhou ist die Hauptstadt der Provinz Zhejiang und bekannt für den Westsee und seine digitale Wirtschaft.",
+                          "annotations": []
+                        }
+                      ]
+                    }
+                  ],
+                  "error": null,
+                  "incomplete_details": null,
+                  "usage": {
+                    "input_tokens": 694,
+                    "input_tokens_details": {
+                      "cached_tokens": 640
+                    },
+                    "output_tokens": 20,
+                    "output_tokens_details": {
+                      "reasoning_tokens": 10
+                    },
+                    "total_tokens": 714
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Anfrageparameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nicht authentifiziert, Token ungültig oder abgelaufen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid authentication credentials",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Unzureichendes Kontingent, Aufladung erforderlich",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Keine Berechtigung für dieses Modell",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Model access denied",
+                    "type": "permission_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource nicht gefunden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Anfrage-Nutzlast zu groß",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Request entity too large",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ratenlimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Interner Serverfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway-Fehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Bad gateway",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle APIs erfordern Bearer-Token-Authentifizierung##\n\n**API-Schlüssel erhalten**:\n\nBesuchen Sie die [API-Schlüsselverwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modell-ID\n\n- `deepseek-v4-flash`: schnell und universell, geeignet für alltägliche Dialoge, Zusammenfassungen und Extraktion\n- `deepseek-v4-pro`: tiefes Schlussfolgern, geeignet für komplexe Mathematik, Code und mehrstufige Planung",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "input": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Eingabe für das Modell. Mindestens eines von `input` und `instructions` muss angegeben werden.\n\n- **String-Form**: Der gesamte Text wird als eine einzelne `user`-Nachricht behandelt\n- **Array-Form**: Liste von Eingabeelementen mit den fünf Typen `message`, `function_call`, `function_call_output`, `reasoning` und `web_search_call`\n\n**Mehrstufige Unterhaltungen**: Der Endpunkt ist zustandslos, daher muss zum Fortsetzen einer Unterhaltung der vollständige Verlauf im Array enthalten sein.",
+            "items": {
+              "$ref": "#/components/schemas/InputItem"
+            },
+            "example": "Stelle Hangzhou in einem Satz vor."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Anweisungen auf Systemebene, gleichbedeutend mit einer ganz vorne eingefügten system-Nachricht; dient zum Festlegen von Rolle, Tonfall und Ausgabevorgaben.",
+            "example": "Du bist ein sorgfältiger technischer Redakteur. Halte die Antworten knapp."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Ob die Antwort gestreamt wird\n\n- `false` (Standard): gibt das vollständige Antwortobjekt auf einmal zurück\n- `true`: sendet semantische SSE-Ereignisse; das letzte Ereignis ist `response.completed` / `response.incomplete` / `response.failed`, und **`[DONE]` wird nicht gesendet**",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "Maximale Anzahl an Ausgabetokens für diese Generierung (einschließlich Denktokens). Bereich 1 bis 393216 (384K). Ohne Angabe entscheidet das Modell selbst.",
+            "minimum": 1,
+            "maximum": 393216,
+            "example": 4096
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Sampling-Temperatur; höhere Werte machen die Ausgabe zufälliger. **Im Denkmodus ohne Wirkung.**",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Schwellenwert für Nucleus-Sampling; es wird empfohlen, nur diesen oder `temperature` anzupassen. **Im Denkmodus ohne Wirkung.**",
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "Gibt an jeder Position die wahrscheinlichsten Kandidaten-Tokens samt ihrer logarithmischen Wahrscheinlichkeiten zurück.",
+            "minimum": 0,
+            "maximum": 20,
+            "example": 0
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "Konfiguration des Denkmodus. DeepSeek V4 aktiviert das Denken standardmäßig; der Denkinhalt wird als Ausgabeelement `reasoning` zurückgegeben und seine Tokens zählen zur Ausgabe und werden zum Ausgabepreis abgerechnet.",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "Denkintensität\n\n- `none`: Denken deaktiviert, direkte Antwort\n- `minimal` / `low` / `medium`: geringere Intensität\n- `high` (Standard): übliches tiefes Schlussfolgern\n- `xhigh` / `max`: höchste Intensität; Dauer und Ausgabetokens steigen deutlich",
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "high",
+                "example": "high"
+              },
+              "max_output_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Obergrenze der Ausgabetokens in der Denkphase; ohne Angabe gibt es keine zusätzliche Begrenzung."
+              },
+              "summary": {
+                "type": "string",
+                "description": "Kann gesendet werden, es wird jedoch keine Denkzusammenfassung erzeugt, sodass das Feld keine Wirkung hat."
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "description": "Konfiguration des Textausgabeformats.",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "Ausgabeformat\n\n- `text` (Standard): freier Text\n- `json_object`: gibt ein gültiges JSON-Objekt aus; **im Prompt muss das Wort JSON vorkommen**\n- `json_schema`: gibt gemäß dem angegebenen JSON Schema aus; `name` und `schema` sind beide erforderlich",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "json_object",
+                      "json_schema"
+                    ],
+                    "default": "text",
+                    "description": "Typ des Ausgabeformats"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Name des Schemas; im Modus `json_schema` erforderlich"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "description": "JSON-Schema-Definition; im Modus `json_schema` erforderlich"
+                  },
+                  "strict": {
+                    "type": "boolean",
+                    "description": "Ob das Schema strikt eingehalten wird"
+                  }
+                }
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Liste der Werkzeuge, die das Modell aufrufen kann. Funktionswerkzeuge werden vom Client ausgeführt, der das Ergebnis als `function_call_output` zurückgibt; `web_search` wird direkt serverseitig ausgeführt, ohne Beteiligung des Clients.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "description": "Strategie für Werkzeugaufrufe\n\n- `none`: Werkzeugaufrufe verboten\n- `auto` (Standard): das Modell entscheidet\n- `required`: mindestens ein Werkzeug muss aufgerufen werden\n- `{\"type\": \"function\", \"name\": \"get_weather\"}`: erzwingt den Aufruf einer bestimmten Funktion\n- `{\"type\": \"web_search\"}`: erzwingt eine Websuche",
+            "example": "auto"
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "title": "Eingabeelement",
+        "description": "Ein einzelnes Element im Array `input`. `type` bestimmt seine Bedeutung.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Typ des Eingabeelements\n\n- `message`: eine Dialognachricht\n- `function_call`: ein früher vom Modell ausgelöster Funktionsaufruf\n- `function_call_output`: das Ergebnis einer Funktionsausführung\n- `reasoning`: früherer Denkinhalt\n- `web_search_call`: ein früheres Websuchprotokoll",
+            "enum": [
+              "message",
+              "function_call",
+              "function_call_output",
+              "reasoning",
+              "web_search_call"
+            ],
+            "example": "message"
+          },
+          "role": {
+            "type": "string",
+            "description": "Rolle der Nachricht, nur bei `type: message` verwendet. `developer` wird wie `system` behandelt.",
+            "enum": [
+              "user",
+              "assistant",
+              "system",
+              "developer"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Nachrichteninhalt, nur bei `type: message` verwendet. Kann reiner Text oder ein Array von Inhaltsblöcken sein; der eingabeseitige Blocktyp ist `input_text`. **Bild- und Dateiblöcke wie `input_image` lösen keinen Fehler aus, werden jedoch durch Platzhaltertext ersetzt** – DeepSeek V4 verfügt über keine Bildfähigkeit.",
+            "example": "Stelle Hangzhou in einem Satz vor."
+          },
+          "call_id": {
+            "type": "string",
+            "description": "Kennung des Funktionsaufrufs; `function_call` und `function_call_output` werden darüber einander zugeordnet."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name der aufgerufenen Funktion, nur bei `type: function_call` verwendet."
+          },
+          "arguments": {
+            "type": "string",
+            "description": "Argumente des Funktionsaufrufs als JSON-String, nur bei `type: function_call` verwendet."
+          },
+          "output": {
+            "type": "string",
+            "description": "Ergebnis der Funktionsausführung, nur bei `type: function_call_output` verwendet."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "title": "Werkzeugdefinition",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Werkzeugtyp\n\n- `function`: eine vom Client ausgeführte benutzerdefinierte Funktion\n- `web_search` / `web_search_2025_08_26`: serverseitig ausgeführte Websuche; `search_context_size` und `user_location` werden ignoriert\n- `custom`: nur `apply_patch`\n\n`file_search`, `code_interpreter` und `mcp` werden ignoriert.",
+            "enum": [
+              "function",
+              "web_search",
+              "web_search_2025_08_26",
+              "custom"
+            ],
+            "example": "function"
+          },
+          "name": {
+            "type": "string",
+            "description": "Werkzeugname, maximal 128 Zeichen, nur Buchstaben, Ziffern, `-` und `_`, innerhalb einer Anfrage eindeutig.",
+            "maxLength": 128,
+            "example": "get_weather"
+          },
+          "description": {
+            "type": "string",
+            "description": "Beschreibung des Werkzeugzwecks; eine klare Beschreibung hilft dem Modell zu entscheiden, wann es aufgerufen wird.",
+            "example": "Fragt das aktuelle Wetter einer bestimmten Stadt ab"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Parameterdefinition im JSON-Schema-Format.",
+            "example": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "Name der Stadt"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "description": "Antwortobjekt des Responses-Endpunkts.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutige Kennung dieser Antwort",
+            "example": "resp_9f2c1a4b8e7d"
+          },
+          "object": {
+            "type": "string",
+            "description": "Objekttyp, stets `response`",
+            "example": "response"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Erstellungszeit als Unix-Zeitstempel (Sekunden)",
+            "example": 1755000000
+          },
+          "status": {
+            "type": "string",
+            "description": "Status der Antwort\n\n- `completed`: normal abgeschlossen\n- `in_progress`: wird noch generiert\n- `incomplete`: z. B. wegen der Länge gekürzt, siehe `incomplete_details`\n- `failed`: Generierung fehlgeschlagen, siehe `error`",
+            "enum": [
+              "in_progress",
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "ID des Modells, das diese Antwort tatsächlich erzeugt hat",
+            "example": "deepseek-v4-flash"
+          },
+          "output": {
+            "type": "array",
+            "description": "Liste der Ausgabeelemente in Generierungsreihenfolge. Felder je Typ:\n\n- `reasoning`: der Denkvorgang, mit `id`, `status`, `content` (Liste von `reasoning_text`-Blöcken) und `summary`\n- `message`: die endgültige Antwort, mit `id`, `status`, `role` und `content` (Liste von `output_text`-Blöcken)\n- `function_call`: ein Funktionsaufruf des Modells, mit `id`, `status`, `call_id`, `name` und `arguments`; der Client führt ihn aus und gibt das Ergebnis als `function_call_output` zurück\n- `web_search_call`: ein serverseitig ausgeführtes Websuchprotokoll, mit `id`, `status` und `action` (beschreibt die durchgeführte Suche)",
+            "items": {
+              "type": "object"
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Fehlerursache; bei Erfolg `null`"
+          },
+          "incomplete_details": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Grund der Kürzung; ohne Kürzung `null`"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Statistik zur Tokennutzung (einschließlich Cache- und Denkanteilen)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Gesamtzahl der Eingabetokens (einschließlich Cache-Treffern und -Fehlschlägen)",
+            "example": 694
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "Aufschlüsselung der Eingabetokens",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Anzahl der Tokens, die den Kontext-Cache getroffen haben\n\n**Hinweis**: Der Trefferanteil wird zum **Cache-Treffer-Preis** abgerechnet (Flash 2 UC/1K, Pro 3 UC/1K), der Fehlanteil entspricht `input_tokens - cached_tokens` und wird zum **Standard-Eingabepreis** abgerechnet (Flash 100 UC/1K, Pro 300 UC/1K)",
+                "example": 640
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Ausgabetokens (einschließlich des Denkanteils)",
+            "example": 20
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "Aufschlüsselung der Ausgabetokens",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Anzahl der im Denkmodus erzeugten Denktokens (zählen zur Ausgabe und werden zum Ausgabepreis abgerechnet)",
+                "example": 10
+              }
+            }
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Gesamtzahl der Tokens = input_tokens + output_tokens",
+            "example": 714
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Fehlerantwort",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP-Statuscode",
+                "example": 400
+              },
+              "message": {
+                "type": "string",
+                "description": "Fehlerbeschreibung",
+                "example": "Invalid request parameters"
+              },
+              "type": {
+                "type": "string",
+                "description": "Fehlertyp",
+                "example": "invalid_request_error"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

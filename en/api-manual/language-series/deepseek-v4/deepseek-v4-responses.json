@@ -1,0 +1,812 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepSeek V4 Full Parameter Reference (Responses API)",
+    "description": "Complete API reference for the DeepSeek V4 series Responses endpoint (`deepseek-v4-flash` / `deepseek-v4-pro`).\n\n**Model capabilities**:\n- Context length: **1,000,000 tokens** (1M)\n- Max output: **384,000 tokens** (384K)\n- Thinking mode: controlled by `reasoning.effort`; `deepseek-v4-pro` excels at complex reasoning\n- Disk-based context cache: hits are automatic, and hits and misses are billed separately\n- Built-in web search: the `web_search` tool is executed server-side, with no client involvement\n\n**Protocol notes**: This endpoint is fully compatible with the OpenAI Responses API protocol. The request body is preserved as-is, with no field reordering or stripping, so undeclared extension fields and the cache prefix are unaffected.\n\n**Stateless**: DeepSeek Responses stores no sessions; multi-turn conversations require the client to send the full history on every request.\n\n**Pricing tiers (UC/1K tokens, EvoLink internal unit)**:\n| Model | Input cache hit | Input cache miss | Output |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 2 | 100 | 200 |\n| deepseek-v4-pro | 3 | 300 | 600 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommended)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Chat Completion",
+      "description": "AI chat completion related endpoints"
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "tags": [
+          "Chat Completion"
+        ],
+        "summary": "DeepSeek V4 Responses API (OpenAI-compatible)",
+        "description": "- Call DeepSeek V4 models using the OpenAI Responses protocol\n- Supports both `deepseek-v4-flash` (fast general-purpose) and `deepseek-v4-pro` (deep reasoning)\n- **Input shapes**: `input` can be plain text or an array of input items (message, function call, function result, reasoning, search record)\n- **System instructions**: provided via `instructions`, equivalent to a leading system message\n- **Thinking mode**: controlled by `reasoning.effort`; thinking content is returned as a `reasoning` output item\n- **Streaming**: semantic SSE events ending with `response.completed`; **no `[DONE]` is sent**\n- **Tool calling**: supports Function Calling and the built-in `web_search` tool\n- **Structured output**: enabled via `text.format` for JSON object or JSON Schema\n- **Context caching**: requests sharing a prefix hit the cache automatically, greatly reducing input cost\n\n**Streaming events**: `response.created`, `response.output_item.added`, `response.reasoning_text.delta`, `response.output_text.delta`, with terminal events `response.completed` / `response.incomplete` / `response.failed`. Every event carries a `sequence_number` for ordering.\n\n**Fields with no effect**: the following OpenAI fields can be sent without error, but produce no actual effect.\n\n| Field | Behavior |\n| --- | --- |\n| `store` | Always `false`; responses are not stored |\n| `previous_response_id` | Always `null`; resuming a conversation is not supported |\n| `conversation` | Not supported |\n| `background` / `metadata` / `include` | Ignored |\n| `prompt` / `truncation` / `service_tier` | Ignored |\n| `safety_identifier` / `context_management` | Ignored |\n| `stream_options` | Ignored |\n| `parallel_tool_calls` | Ignored; parallel tool calls are always enabled |\n| `max_tool_calls` | Ignored |\n| `file_search` / `code_interpreter` / `mcp` tools | Ignored |\n\n**Other limitations**:\n- Custom tools (`type: custom`) support `apply_patch` only\n- The `web_search` tool ignores `search_context_size` and `user_location`\n- Image and file content blocks are converted to placeholders; DeepSeek V4 is not a vision model\n- Input exceeding the context window returns 400 directly, with no automatic truncation",
+        "operationId": "createResponseDeepSeekV4",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "Single-turn text conversation (Flash)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Introduce Hangzhou in one sentence."
+                  }
+                },
+                "with_instructions": {
+                  "summary": "Using system instructions",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "instructions": "You are a meticulous technical writer. Keep answers concise.",
+                    "input": "Explain what context caching is."
+                  }
+                },
+                "multi_turn": {
+                  "summary": "Multi-turn conversation (input item array)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "Suggest three product names for me."
+                      },
+                      {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": "Cloudperch, Lodestar, Plumewind."
+                      },
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "Give me five synonyms for the second one."
+                      }
+                    ]
+                  }
+                },
+                "reasoning_effort": {
+                  "summary": "Pro model with high reasoning effort",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "input": "A pool has an inlet pipe that fills it in 3 hours and an outlet pipe that empties it in 5 hours. How long does it take to fill the pool if both are open? Show your reasoning.",
+                    "reasoning": {
+                      "effort": "high"
+                    }
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "Thinking disabled (direct answer only)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Roughly how long is the high-speed train from Beijing to Shanghai?",
+                    "reasoning": {
+                      "effort": "none"
+                    }
+                  }
+                },
+                "json_schema": {
+                  "summary": "Structured output (JSON Schema)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Extract the person and the city from this sentence: Zhang Wei is traveling to Chengdu for work next week.",
+                    "text": {
+                      "format": {
+                        "type": "json_schema",
+                        "name": "extraction",
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "person": {
+                              "type": "string"
+                            },
+                            "city": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "person",
+                            "city"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "function_calling": {
+                  "summary": "Function Calling",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "What is the weather in Hangzhou right now?",
+                    "tools": [
+                      {
+                        "type": "function",
+                        "name": "get_weather",
+                        "description": "Query real-time weather for a given city",
+                        "parameters": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "City name"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "web_search": {
+                  "summary": "Built-in web search (server-executed)",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Summarize the important AI news from this week.",
+                    "tools": [
+                      {
+                        "type": "web_search"
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "Streaming output",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "Write a short poem about autumn.",
+                    "stream": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generation successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                },
+                "example": {
+                  "id": "resp_9f2c1a4b8e7d",
+                  "object": "response",
+                  "created_at": 1755000000,
+                  "status": "completed",
+                  "model": "deepseek-v4-flash",
+                  "output": [
+                    {
+                      "id": "rs_2b7f",
+                      "type": "reasoning",
+                      "summary": [],
+                      "content": [
+                        {
+                          "type": "reasoning_text",
+                          "text": "The user wants a one-sentence introduction covering both geography and culture."
+                        }
+                      ]
+                    },
+                    {
+                      "id": "msg_5d1a",
+                      "type": "message",
+                      "role": "assistant",
+                      "status": "completed",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "Hangzhou is the capital of Zhejiang Province, known for West Lake and its digital economy.",
+                          "annotations": []
+                        }
+                      ]
+                    }
+                  ],
+                  "error": null,
+                  "incomplete_details": null,
+                  "usage": {
+                    "input_tokens": 694,
+                    "input_tokens_details": {
+                      "cached_tokens": 640
+                    },
+                    "output_tokens": 20,
+                    "output_tokens_details": {
+                      "reasoning_tokens": 10
+                    },
+                    "total_tokens": 714
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated, invalid or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid authentication credentials",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota, recharge required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied for this model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Model access denied",
+                    "type": "permission_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Request entity too large",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Bad gateway",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key**:\n\nVisit the [API Key Management Page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request header**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model ID\n\n- `deepseek-v4-flash`: fast and general-purpose, suited to everyday chat, summarization and extraction\n- `deepseek-v4-pro`: deep reasoning, suited to complex math, code and multi-step planning",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "input": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Model input. At least one of `input` and `instructions` must be provided.\n\n- **String form**: the whole text is treated as a single `user` message\n- **Array form**: a list of input items supporting five types — `message`, `function_call`, `function_call_output`, `reasoning`, `web_search_call`\n\n**Multi-turn conversations**: the endpoint is stateless, so continuing a conversation requires putting the full history into the array.",
+            "items": {
+              "$ref": "#/components/schemas/InputItem"
+            },
+            "example": "Introduce Hangzhou in one sentence."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "System-level instructions, equivalent to a system message inserted at the very front; used to set the role, tone and output constraints.",
+            "example": "You are a meticulous technical writer. Keep answers concise."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Whether to stream the response\n\n- `false` (default): returns the complete response object at once\n- `true`: pushes semantic SSE events; the final event is `response.completed` / `response.incomplete` / `response.failed`, and **no `[DONE]` is sent**",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "Maximum number of output tokens for this generation (including thinking tokens). Range 1 to 393216 (384K). Leave empty to let the model decide.",
+            "minimum": 1,
+            "maximum": 393216,
+            "example": 4096
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Sampling temperature; higher values make output more random. **Has no effect in thinking mode.**",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus sampling threshold. Adjust either this or `temperature`, not both. **Has no effect in thinking mode.**",
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "Return the most likely candidate tokens and their log probabilities at each position.",
+            "minimum": 0,
+            "maximum": 20,
+            "example": 0
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "Thinking mode configuration. DeepSeek V4 enables thinking by default; thinking content is returned as a `reasoning` output item, and its tokens count toward output and are billed at the output rate.",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "Reasoning effort\n\n- `none`: thinking disabled, answers directly\n- `minimal` / `low` / `medium`: lower effort\n- `high` (default): standard deep reasoning\n- `xhigh` / `max`: highest effort; latency and output tokens increase significantly",
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "high",
+                "example": "high"
+              },
+              "max_output_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Upper bound on output tokens during the thinking phase; leave empty for no extra limit."
+              },
+              "summary": {
+                "type": "string",
+                "description": "Can be sent, but no thinking summary is generated, so the field has no effect."
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "description": "Text output format configuration.",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "Output format\n\n- `text` (default): free-form text\n- `json_object`: emits a valid JSON object; **the prompt must mention JSON**\n- `json_schema`: follows the given JSON Schema; both `name` and `schema` are required",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "json_object",
+                      "json_schema"
+                    ],
+                    "default": "text",
+                    "description": "Output format type"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Schema name; required in `json_schema` mode"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "description": "JSON Schema definition; required in `json_schema` mode"
+                  },
+                  "strict": {
+                    "type": "boolean",
+                    "description": "Whether to follow the schema strictly"
+                  }
+                }
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "List of tools available to the model. Function tools are executed by the client, which returns the result as `function_call_output`; `web_search` is executed directly server-side with no client involvement.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "description": "Tool choice strategy\n\n- `none`: tool calling disabled\n- `auto` (default): the model decides\n- `required`: at least one tool must be called\n- `{\"type\": \"function\", \"name\": \"get_weather\"}`: force a specific function\n- `{\"type\": \"web_search\"}`: force a web search",
+            "example": "auto"
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "title": "Input item",
+        "description": "A single item in the `input` array. `type` determines its meaning.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Input item type\n\n- `message`: a conversation message\n- `function_call`: a function call the model made earlier\n- `function_call_output`: the result of a function execution\n- `reasoning`: earlier thinking content\n- `web_search_call`: an earlier web search record",
+            "enum": [
+              "message",
+              "function_call",
+              "function_call_output",
+              "reasoning",
+              "web_search_call"
+            ],
+            "example": "message"
+          },
+          "role": {
+            "type": "string",
+            "description": "Message role, used only with `type: message`. `developer` is treated as `system`.",
+            "enum": [
+              "user",
+              "assistant",
+              "system",
+              "developer"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Message content, used only with `type: message`. Can be plain text or an array of content blocks; the input-side block type is `input_text`. **Image and file blocks such as `input_image` do not raise an error but are replaced with placeholder text** — DeepSeek V4 has no vision capability.",
+            "example": "Introduce Hangzhou in one sentence."
+          },
+          "call_id": {
+            "type": "string",
+            "description": "Function call identifier; `function_call` and `function_call_output` are paired through it."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the called function, used only with `type: function_call`."
+          },
+          "arguments": {
+            "type": "string",
+            "description": "Function call arguments as a JSON string, used only with `type: function_call`."
+          },
+          "output": {
+            "type": "string",
+            "description": "Function execution result, used only with `type: function_call_output`."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "title": "Tool definition",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tool type\n\n- `function`: a custom function executed by the client\n- `web_search` / `web_search_2025_08_26`: web search executed server-side; `search_context_size` and `user_location` are ignored\n- `custom`: `apply_patch` only\n\n`file_search`, `code_interpreter` and `mcp` are ignored.",
+            "enum": [
+              "function",
+              "web_search",
+              "web_search_2025_08_26",
+              "custom"
+            ],
+            "example": "function"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name, up to 128 characters, limited to letters, digits, `-` and `_`, and unique within a request.",
+            "maxLength": 128,
+            "example": "get_weather"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what the tool does; a clear description helps the model decide when to call it.",
+            "example": "Query real-time weather for a given city"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Parameter definition in JSON Schema format.",
+            "example": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "description": "Response object of the Responses endpoint.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of this response",
+            "example": "resp_9f2c1a4b8e7d"
+          },
+          "object": {
+            "type": "string",
+            "description": "Object type, always `response`",
+            "example": "response"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Creation time as a Unix timestamp (seconds)",
+            "example": 1755000000
+          },
+          "status": {
+            "type": "string",
+            "description": "Response status\n\n- `completed`: finished normally\n- `in_progress`: still generating\n- `incomplete`: truncated, e.g. by length; see `incomplete_details`\n- `failed`: generation failed; see `error`",
+            "enum": [
+              "in_progress",
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "ID of the model that actually generated this response",
+            "example": "deepseek-v4-flash"
+          },
+          "output": {
+            "type": "array",
+            "description": "List of output items in generation order. Fields per type:\n\n- `reasoning`: the thinking process, with `id`, `status`, `content` (list of `reasoning_text` blocks) and `summary`\n- `message`: the final answer, with `id`, `status`, `role` and `content` (list of `output_text` blocks)\n- `function_call`: a function call from the model, with `id`, `status`, `call_id`, `name` and `arguments`; the client executes it and returns the result as `function_call_output`\n- `web_search_call`: a web search record executed server-side, with `id`, `status` and `action` (describing the search performed)",
+            "items": {
+              "type": "object"
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Failure reason; `null` on success"
+          },
+          "incomplete_details": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Truncation reason; `null` when not truncated"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token usage statistics (including cache and reasoning breakdowns)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Total input tokens (including cache hits and misses)",
+            "example": 694
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "Input token breakdown",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Number of tokens that hit the context cache\n\n**Note**: the hit portion is billed at the **cache hit rate** (Flash 2 UC/1K, Pro 3 UC/1K); the miss portion equals `input_tokens - cached_tokens` and is billed at the **standard input rate** (Flash 100 UC/1K, Pro 300 UC/1K)",
+                "example": 640
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Number of output tokens (including the thinking portion)",
+            "example": 20
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "Output token breakdown",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Number of reasoning tokens produced by thinking mode (counted as output and billed at the output rate)",
+                "example": 10
+              }
+            }
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total tokens = input_tokens + output_tokens",
+            "example": 714
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Error response",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP status code",
+                "example": 400
+              },
+              "message": {
+                "type": "string",
+                "description": "Error description",
+                "example": "Invalid request parameters"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type",
+                "example": "invalid_request_error"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

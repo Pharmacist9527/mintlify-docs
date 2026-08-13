@@ -1,0 +1,812 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepSeek V4 完全パラメータドキュメント (Responses API)",
+    "description": "DeepSeek V4 シリーズ Responses インターフェース（`deepseek-v4-flash` / `deepseek-v4-pro`）の完全な API リファレンス。\n\n**モデル能力**：\n- コンテキスト長：**1,000,000 tokens**（1M）\n- 最大出力：**384,000 tokens**（384K）\n- 思考モード：`reasoning.effort` で推論強度を制御。`deepseek-v4-pro` は複雑な推論が得意\n- コンテキストディスクキャッシュ：自動ヒット。ヒットとミスは別々に課金\n- 組み込み Web 検索：`web_search` ツールはサーバー側で実行され、クライアントの関与は不要\n\n**プロトコル説明**：本インターフェースは OpenAI Responses API プロトコルに完全互換です。リクエストボディはそのまま保持され、フィールドの並べ替えや削除は行わないため、宣言されていない拡張フィールドとキャッシュ接頭辞は影響を受けません。\n\n**ステートレス**：DeepSeek Responses はセッションを一切保存しません。マルチターン対話では、クライアントが毎回完全な履歴を送信する必要があります。\n\n**課金レート（UC/1K tokens、EvoLink 内部単位）**：\n| モデル | 入力キャッシュヒット | 入力キャッシュミス | 出力 |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 2 | 100 | 200 |\n| deepseek-v4-pro | 3 | 300 | 600 |",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "チャット補完",
+      "description": "AI 会話生成関連インターフェース"
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "tags": [
+          "チャット補完"
+        ],
+        "summary": "DeepSeek V4 Responses インターフェース（OpenAI 互換）",
+        "description": "- OpenAI Responses プロトコルで DeepSeek V4 モデルを呼び出します\n- `deepseek-v4-flash`（高速汎用）と `deepseek-v4-pro`（深い推論）の 2 モデルに対応\n- **入力形態**：`input` は単なるテキストでも、入力アイテム配列（メッセージ、関数呼び出し、関数結果、思考、検索記録）でも可\n- **システム指示**：`instructions` で指定。先頭の system メッセージと同等\n- **思考モード**：`reasoning.effort` で推論強度を制御。思考内容は `reasoning` 出力アイテムとして返却\n- **ストリーミング出力**：セマンティック SSE イベントに対応し、`response.completed` で終了。**`[DONE]` は送信されません**\n- **ツール呼び出し**：Function Calling と組み込み `web_search` Web 検索に対応\n- **構造化出力**：`text.format` で JSON オブジェクトまたは JSON Schema を有効化\n- **コンテキストキャッシュ**：同一接頭辞のリクエストは自動でキャッシュにヒットし、入力コストを大幅に削減\n\n**ストリーミングイベント**：`response.created`、`response.output_item.added`、`response.reasoning_text.delta`、`response.output_text.delta`。終了イベントは `response.completed` / `response.incomplete` / `response.failed` です。各イベントには順序付け用の `sequence_number` が付きます。\n\n**効果のないフィールド**：以下の OpenAI フィールドはそのまま送信してもエラーになりませんが、実際の効果はありません。\n\n| フィールド | 動作 |\n| --- | --- |\n| `store` | 常に `false`。レスポンスは保存されません |\n| `previous_response_id` | 常に `null`。会話の継続には非対応 |\n| `conversation` | 非対応 |\n| `background` / `metadata` / `include` | 無視 |\n| `prompt` / `truncation` / `service_tier` | 無視 |\n| `safety_identifier` / `context_management` | 無視 |\n| `stream_options` | 無視 |\n| `parallel_tool_calls` | 無視。並列ツール呼び出しは常に有効 |\n| `max_tool_calls` | 無視 |\n| `file_search` / `code_interpreter` / `mcp` ツール | 無視 |\n\n**その他の制限**：\n- カスタムツール（`type: custom`）は `apply_patch` のみ対応\n- `web_search` ツールは `search_context_size` と `user_location` を無視します\n- 画像・ファイルコンテンツブロックはプレースホルダーに変換されます。DeepSeek V4 は視覚モデルではありません\n- 入力がコンテキストウィンドウを超えた場合は 400 を返し、自動切り詰めは行いません",
+        "operationId": "createResponseDeepSeekV4",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "シングルターンテキスト会話（Flash）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "杭州を一文で紹介してください。"
+                  }
+                },
+                "with_instructions": {
+                  "summary": "システム指示の使用",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "instructions": "あなたは厳密なテクニカルライターです。回答は簡潔に保ってください。",
+                    "input": "コンテキストキャッシュとは何か説明してください。"
+                  }
+                },
+                "multi_turn": {
+                  "summary": "マルチターン会話（入力アイテム配列）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "製品名を 3 つ考えてください。"
+                      },
+                      {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": "雲棲、啓明、翎風。"
+                      },
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "2 つ目の類義語を 5 つ挙げてください。"
+                      }
+                    ]
+                  }
+                },
+                "reasoning_effort": {
+                  "summary": "Pro モデル + 高強度推論の使用",
+                  "value": {
+                    "model": "deepseek-v4-pro",
+                    "input": "あるプールに給水管と排水管があり、給水管は 3 時間で満たし、排水管は 5 時間で空にします。両方を同時に開いた場合、満たすのに何時間かかりますか。導出過程も示してください。",
+                    "reasoning": {
+                      "effort": "high"
+                    }
+                  }
+                },
+                "disable_thinking": {
+                  "summary": "思考をオフにする（直接回答のみ）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "北京から上海までの高速鉄道はおよそどのくらいかかりますか。",
+                    "reasoning": {
+                      "effort": "none"
+                    }
+                  }
+                },
+                "json_schema": {
+                  "summary": "構造化出力（JSON Schema）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "次の文から人物と都市を抽出してください：張偉は来週、成都へ出張します。",
+                    "text": {
+                      "format": {
+                        "type": "json_schema",
+                        "name": "extraction",
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "person": {
+                              "type": "string"
+                            },
+                            "city": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "person",
+                            "city"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "function_calling": {
+                  "summary": "Function Calling ツール呼び出し",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "杭州の現在の天気はどうですか。",
+                    "tools": [
+                      {
+                        "type": "function",
+                        "name": "get_weather",
+                        "description": "指定した都市のリアルタイム天気を取得する",
+                        "parameters": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "都市名"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "web_search": {
+                  "summary": "組み込み Web 検索（サーバー側実行）",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "今週の人工知能分野の重要ニュースをまとめてください。",
+                    "tools": [
+                      {
+                        "type": "web_search"
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "ストリーミング出力",
+                  "value": {
+                    "model": "deepseek-v4-flash",
+                    "input": "秋についての短い詩を書いてください。",
+                    "stream": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                },
+                "example": {
+                  "id": "resp_9f2c1a4b8e7d",
+                  "object": "response",
+                  "created_at": 1755000000,
+                  "status": "completed",
+                  "model": "deepseek-v4-flash",
+                  "output": [
+                    {
+                      "id": "rs_2b7f",
+                      "type": "reasoning",
+                      "summary": [],
+                      "content": [
+                        {
+                          "type": "reasoning_text",
+                          "text": "ユーザーは一文での紹介を求めており、地理と人文の 2 点を押さえる必要がある。"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "msg_5d1a",
+                      "type": "message",
+                      "role": "assistant",
+                      "status": "completed",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "杭州は浙江省の省都で、西湖の景観とデジタル経済で知られています。",
+                          "annotations": []
+                        }
+                      ]
+                    }
+                  ],
+                  "error": null,
+                  "incomplete_details": null,
+                  "usage": {
+                    "input_tokens": 694,
+                    "input_tokens_details": {
+                      "cached_tokens": 640
+                    },
+                    "output_tokens": 20,
+                    "output_tokens_details": {
+                      "reasoning_tokens": 10
+                    },
+                    "total_tokens": 714
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、Token が無効または期限切れ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid authentication credentials",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "このモデルへのアクセス権限がありません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Model access denied",
+                    "type": "permission_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "リソースが存在しません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Model not found",
+                    "type": "not_found_error"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "リクエストボディが大きすぎる",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Request entity too large",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエスト頻度が制限を超えました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "ゲートウェイエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Bad gateway",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "server_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのインターフェースは Bearer Token による認証が必要です##\n\n**API Key の取得**：\n\n[API Key 管理ページ](https://evolink.ai/dashboard/keys) にアクセスして API Key を取得してください\n\n**使用時はリクエストヘッダに追加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "モデル ID\n\n- `deepseek-v4-flash`：高速汎用。日常的な対話、要約、抽出に適しています\n- `deepseek-v4-pro`：深い推論。複雑な数学、コード、多段階の計画立案に適しています",
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro"
+            ],
+            "default": "deepseek-v4-flash",
+            "example": "deepseek-v4-flash"
+          },
+          "input": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "モデルへの入力。`input` と `instructions` のうち少なくとも一方が必要です。\n\n- **文字列形式**：テキスト全体が 1 件の `user` メッセージとして扱われます\n- **配列形式**：入力アイテムのリスト。`message`、`function_call`、`function_call_output`、`reasoning`、`web_search_call` の 5 種類に対応\n\n**マルチターン会話**：本インターフェースはステートレスのため、会話を継続するには完全な履歴を配列に含める必要があります。",
+            "items": {
+              "$ref": "#/components/schemas/InputItem"
+            },
+            "example": "杭州を一文で紹介してください。"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "システムレベルの指示。先頭に挿入される system メッセージと同等で、役割・口調・出力制約の設定に使用します。",
+            "example": "あなたは厳密なテクニカルライターです。回答は簡潔に保ってください。"
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "ストリーミングで返すかどうか\n\n- `false`（デフォルト）：完全なレスポンスオブジェクトを一度に返します\n- `true`：セマンティック SSE イベントで配信します。最終イベントは `response.completed` / `response.incomplete` / `response.failed` で、**`[DONE]` は送信されません**",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "今回の生成における最大出力トークン数（思考トークンを含む）。範囲は 1 ～ 393216（384K）。未指定の場合はモデルが判断します。",
+            "minimum": 1,
+            "maximum": 393216,
+            "example": 4096
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度。高いほど出力がランダムになります。**思考モードでは効果がありません。**",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核サンプリングのしきい値。`temperature` とどちらか一方のみの調整を推奨します。**思考モードでは効果がありません。**",
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "各位置で確率の高い候補トークンとその対数確率を返します。",
+            "minimum": 0,
+            "maximum": 20,
+            "example": 0
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "思考モードの設定。DeepSeek V4 はデフォルトで思考が有効です。思考内容は `reasoning` 出力アイテムとして返され、そのトークンは出力に計上され出力単価で課金されます。",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "推論強度\n\n- `none`：思考をオフにして直接回答\n- `minimal` / `low` / `medium`：低めの強度\n- `high`（デフォルト）：通常の深い推論\n- `xhigh` / `max`：最高強度。所要時間と出力トークンが大幅に増加します",
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "high",
+                "example": "high"
+              },
+              "max_output_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "思考段階の出力トークン上限。未指定の場合は追加の制限はありません。"
+              },
+              "summary": {
+                "type": "string",
+                "description": "送信できますが、思考の要約は生成されないため、このフィールドに実効はありません。"
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "description": "テキスト出力フォーマットの設定。",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "出力フォーマット\n\n- `text`（デフォルト）：自由形式テキスト\n- `json_object`：妥当な JSON オブジェクトを出力します。**プロンプトに JSON という語を含める必要があります**\n- `json_schema`：指定した JSON Schema に従って出力します。`name` と `schema` の両方が必要です",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "json_object",
+                      "json_schema"
+                    ],
+                    "default": "text",
+                    "description": "出力フォーマットの種類"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Schema 名。`json_schema` モードでは必須"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "description": "JSON Schema の定義。`json_schema` モードでは必須"
+                  },
+                  "strict": {
+                    "type": "boolean",
+                    "description": "Schema に厳密に従うかどうか"
+                  }
+                }
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "モデルが呼び出せるツールのリスト。関数ツールはクライアントが実行し、結果を `function_call_output` として返します。`web_search` はサーバー側で直接実行され、クライアントの関与は不要です。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "description": "ツール呼び出しの方針\n\n- `none`：ツール呼び出しを禁止\n- `auto`（デフォルト）：モデルが判断\n- `required`：少なくとも 1 つのツールを呼び出す必要があります\n- `{\"type\": \"function\", \"name\": \"get_weather\"}`：指定した関数を強制的に呼び出します\n- `{\"type\": \"web_search\"}`：Web 検索を強制的に実行します",
+            "example": "auto"
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "title": "入力アイテム",
+        "description": "`input` 配列内の単一の入力アイテム。`type` がそのアイテムの意味を決定します。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "入力アイテムの種類\n\n- `message`：会話メッセージ 1 件\n- `function_call`：履歴中にモデルが発行した関数呼び出し\n- `function_call_output`：関数の実行結果\n- `reasoning`：過去の思考内容\n- `web_search_call`：過去の Web 検索記録",
+            "enum": [
+              "message",
+              "function_call",
+              "function_call_output",
+              "reasoning",
+              "web_search_call"
+            ],
+            "example": "message"
+          },
+          "role": {
+            "type": "string",
+            "description": "メッセージのロール。`type: message` のときのみ使用します。`developer` は `system` として扱われます。",
+            "enum": [
+              "user",
+              "assistant",
+              "system",
+              "developer"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "メッセージ本文。`type: message` のときのみ使用します。プレーンテキストでも、コンテンツブロック配列でも可で、入力側のブロック種別は `input_text` です。**`input_image` などの画像・ファイルブロックはエラーになりませんが、プレースホルダーテキストに置き換えられます**。DeepSeek V4 に視覚能力はありません。",
+            "example": "杭州を一文で紹介してください。"
+          },
+          "call_id": {
+            "type": "string",
+            "description": "関数呼び出しの識別子。`function_call` と `function_call_output` はこれで対応付けられます。"
+          },
+          "name": {
+            "type": "string",
+            "description": "呼び出された関数名。`type: function_call` のときのみ使用します。"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "関数呼び出しの引数（JSON 文字列）。`type: function_call` のときのみ使用します。"
+          },
+          "output": {
+            "type": "string",
+            "description": "関数の実行結果。`type: function_call_output` のときのみ使用します。"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "title": "ツール定義",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "ツールの種類\n\n- `function`：クライアントが実行するカスタム関数\n- `web_search` / `web_search_2025_08_26`：サーバー側で実行される Web 検索。`search_context_size` と `user_location` は無視されます\n- `custom`：`apply_patch` のみ対応\n\n`file_search`、`code_interpreter`、`mcp` は無視されます。",
+            "enum": [
+              "function",
+              "web_search",
+              "web_search_2025_08_26",
+              "custom"
+            ],
+            "example": "function"
+          },
+          "name": {
+            "type": "string",
+            "description": "ツール名。最大 128 文字、英数字と `-`、`_` のみ使用でき、同一リクエスト内で重複できません。",
+            "maxLength": 128,
+            "example": "get_weather"
+          },
+          "description": {
+            "type": "string",
+            "description": "ツールの用途説明。明確に書くとモデルが呼び出し時機を判断しやすくなります。",
+            "example": "指定した都市のリアルタイム天気を取得する"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "パラメータ定義（JSON Schema 形式）。",
+            "example": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "都市名"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "description": "Responses インターフェースのレスポンスオブジェクト。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "本レスポンスの一意な識別子",
+            "example": "resp_9f2c1a4b8e7d"
+          },
+          "object": {
+            "type": "string",
+            "description": "オブジェクト種別。常に `response`",
+            "example": "response"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "作成時刻（Unix タイムスタンプ、秒）",
+            "example": 1755000000
+          },
+          "status": {
+            "type": "string",
+            "description": "レスポンスの状態\n\n- `completed`：正常に完了\n- `in_progress`：生成中\n- `incomplete`：長さなどの理由で切り詰められました。詳細は `incomplete_details` を参照\n- `failed`：生成に失敗しました。詳細は `error` を参照",
+            "enum": [
+              "in_progress",
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に本レスポンスを生成したモデル ID",
+            "example": "deepseek-v4-flash"
+          },
+          "output": {
+            "type": "array",
+            "description": "出力アイテムのリスト（生成順）。種類ごとのフィールド：\n\n- `reasoning`：思考過程。`id`、`status`、`content`（`reasoning_text` ブロックのリスト）、`summary` を含みます\n- `message`：最終回答。`id`、`status`、`role`、`content`（`output_text` ブロックのリスト）を含みます\n- `function_call`：モデルが発行した関数呼び出し。`id`、`status`、`call_id`、`name`、`arguments` を含み、クライアントが実行後に `function_call_output` として返します\n- `web_search_call`：サーバー側で実行された Web 検索記録。`id`、`status`、`action`（実行された検索内容）を含みます",
+            "items": {
+              "type": "object"
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "失敗の理由。成功時は `null`"
+          },
+          "incomplete_details": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "切り詰めの理由。切り詰められていない場合は `null`"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "トークン使用統計（キャッシュと推論の内訳を含む）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "入力トークン総数（キャッシュヒットとミスを含む）",
+            "example": 694
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "入力トークンの内訳",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "コンテキストキャッシュにヒットしたトークン数\n\n**説明**：ヒット分は**キャッシュヒット単価**（Flash 2 UC/1K、Pro 3 UC/1K）で課金され、ミス分は `input_tokens - cached_tokens` に等しく、**標準入力単価**（Flash 100 UC/1K、Pro 300 UC/1K）で課金されます",
+                "example": 640
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力トークン数（思考部分を含む）",
+            "example": 20
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "出力トークンの内訳",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "思考モードで生成された推論トークン数（出力に計上され、出力単価で課金されます）",
+                "example": 10
+              }
+            }
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "総トークン数 = input_tokens + output_tokens",
+            "example": 714
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "エラーレスポンス",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP ステータスコード",
+                "example": 400
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明",
+                "example": "Invalid request parameters"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラーの種類",
+                "example": "invalid_request_error"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
