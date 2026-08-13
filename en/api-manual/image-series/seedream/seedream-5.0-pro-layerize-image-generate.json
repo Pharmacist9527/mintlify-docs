@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "doubao-seedream-5.0-pro Interface",
-    "description": "Create image tasks using AI models, supporting multiple models and parameter configurations",
+    "title": "doubao-seedream-5.0-pro-layerize Interface",
+    "description": "Use the Seedream 5.0 Pro layer decomposition model to split one image into a base image and multiple editable layers",
     "license": {
       "name": "MIT"
     },
@@ -22,9 +22,9 @@
   "paths": {
     "/v1/images/generations": {
       "post": {
-        "summary": "doubao-seedream-5.0-pro Interface",
-        "description": "- Seedream 5.0 Pro (doubao-seedream-5.0-pro) model supports text-to-image, image-to-image, image editing and other generation modes\n- Asynchronous processing mode, use the returned task ID to [query](/en/api-manual/task-management/get-task-detail)\n- Generated image links are valid for 24 hours, please save them promptly",
-        "operationId": "createImageGeneration",
+        "summary": "doubao-seedream-5.0-pro-layerize Interface",
+        "description": "- Seedream 5.0 Pro Layer Decomposition (doubao-seedream-5.0-pro-layerize) splits one image into a base image and several independent layers; every layer is a PNG with an alpha channel, while the base image format follows `output_format`\n- Exactly **one** input image is required; `prompt` is optional — omit it and the model automatically detects every major element in the image and splits them one by one\n- The number of output images is decided by the decomposition result (`1` ~ `17`) and cannot be controlled by request parameters; if any layer fails the whole request fails — there is no partial success, and a failed request is fully refunded\n- Asynchronous processing mode, use the returned task ID to [query](/en/api-manual/task-management/get-task-detail). In the task detail, every item in `result_data` carries `z_index` (stacking order: `0` for the base image, incrementing from `1` for layers); layers additionally carry `bounding_box` (`absolute` in base-image pixel coordinates, `normalized` in the `0`~`1000` range), `name` and `description`\n- This model takes longer than plain generation: about `120` seconds\n- Generated image links are valid for 24 hours, please save them promptly",
+        "operationId": "createSeedreamLayerizeImageGeneration",
         "tags": [
           "Image Generation"
         ],
@@ -36,13 +36,37 @@
                 "$ref": "#/components/schemas/ImageGenerationRequest"
               },
               "examples": {
-                "text_to_image": {
-                  "summary": "Text to Image",
+                "auto_layerize": {
+                  "summary": "Automatic decomposition (no prompt)",
                   "value": {
-                    "model": "doubao-seedream-5.0-pro",
-                    "prompt": "A serene lake reflecting the beautiful sunset",
-                    "size": "16:9",
+                    "model": "doubao-seedream-5.0-pro-layerize",
+                    "image_urls": [
+                      "https://example.com/poster.png"
+                    ],
+                    "quality": "auto",
+                    "output_format": "jpeg"
+                  }
+                },
+                "prompt_layerize": {
+                  "summary": "Specify elements in natural language",
+                  "value": {
+                    "model": "doubao-seedream-5.0-pro-layerize",
+                    "prompt": "Split out the parrot and the title text",
+                    "image_urls": [
+                      "https://example.com/poster.png"
+                    ],
                     "quality": "2K"
+                  }
+                },
+                "bbox_layerize": {
+                  "summary": "Specify with bbox coordinates",
+                  "value": {
+                    "model": "doubao-seedream-5.0-pro-layerize",
+                    "prompt": "title text<bbox>179 58 809 197</bbox>, 1 parrot<bbox>330 274 641 991</bbox>",
+                    "image_urls": [
+                      "https://example.com/poster.png"
+                    ],
+                    "quality": "1.5K"
                   }
                 }
               }
@@ -121,7 +145,7 @@
                 "example": {
                   "error": {
                     "code": "model_access_denied",
-                    "message": "Token does not have access to model: doubao-seedream-5.0-pro",
+                    "message": "Token does not have access to model: doubao-seedream-5.0-pro-layerize",
                     "type": "invalid_request_error"
                   }
                 }
@@ -172,39 +196,47 @@
         "type": "object",
         "required": [
           "model",
-          "prompt"
+          "image_urls"
         ],
         "properties": {
           "model": {
             "type": "string",
             "description": "Image generation model name",
             "enum": [
-              "doubao-seedream-5.0-pro"
+              "doubao-seedream-5.0-pro-layerize"
             ],
-            "default": "doubao-seedream-5.0-pro",
-            "example": "doubao-seedream-5.0-pro"
+            "default": "doubao-seedream-5.0-pro-layerize",
+            "example": "doubao-seedream-5.0-pro-layerize"
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "URL of the image to decompose (required)\n\n**Note:**\n- **Exactly `1` image is required**; omitting it or passing `2` or more returns an error\n- Supported formats: `.png`, `.jpeg`, `.jpg` (stricter than plain generation — webp and others are rejected)\n- Image size: no more than `30MB`\n- Total pixels: `[262144, 6000×6000]`, i.e. at least `512×512` (a higher lower bound than plain generation)\n- Aspect ratio (width/height) range: `[1/16, 16]`\n- The image URL must be directly viewable by the server, or the URL must trigger a direct download when accessed (usually such URLs end with an image file extension, such as `.png`, `.jpg`)",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "example": [
+              "https://example.com/poster.png"
+            ]
           },
           "prompt": {
             "type": "string",
-            "description": "Prompt describing the image you want to generate, or describing how to edit the input image\n\n**Language support:** In addition to Chinese and English, Seedream 5.0 Pro also supports Russian, Arabic, Filipino, Thai, Turkish, Korean, Malay, Spanish, Portuguese, Indonesian, French, German, Vietnamese and Japanese.\n\n**Length limit:** Up to `4000` tokens (about 2,600 Chinese characters or 5,000 English words); exceeding it returns `400` and is not billed.\n\n**Recommendation:** Keep prompts under 300 Chinese characters or 600 English words. A longer prompt still fits the limit but dilutes the information, and the model may miss details, leaving elements out of the image.",
-            "example": "A serene lake reflecting the beautiful sunset"
-          },
-          "size": {
-            "type": "string",
-            "description": "Size of generated image, supports two formats:\n\n**Method 1 - Ratio format:**\n- `auto`, `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `4:5`, `5:4`, `9:16`, `16:9`, `21:9`, `9:21`\n- Works with the `quality` parameter to automatically generate an image at the corresponding aspect ratio and resolution, without manually specifying pixels\n\n**Method 2 - Pixel format:**\n- Width x height, e.g.: `1024x1024`, `2048x2048`\n- Total pixel range: `[921600, 4624220]`\n- Aspect ratio range: `[1/16, 16]`\n- Both width and height must be greater than `14px`\n\nDefaults to `auto` when `size` is omitted. `auto` means no explicit ratio: the model decides the composition from the prompt, and the output resolution follows the tier set by `quality`.",
-            "default": "auto",
-            "example": "16:9"
+            "description": "Which elements to split out (optional)\n\n**Three ways to use it:**\n- **Omit it**: the model detects every major element in the image and splits them one by one\n- **Natural language**: e.g. `Split out the parrot and the title text` — elements are identified semantically and turned into layers\n- **Exact coordinates**: use `<bbox>` tags to pin down a position, e.g. `title text<bbox>179 58 809 197</bbox>`; normalized coordinates (`0`~`1000`) are recommended",
+            "example": "Split out the parrot and the title text"
           },
           "quality": {
             "type": "string",
-            "description": "Resolution tier, used with the ratio format of `size`, defaults to `1K`.\n\n| Aspect ratio | 1K | 1.5K | 2K |\n|---|---|---|---|\n| `1:1` | 1024×1024 | 1536×1536 | 2048×2048 |\n| `2:3` | 832×1248 | 1248×1872 | 1664×2496 |\n| `3:2` | 1248×832 | 1872×1248 | 2496×1664 |\n| `3:4` | 864×1152 | 1344×1792 | 1776×2368 |\n| `4:3` | 1152×864 | 1792×1344 | 2368×1776 |\n| `4:5` | 896×1120 | 1344×1680 | 1792×2240 |\n| `5:4` | 1120×896 | 1680×1344 | 2240×1792 |\n| `9:16` | 800×1424 | 1152×2048 | 1584×2816 |\n| `16:9` | 1424×800 | 2048×1152 | 2816×1584 |\n| `21:9` | 1568×672 | 2352×1008 | 3136×1344 |\n| `9:21` | 672×1568 | 1008×2352 | 1344×3136 |\n\n**Billing:**\n- `1K` and `1.5K` cost the same; `1.5K` looks better, so prefer `1.5K`\n- With the pixel format of `size`, the tier follows the actual output pixel count: up to `2610000` is billed at the lower tier, above that at the higher tier",
+            "description": "Output resolution tier, defaults to `auto`\n\n**Options:** `auto`, `1K`, `1.5K`, `2K`\n\n**Notes:**\n- Layer mode **only accepts tiers**; passing a ratio (such as `16:9`) or explicit pixels (such as `2048x2048`) returns an error\n- `auto` makes the output follow the input image: if the original size falls within `[921600, 4624220]` pixels it is kept as is, below 1K it is output at 1K, above 2K it is output at 2K\n- Each layer keeps its own aspect ratio from the original image, and the base image keeps the aspect ratio of the input\n\n**Billing:** the tier is decided per output image from its own pixel count; `1K` and `1.5K` cost the same, and an output image above `2610000` pixels is billed at the higher tier.",
             "enum": [
+              "auto",
               "1K",
               "1.5K",
               "2K"
             ],
-            "default": "1K",
-            "example": "2K"
+            "default": "auto",
+            "example": "auto"
           },
           "prompt_priority": {
             "type": "string",
@@ -216,44 +248,15 @@
             "default": "standard",
             "example": "standard"
           },
-          "image_urls": {
-            "type": "array",
-            "description": "Reference image URL list for image-to-image and image editing features\n\n**Note:**\n- Single request supports input image quantity: `10` images\n- Image size: no more than `30MB`\n- Supported image formats: `.jpeg`, `.jpg`, `.png`, `.webp`, `.bmp`, `.tiff`, `.gif`, `.heic`, `.heif`\n- Aspect ratio (width/height) range: `[1/16, 16]`\n- Width and height (px) > 14\n- Total pixels: `[196, 6000×6000]`\n- Image URLs must be directly viewable by the server, or the image URL should trigger direct download when accessed (typically these URLs end with image file extensions, such as `.png`, `.jpg`)",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "maxItems": 10,
-            "example": [
-              "https://example.com/image1.png",
-              "https://example.com/image2.png"
-            ]
-          },
           "output_format": {
             "type": "string",
-            "description": "Output image format\n\n**Options:**\n- `png`: PNG format\n- `jpeg`: JPEG format\n\n**Note:** When `background=transparent` is set, the output is always png; passing `output_format=jpeg` at the same time is rejected.",
+            "description": "Output image format\n\n**Options:**\n- `jpeg`: JPEG format (default)\n- `png`: PNG format\n\n**Note:** This parameter **only controls the base image**. The layers are always PNG with an alpha channel and are not affected by it.",
             "enum": [
-              "png",
-              "jpeg"
+              "jpeg",
+              "png"
             ],
             "default": "jpeg",
             "example": "jpeg"
-          },
-          "watermark": {
-            "type": "boolean",
-            "description": "Whether to add a watermark to the generated image",
-            "default": false,
-            "example": false
-          },
-          "background": {
-            "type": "string",
-            "description": "Transparency switch\n\n**Options:**\n- `opaque`: Regular solid background (default)\n- `transparent`: Preserve the alpha channel the input image already has\n\n> `transparent` **preserves** the transparent background of the input image — it does **not** cut out the subject or remove the background.\n\n**Limits (apply to `transparent` only):**\n- Exactly one input image must be supplied, and it must have an alpha channel\n- The output is always png; passing `output_format=jpeg` at the same time is rejected\n- Input images in formats without alpha support (such as jpeg) are rejected by the model",
-            "enum": [
-              "opaque",
-              "transparent"
-            ],
-            "default": "opaque",
-            "example": "opaque"
           },
           "callback_url": {
             "type": "string",
@@ -274,12 +277,12 @@
           "id": {
             "type": "string",
             "description": "Task ID",
-            "example": "task-unified-1757165031-seedream5pro"
+            "example": "task-unified-1757165031-seedream5prolayerize"
           },
           "model": {
             "type": "string",
             "description": "Actual model name used",
-            "example": "doubao-seedream-5.0-pro"
+            "example": "doubao-seedream-5.0-pro-layerize"
           },
           "object": {
             "type": "string",
@@ -339,7 +342,7 @@
             "type": "integer",
             "description": "Estimated completion time (seconds)",
             "minimum": 0,
-            "example": 45
+            "example": 120
           }
         }
       },
@@ -361,7 +364,7 @@
             "type": "number",
             "description": "Estimated credits consumed",
             "minimum": 0,
-            "example": 1.8
+            "example": 39.168
           },
           "user_group": {
             "type": "string",

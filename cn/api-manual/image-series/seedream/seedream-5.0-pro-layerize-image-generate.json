@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "doubao-seedream-5.0-pro接口",
-    "description": "使用AI模型创建图像任务，支持多种模型和参数配置",
+    "title": "doubao-seedream-5.0-pro-layerize接口",
+    "description": "使用 Seedream 5.0 Pro 图层拆分模型，把一张图片拆成底图与多个可编辑图层",
     "license": {
       "name": "MIT"
     },
@@ -22,9 +22,9 @@
   "paths": {
     "/v1/images/generations": {
       "post": {
-        "summary": "doubao-seedream-5.0-pro接口",
-        "description": "- Seedream 5.0 Pro (doubao-seedream-5.0-pro) 模型支持文本转图片、图生图、图像编辑等多种生成模式\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的图像链接，有效期为24小时，请尽快保存",
-        "operationId": "createImageGeneration",
+        "summary": "doubao-seedream-5.0-pro-layerize接口",
+        "description": "- Seedream 5.0 Pro 图层拆分 (doubao-seedream-5.0-pro-layerize) 把一张图片拆成底图与多个独立图层，每个图层是带透明通道的 PNG，底图格式由 `output_format` 决定\n- 输入必须**恰好 1 张**图片；`prompt` 选填，不传即由模型自动识别画面中所有主要元素逐一拆分\n- 输出张数由拆分结果决定（`1` ~ `17` 张），不受请求参数控制；任一图层失败则整单失败，不存在部分成功，失败会全额退款\n- 异步处理模式，使用返回的任务ID  [进行查询](/cn/api-manual/task-management/get-task-detail)。任务详情的 `result_data` 中，每张图片附带 `z_index`（叠放顺序，底图为 `0`，图层从 `1` 递增），图层还带 `bounding_box`（`absolute` 为底图坐标系的像素坐标，`normalized` 值域 `0`~`1000`）、`name` 与 `description`\n- 本模型耗时较长，预估约 `120` 秒\n- 生成的图像链接，有效期为24小时，请尽快保存",
+        "operationId": "createSeedreamLayerizeImageGeneration",
         "tags": [
           "图像生成"
         ],
@@ -36,13 +36,37 @@
                 "$ref": "#/components/schemas/ImageGenerationRequest"
               },
               "examples": {
-                "text_to_image": {
-                  "summary": "文本生成图像",
+                "auto_layerize": {
+                  "summary": "自动拆分（不传 prompt）",
                   "value": {
-                    "model": "doubao-seedream-5.0-pro",
-                    "prompt": "一片宁静的湖水倒映着夕阳的美景",
-                    "size": "16:9",
+                    "model": "doubao-seedream-5.0-pro-layerize",
+                    "image_urls": [
+                      "https://example.com/poster.png"
+                    ],
+                    "quality": "auto",
+                    "output_format": "jpeg"
+                  }
+                },
+                "prompt_layerize": {
+                  "summary": "自然语言指定要拆的元素",
+                  "value": {
+                    "model": "doubao-seedream-5.0-pro-layerize",
+                    "prompt": "把鹦鹉和标题文字拆出来",
+                    "image_urls": [
+                      "https://example.com/poster.png"
+                    ],
                     "quality": "2K"
+                  }
+                },
+                "bbox_layerize": {
+                  "summary": "用 bbox 坐标精确指定",
+                  "value": {
+                    "model": "doubao-seedream-5.0-pro-layerize",
+                    "prompt": "标题文字<bbox>179 58 809 197</bbox>、1只鹦鹉<bbox>330 274 641 991</bbox>",
+                    "image_urls": [
+                      "https://example.com/poster.png"
+                    ],
+                    "quality": "1.5K"
                   }
                 }
               }
@@ -121,7 +145,7 @@
                 "example": {
                   "error": {
                     "code": "model_access_denied",
-                    "message": "Token does not have access to model: doubao-seedream-5.0-pro",
+                    "message": "Token does not have access to model: doubao-seedream-5.0-pro-layerize",
                     "type": "invalid_request_error"
                   }
                 }
@@ -172,39 +196,47 @@
         "type": "object",
         "required": [
           "model",
-          "prompt"
+          "image_urls"
         ],
         "properties": {
           "model": {
             "type": "string",
             "description": "图像生成模型名称",
             "enum": [
-              "doubao-seedream-5.0-pro"
+              "doubao-seedream-5.0-pro-layerize"
             ],
-            "default": "doubao-seedream-5.0-pro",
-            "example": "doubao-seedream-5.0-pro"
+            "default": "doubao-seedream-5.0-pro-layerize",
+            "example": "doubao-seedream-5.0-pro-layerize"
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "待拆分的图片 URL（必填）\n\n**注意：**\n- **必须恰好 `1` 张**，不传或传 `2` 张及以上都会报错\n- 支持的图像格式：`.png`、`.jpeg`、`.jpg`（比普通生成更严格，webp 等格式会被拒绝）\n- 图像大小：不超过 `30MB`\n- 总像素范围：`[262144, 6000×6000]`，即最低 `512×512`（下限高于普通生成）\n- 宽高比（宽/高）范围：`[1/16, 16]`\n- 图像URL需要服务器能直接查看，或者图像URL在访问时会直接进行下载（一般这种URL是以图像的扩展名作为结尾，例如`.png`、`.jpg`）",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "example": [
+              "https://example.com/poster.png"
+            ]
           },
           "prompt": {
             "type": "string",
-            "description": "提示词，描述想要生成的图像，或描述如何编辑已输入的图像\n\n**语言支持：** 中英文之外，Seedream 5.0 Pro 还支持俄语、阿拉伯语、菲律宾语、泰语、土耳其语、韩语、马来语、西班牙语、葡萄牙语、印尼语、法语、德语、越南语、日语。\n\n**长度限制：** 最多 `4000` tokens（中文约 2600 字、英文约 5000 词），超出返回 `400` 且不计费。\n\n**效果建议：** 建议中文不超过 300 字、英文不超过 600 词。过长虽在限额内，但信息容易分散，模型可能忽略细节导致画面元素缺失。",
-            "example": "一片宁静的湖水倒映着夕阳的美景"
-          },
-          "size": {
-            "type": "string",
-            "description": "生成图像的尺寸，支持两种格式：\n\n**方式1 - 比例格式：**\n- `auto`、`1:1`、`2:3`、`3:2`、`3:4`、`4:3`、`4:5`、`5:4`、`9:16`、`16:9`、`21:9`、`9:21`\n- 配合 `quality` 参数使用，系统自动生成对应比例和分辨率的图片，无需手动指定像素\n\n**方式2 - 像素格式：**\n- 宽度x高度，如：`1024x1024`、`2048x2048`等在范围内的值\n- 总像素取值范围：`[921600, 4624220]`\n- 宽高比取值范围：`[1/16, 16]`\n- 宽高均需大于 `14px`\n\n不传 `size` 时默认 `auto`。`auto` 表示不指定具体比例，由模型依据 prompt 自行判断构图，输出分辨率取 `quality` 指定的档位。",
-            "default": "auto",
-            "example": "16:9"
+            "description": "指定要拆分的元素（选填）\n\n**三种用法：**\n- **不传**：模型自动识别画面中所有主要元素并逐一拆分\n- **自然语言**：如 `把鹦鹉和标题文字拆出来`，按语义识别并分层\n- **坐标精准**：用 `<bbox>` 标签指定位置，如 `标题文字<bbox>179 58 809 197</bbox>`，推荐使用归一化坐标（`0`~`1000`）",
+            "example": "把鹦鹉和标题文字拆出来"
           },
           "quality": {
             "type": "string",
-            "description": "分辨率档位，与 `size` 的比例格式配合使用，默认 `1K`。\n\n| 比例 | 1K | 1.5K | 2K |\n|---|---|---|---|\n| `1:1` | 1024×1024 | 1536×1536 | 2048×2048 |\n| `2:3` | 832×1248 | 1248×1872 | 1664×2496 |\n| `3:2` | 1248×832 | 1872×1248 | 2496×1664 |\n| `3:4` | 864×1152 | 1344×1792 | 1776×2368 |\n| `4:3` | 1152×864 | 1792×1344 | 2368×1776 |\n| `4:5` | 896×1120 | 1344×1680 | 1792×2240 |\n| `5:4` | 1120×896 | 1680×1344 | 2240×1792 |\n| `9:16` | 800×1424 | 1152×2048 | 1584×2816 |\n| `16:9` | 1424×800 | 2048×1152 | 2816×1584 |\n| `21:9` | 1568×672 | 2352×1008 | 3136×1344 |\n| `9:21` | 672×1568 | 1008×2352 | 1344×3136 |\n\n**计费说明：**\n- `1K` 与 `1.5K` 单价相同，`1.5K` 画质更优，推荐优先使用 `1.5K`\n- 使用像素格式的 `size` 时，按实际输出总像素判档：不超过 `2610000` 走低档价，超过则走高档价",
+            "description": "输出档位，默认 `auto`\n\n**可选值：** `auto`、`1K`、`1.5K`、`2K`\n\n**说明：**\n- 图层模式**只接受档位**，传比例（如 `16:9`）或像素（如 `2048x2048`）会报错\n- `auto` 表示输出跟随输入图：原始尺寸落在 `[921600, 4624220]` 像素区间内按原尺寸输出，小于 1K 按 1K 输出，大于 2K 按 2K 输出\n- 每个图层各自保持它在原图中的宽高比，底图的宽高比与输入图一致\n\n**计费说明：** 按每张输出图各自的像素判档，`1K` 与 `1.5K` 同价；单张输出总像素超过 `2610000` 走高档价。",
             "enum": [
+              "auto",
               "1K",
               "1.5K",
               "2K"
             ],
-            "default": "1K",
-            "example": "2K"
+            "default": "auto",
+            "example": "auto"
           },
           "prompt_priority": {
             "type": "string",
@@ -216,44 +248,15 @@
             "default": "standard",
             "example": "standard"
           },
-          "image_urls": {
-            "type": "array",
-            "description": "参考图像URL列表，用于图生图与图像编辑功能\n\n**注意：**\n- 单次请求支持输入图像数量：`10`张\n- 图像大小：不超过 `30MB`\n- 支持的图像格式：`.jpeg`、`.jpg`、`.png`、`.webp`、`.bmp`、`.tiff`、`.gif`、`.heic`、`.heif`\n- 宽高比（宽/高）范围：`[1/16, 16]`\n- 宽高长度（px）> 14\n- 总像素范围：`[196, 6000×6000]`\n- 图像URL需要服务器能直接查看，或者图像URL在访问时会直接进行下载（一般这种URL是以图像的扩展名作为结尾，例如`.png`、`.jpg`）",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "maxItems": 10,
-            "example": [
-              "https://example.com/image1.png",
-              "https://example.com/image2.png"
-            ]
-          },
           "output_format": {
             "type": "string",
-            "description": "输出图片格式\n\n**可选值：**\n- `png`: PNG 格式\n- `jpeg`: JPEG 格式\n\n**注意：** 传 `background=transparent` 时输出固定为 png，此时再指定 `output_format=jpeg` 会被拒绝。",
+            "description": "输出图片格式\n\n**可选值：**\n- `jpeg`: JPEG 格式（默认）\n- `png`: PNG 格式\n\n**注意：** 该参数**仅控制底图**，拆分出的图层固定为带透明通道的 png，不受此参数影响。",
             "enum": [
-              "png",
-              "jpeg"
+              "jpeg",
+              "png"
             ],
             "default": "jpeg",
             "example": "jpeg"
-          },
-          "watermark": {
-            "type": "boolean",
-            "description": "是否在生成图像中添加水印",
-            "default": false,
-            "example": false
-          },
-          "background": {
-            "type": "string",
-            "description": "透明通道开关\n\n**可选值：**\n- `opaque`：常规实底背景（默认）\n- `transparent`：保留输入图已有的透明通道\n\n> `transparent` 是**保留**输入图原有的透明背景，**不是抠图去背景**。\n\n**限制（仅对 `transparent` 生效）：**\n- 必须且只能传 1 张输入图，且该图本身带透明通道\n- 输出固定为 png，同时传 `output_format=jpeg` 会被拒绝\n- 输入图为不支持透明通道的格式（如 jpeg）会被模型拒绝",
-            "enum": [
-              "opaque",
-              "transparent"
-            ],
-            "default": "opaque",
-            "example": "opaque"
           },
           "callback_url": {
             "type": "string",
@@ -274,12 +277,12 @@
           "id": {
             "type": "string",
             "description": "任务ID",
-            "example": "task-unified-1757165031-seedream5pro"
+            "example": "task-unified-1757165031-seedream5prolayerize"
           },
           "model": {
             "type": "string",
             "description": "实际使用的模型名称",
-            "example": "doubao-seedream-5.0-pro"
+            "example": "doubao-seedream-5.0-pro-layerize"
           },
           "object": {
             "type": "string",
@@ -339,7 +342,7 @@
             "type": "integer",
             "description": "预估完成时间（秒）",
             "minimum": 0,
-            "example": 45
+            "example": 120
           }
         }
       },
@@ -361,7 +364,7 @@
             "type": "number",
             "description": "预估消耗积分数",
             "minimum": 0,
-            "example": 1.8
+            "example": 39.168
           },
           "user_group": {
             "type": "string",
