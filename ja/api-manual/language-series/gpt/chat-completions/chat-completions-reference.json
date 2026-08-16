@@ -1,0 +1,647 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPT 全モデルインターフェース - Chat Completions 完全なパラメータ",
+    "description": "OpenAI 互換の Chat Completions API で GPT シリーズのテキストモデルを呼び出すための完全なパラメータマニュアル。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "GPT チャット補完（全モデル、完全なパラメータ）",
+        "description": "- GPT シリーズのテキストモデル向け OpenAI 互換 Chat Completions API。具体的なモデルは `model` で選択します（指定可能な値はすべて `model` パラメータの対照表を参照）\n- 全シリーズが推論モデルで、推論の深さは `reasoning_effort` で制御します。推論 token は出力 token として課金されます\n- Prompt キャッシュは自動的に有効：キャッシュにヒットした入力 token はより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- テキストと画像の混在入力、および `function` ツール呼び出しに対応\n- サーバーサイドツール（ウェブ検索、コード実行、ドキュメント検索、MCP）は [Responses API](../responses/responses-reference) でのみ提供されます\n- **注意** サンプリング系パラメータ（`temperature`、`top_p`、`logprobs` など）は対応範囲がモデルごとに異なります。詳細は下記の各パラメータの説明をご覧ください",
+        "operationId": "gptChatCompletionsReference",
+        "tags": [
+          "Chat Completions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "チャット生成に成功（JSON オブジェクト。`stream=true` の場合は `data: [DONE]` で終了する SSE イベントストリーム）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正（そのモデルが対応していないパラメータを含む。エラーメッセージに該当するパラメータ名が示されます）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Unsupported parameter: 'stop' is not supported with this model.",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認可、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限を超えました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービス一時利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル：\n\n| モデル ID | コンテキストウィンドウ | 位置づけ |\n|---|---|---|\n| `gpt-5.6-sol` | 1,050,000 | GPT-5.6 ファミリー、最先端の推論 |\n| `gpt-5.6-terra` | 1,050,000 | GPT-5.6 ファミリー、バランス型の本番運用 |\n| `gpt-5.6-luna` | 1,050,000 | GPT-5.6 ファミリー、高スループットとコスト管理 |\n| `gpt-5.5` | 400,000 | 汎用推論モデル |\n| `gpt-5.4` | 128,000 | 汎用推論モデル |\n| `gpt-5.2` | 400,000 | 汎用推論モデル |\n| `gpt-5.1` | 400,000 | 汎用推論モデル |",
+            "enum": [
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.6-luna",
+              "gpt-5.5",
+              "gpt-5.4",
+              "gpt-5.2",
+              "gpt-5.1"
+            ],
+            "example": "gpt-5.6-sol"
+          },
+          "messages": {
+            "type": "array",
+            "description": "チャットメッセージのリスト。複数ターンのコンテキストとマルチモーダル入力に対応します。\n\n`role` には `system` / `developer` / `user` / `assistant` / `tool` を指定できます。\n\n`content` は文字列でも、コンテンツブロックの配列でも構いません。ブロックの種類は `text`（テキスト）と `image_url`（画像）の 2 つに対応しています：\n\n```json\n\"content\": [\n  { \"type\": \"text\", \"text\": \"この画像には何が写っていますか？\" },\n  {\n    \"type\": \"image_url\",\n    \"image_url\": { \"url\": \"https://example.com/photo.png\", \"detail\": \"auto\" }\n  }\n]\n```\n\n**画像**\n- `image_url.url` に画像の公開 URL を渡します\n- `image_url` は文字列として直接書くこともでき、`{ \"url\": \"...\" }` と同等です\n- `detail` は画像解析の精度を制御します。`auto`（デフォルト）/ `low` / `high` / `original`\n- 画像は正常にダウンロードできる必要があり、できない場合は `400` が返されます\n\n**注意** この API のブロックの種類は Responses API とは異なります（Responses は `input_text` / `input_image` を使用）。両者は混在させられず、誤って指定すると `400` が返されます。",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "example": [
+              {
+                "role": "system",
+                "content": "You are a concise assistant."
+              },
+              {
+                "role": "user",
+                "content": "Explain quantum entanglement in one sentence."
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "ストリーミングで返すかどうか（SSE イベントストリーム。`data: [DONE]` で終了）。デフォルトは `false`。",
+            "default": false,
+            "example": false
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "生成する最大 token 数（推論 token を含む）。\n\n**注意** 本シリーズのモデルは `max_completion_tokens` を使用します。既存コードとの互換性のため、`max_tokens` のみを渡した場合は自動的に `max_completion_tokens` とみなされます。ただし、**この 2 つのフィールドを同時に渡さないでください** — `gpt-5.1` / `gpt-5.2` / `gpt-5.4` では同時に渡すと `400` が返されます。",
+            "example": 2048
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "description": "推論の深さの制御。指定可能な値はモデルによって異なります：\n\n| モデル | 指定可能な値 |\n|---|---|\n| `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.5` | `none`、`low`、`medium`、`high`、`xhigh` |\n| `gpt-5.4` / `gpt-5.2` / `gpt-5.1` | `low`、`medium`、`high`、`xhigh` |\n\n推論 token は出力 token として課金され、`usage.completion_tokens_details.reasoning_tokens` に計上されます。",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "example": "medium"
+          },
+          "verbosity": {
+            "type": "string",
+            "description": "回答の詳しさ：`low` / `medium` / `high`。\n\n**注意** `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.5` のみ対応。その他のモデルはこのパラメータに対応していません。",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "example": "low"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度。値の範囲は 0 ～ 2。値が低いほど出力が決定的になります。\n\n**注意** `gpt-5.5` / `gpt-5.4` / `gpt-5.2` / `gpt-5.1` のみ対応。`gpt-5.6` ファミリーはデフォルト値 `1` のみを受け付け、それ以外の値を渡すと `400` が返されます。",
+            "minimum": 0,
+            "maximum": 2,
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus サンプリングのパラメータ。値の範囲は 0 ～ 1。`temperature` と同時に調整しないことを推奨します。\n\n**注意** `gpt-5.5` / `gpt-5.4` / `gpt-5.2` / `gpt-5.1` のみ対応。`gpt-5.6` ファミリーはこのパラメータに対応していません。",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "frequency_penalty": {
+            "type": "number",
+            "description": "Frequency ペナルティ。値の範囲は -2 ～ 2。正の値は token の出現頻度に応じてペナルティを課し、内容の繰り返しを減らします。\n\n**注意** `gpt-5.4` / `gpt-5.2` / `gpt-5.1` のみ対応。`gpt-5.6` ファミリーと `gpt-5.5` はこのパラメータに対応していません。",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "presence_penalty": {
+            "type": "number",
+            "description": "Presence ペナルティ。値の範囲は -2 ～ 2。正の値はモデルが新しい話題に触れることを促します。\n\n**注意** `gpt-5.4` / `gpt-5.2` / `gpt-5.1` のみ対応。`gpt-5.6` ファミリーと `gpt-5.5` はこのパラメータに対応していません。",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "logprobs": {
+            "type": "boolean",
+            "description": "出力 token ごとの対数確率を返すかどうか。\n\n**注意** `gpt-5.4` / `gpt-5.2` / `gpt-5.1` のみ対応。`gpt-5.6` ファミリーと `gpt-5.5` はこのパラメータに対応していません。",
+            "default": false,
+            "example": true
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "各位置で返される候補 token の数。値の範囲は 0 ～ 5。`logprobs: true` と併用する必要があります。\n\n**注意** 対応範囲は `logprobs` と同じです。",
+            "minimum": 0,
+            "maximum": 5,
+            "example": 2
+          },
+          "n": {
+            "type": "integer",
+            "description": "生成する候補応答の数。`choices` 配列に複数の結果として返されます。すべての token（各候補の出力を含む）が課金対象です。",
+            "default": 1,
+            "example": 1
+          },
+          "seed": {
+            "type": "integer",
+            "description": "乱数シード。同じシードとパラメータの組み合わせであれば、モデルは可能な限り一貫した結果を返します（ベストエフォートであり、完全な再現性は保証されません）。",
+            "example": 42
+          },
+          "response_format": {
+            "type": "object",
+            "description": "出力形式の制御：\n\n- `{\"type\": \"text\"}`：デフォルトの自由テキスト\n- `{\"type\": \"json_object\"}`：正しい JSON を返します。**`messages` に `json` という語が含まれている必要があり**、含まれていない場合は `400` が返されます\n- `{\"type\": \"json_schema\", \"json_schema\": {...}}`：指定した JSON Schema に従って構造化結果を出力します。`\"strict\": true` と組み合わせるとスキーマへの準拠を強制できます",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "json_object",
+                  "json_schema"
+                ],
+                "example": "json_schema"
+              },
+              "json_schema": {
+                "type": "object",
+                "description": "`type` が `json_schema` の場合は必須。`name`、`schema`、`strict` フィールドを含みます"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Function Calling（クライアント側の関数呼び出し。従量課金なし）に使うツールのリスト。\n\nサーバーサイドツール（ウェブ検索、コード実行など）はこの API では提供していません。[Responses API](../responses/responses-reference) をご利用ください。",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "ツール選択の制御：`\"auto\"`（デフォルト）/ `\"none\"` / `\"required\"`、またはオブジェクトで特定の関数を指定します。例：`{\"type\": \"function\", \"function\": {\"name\": \"get_weather\"}}`。",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "auto",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "parallel_tool_calls": {
+            "type": "boolean",
+            "description": "1 ターン内でモデルが複数のツールを並列に呼び出せるかどうか。デフォルトは `true`。`false` にすると 1 つずつ順に呼び出させることができます。",
+            "default": true,
+            "example": true
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "キャッシュのグループ化キー。同じプレフィックスを持つリクエストに同じ値を渡すと、Prompt キャッシュのヒット率が向上します。",
+            "example": "app-chat-v1"
+          },
+          "user": {
+            "type": "string",
+            "description": "エンドユーザー識別子。呼び出し元を区別するために使用します。",
+            "example": "user-1024"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "メッセージのロール",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant",
+              "tool"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "description": "メッセージの内容：文字列、またはコンテンツブロックの配列（`text` / `image_url` の混在）。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ],
+            "example": "Explain quantum entanglement in one sentence."
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "コンテンツの種類\n\n- `text`：テキストブロック\n- `image_url`：画像入力",
+            "enum": [
+              "text",
+              "image_url"
+            ],
+            "example": "image_url"
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=text` のときのテキスト内容",
+            "example": "What is in this image?"
+          },
+          "image_url": {
+            "type": "object",
+            "description": "画像入力（`type=image_url` の場合）。画像 URL の文字列として直接書くこともでき、`{ \"url\": \"...\" }` と同等です。",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "画像の公開 URL。正常にダウンロードできる必要があり、できない場合は `400` が返されます",
+                "example": "https://example.com/photo.png"
+              },
+              "detail": {
+                "type": "string",
+                "description": "画像解析の精度\n\n- `low`：低精度。token の消費が少ない\n- `high`：高精度。より細かく認識\n- `original`：元画像のサイズで解析\n- `auto`（デフォルト）：モデルが自動的に決定",
+                "enum": [
+                  "auto",
+                  "low",
+                  "high",
+                  "original"
+                ],
+                "default": "auto",
+                "example": "auto"
+              }
+            }
+          }
+        },
+        "description": "マルチモーダルコンテンツブロック。`type` で種類を宣言し、その種類に一致するフィールドのみを記入します。"
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "example": "function"
+          },
+          "function": {
+            "type": "object",
+            "description": "関数定義",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "get_weather"
+              },
+              "description": {
+                "type": "string",
+                "example": "指定した都市の天気を取得"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "JSON Schema 形式のパラメータ定義"
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "今回の対話の一意の識別子",
+            "example": "chatcmpl-CvJ2p8mQxK7nR4wS"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "chat.completion"
+            ],
+            "description": "レスポンスタイプ",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "作成タイムスタンプ",
+            "example": 1786705221
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "gpt-5.6-sol"
+          },
+          "choices": {
+            "type": "array",
+            "description": "生成結果のリスト（長さはリクエストの `n` と一致）",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "結果のインデックス",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "logprobs": {
+            "type": "object",
+            "description": "対数確率情報。リクエストで `logprobs` を有効にした場合のみ返されます"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "終了理由：`stop` は正常終了、`length` は最大 token 制限に到達、`tool_calls` はツール呼び出しが必要",
+            "enum": [
+              "stop",
+              "length",
+              "tool_calls"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "モデルが生成したテキスト内容。ツール呼び出しがトリガーされた場合は `null` になることがあります",
+            "example": "Quantum entanglement means the states of two particles are correlated, so measuring one instantly determines the state of the other."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "モデルが呼び出しを要求したツールのリスト",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 使用量の統計。Prompt キャッシュは自動的に有効となり、キャッシュにヒットした入力 token はより安いキャッシュ料金で課金されます。",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "入力トークン数",
+            "example": 18
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "出力トークン数（推論トークンを含む）",
+            "example": 42
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "トークンの合計数",
+            "example": 60
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "入力トークンの詳細情報",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "キャッシュにヒットした token 数",
+                "example": 0
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "description": "出力トークンの詳細情報",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "推論トークン数",
+                "example": 16
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP ステータスエラーコード"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              },
+              "param": {
+                "type": "string",
+                "description": "関連パラメータ名"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "エラー発生時の提案"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIにBearer Token認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completions",
+      "description": "OpenAI 互換のチャット補完 API"
+    }
+  ]
+}

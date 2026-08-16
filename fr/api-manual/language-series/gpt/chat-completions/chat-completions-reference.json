@@ -1,0 +1,647 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API tous modèles GPT - Référence complète Chat Completions",
+    "description": "Manuel complet des paramètres pour appeler les modèles de texte de la série GPT via l'API Chat Completions compatible OpenAI.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommandée)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternative"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Complétion de conversation GPT (tous modèles, paramètres complets)",
+        "description": "- API Chat Completions compatible OpenAI pour les modèles de texte de la série GPT ; le modèle précis est choisi via `model` (toutes les valeurs possibles figurent dans le tableau comparatif du paramètre `model`)\n- Toute la série est composée de modèles de raisonnement ; la profondeur se contrôle via `reasoning_effort` et les tokens de raisonnement sont facturés comme des tokens de sortie\n- Le cache de prompts s'applique automatiquement : les tokens d'entrée servis depuis le cache sont facturés au tarif de cache, plus bas\n- Prend en charge les modes synchrone et streaming (SSE)\n- Prend en charge une entrée mixte texte et image, ainsi que les appels d'outils `function`\n- Les outils côté serveur (recherche web, exécution de code, recherche documentaire, MCP) ne sont proposés que sur l'[API Responses](../responses/responses-reference)\n- **Remarque** Le périmètre de prise en charge des paramètres d'échantillonnage (`temperature`, `top_p`, `logprobs`, etc.) varie selon le modèle ; voir les notes de chaque paramètre ci-dessous",
+        "operationId": "gptChatCompletionsReference",
+        "tags": [
+          "Chat Completions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Génération de la conversation réussie (objet JSON ; avec `stream=true`, un flux d'événements SSE se terminant par `data: [DONE]`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides (y compris les paramètres non pris en charge par le modèle ; le message d'erreur indique le nom précis du paramètre)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Unsupported parameter: 'stop' is not supported with this model.",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autorisé, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Quota insuffisant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de débit dépassée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporairement indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modèle à appeler :\n\n| ID du modèle | Fenêtre de contexte | Positionnement |\n|---|---|---|\n| `gpt-5.6-sol` | 1 050 000 | Famille GPT-5.6, raisonnement de pointe |\n| `gpt-5.6-terra` | 1 050 000 | Famille GPT-5.6, production équilibrée |\n| `gpt-5.6-luna` | 1 050 000 | Famille GPT-5.6, débit élevé et maîtrise des coûts |\n| `gpt-5.5` | 400 000 | Modèle de raisonnement polyvalent |\n| `gpt-5.4` | 128 000 | Modèle de raisonnement polyvalent |\n| `gpt-5.2` | 400 000 | Modèle de raisonnement polyvalent |\n| `gpt-5.1` | 400 000 | Modèle de raisonnement polyvalent |",
+            "enum": [
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.6-luna",
+              "gpt-5.5",
+              "gpt-5.4",
+              "gpt-5.2",
+              "gpt-5.1"
+            ],
+            "example": "gpt-5.6-sol"
+          },
+          "messages": {
+            "type": "array",
+            "description": "Liste des messages de chat, prenant en charge le contexte multi-tours et l'entrée multimodale.\n\n`role` peut valoir `system` / `developer` / `user` / `assistant` / `tool`.\n\n`content` peut être une chaîne de caractères ou un tableau de blocs de contenu. Deux types de blocs sont pris en charge : `text` (texte) et `image_url` (image) :\n\n```json\n\"content\": [\n  { \"type\": \"text\", \"text\": \"Que voit-on sur cette image ?\" },\n  {\n    \"type\": \"image_url\",\n    \"image_url\": { \"url\": \"https://example.com/photo.png\", \"detail\": \"auto\" }\n  }\n]\n```\n\n**Image**\n- Transmettez dans `image_url.url` l'URL publique de l'image\n- `image_url` peut aussi s'écrire directement sous forme de chaîne, équivalent à `{ \"url\": \"...\" }`\n- `detail` contrôle la précision d'analyse de l'image : `auto` (par défaut) / `low` / `high` / `original`\n- L'image doit pouvoir être téléchargée, sinon `400` est retourné\n\n**Remarque** Les types de blocs de cette API diffèrent de ceux de l'API Responses (qui utilise `input_text` / `input_image`). Ils ne peuvent pas être mélangés ; une erreur de type retourne `400`.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "example": [
+              {
+                "role": "system",
+                "content": "You are a concise assistant."
+              },
+              {
+                "role": "user",
+                "content": "Explain quantum entanglement in one sentence."
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Indique si la réponse est retournée en flux (flux d'événements SSE se terminant par `data: [DONE]`). Valeur par défaut `false`.",
+            "default": false,
+            "example": false
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "Nombre maximal de tokens à générer (tokens de raisonnement inclus).\n\n**Remarque** Cette série de modèles utilise `max_completion_tokens`. Pour la compatibilité avec le code existant, transmettre uniquement `max_tokens` est automatiquement interprété comme `max_completion_tokens` ; en revanche, **ne transmettez pas les deux champs à la fois** — sur `gpt-5.1` / `gpt-5.2` / `gpt-5.4`, les transmettre ensemble retourne `400`.",
+            "example": 2048
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "description": "Contrôle de la profondeur de raisonnement. Les valeurs possibles varient selon le modèle :\n\n| Modèle | Valeurs possibles |\n|---|---|\n| `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.5` | `none`, `low`, `medium`, `high`, `xhigh` |\n| `gpt-5.4` / `gpt-5.2` / `gpt-5.1` | `low`, `medium`, `high`, `xhigh` |\n\nLes tokens de raisonnement sont facturés comme des tokens de sortie et comptabilisés dans `usage.completion_tokens_details.reasoning_tokens`.",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "example": "medium"
+          },
+          "verbosity": {
+            "type": "string",
+            "description": "Niveau de détail de la réponse : `low` / `medium` / `high`.\n\n**Remarque** Pris en charge uniquement par `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.5` ; les autres modèles ne prennent pas en charge ce paramètre.",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "example": "low"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Température d'échantillonnage, valeurs de 0 à 2. Plus la valeur est basse, plus la sortie est déterministe.\n\n**Remarque** Prise en charge uniquement par `gpt-5.5` / `gpt-5.4` / `gpt-5.2` / `gpt-5.1`. La famille `gpt-5.6` n'accepte que la valeur par défaut `1` ; toute autre valeur retourne `400`.",
+            "minimum": 0,
+            "maximum": 2,
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Paramètre d'échantillonnage nucléus, valeurs de 0 à 1. Il est déconseillé de l'ajuster en même temps que `temperature`.\n\n**Remarque** Pris en charge uniquement par `gpt-5.5` / `gpt-5.4` / `gpt-5.2` / `gpt-5.1` ; la famille `gpt-5.6` ne prend pas en charge ce paramètre.",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "frequency_penalty": {
+            "type": "number",
+            "description": "Pénalité de fréquence, valeurs de -2 à 2. Les valeurs positives pénalisent les tokens selon leur fréquence d'apparition et réduisent les contenus répétitifs.\n\n**Remarque** Prise en charge uniquement par `gpt-5.4` / `gpt-5.2` / `gpt-5.1` ; la famille `gpt-5.6` et `gpt-5.5` ne prennent pas en charge ce paramètre.",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "presence_penalty": {
+            "type": "number",
+            "description": "Pénalité de présence, valeurs de -2 à 2. Les valeurs positives encouragent le modèle à aborder de nouveaux sujets.\n\n**Remarque** Prise en charge uniquement par `gpt-5.4` / `gpt-5.2` / `gpt-5.1` ; la famille `gpt-5.6` et `gpt-5.5` ne prennent pas en charge ce paramètre.",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "logprobs": {
+            "type": "boolean",
+            "description": "Indique s'il faut retourner les probabilités logarithmiques de chaque token de sortie.\n\n**Remarque** Pris en charge uniquement par `gpt-5.4` / `gpt-5.2` / `gpt-5.1` ; la famille `gpt-5.6` et `gpt-5.5` ne prennent pas en charge ce paramètre.",
+            "default": false,
+            "example": true
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "Nombre de tokens candidats retournés à chaque position, valeurs de 0 à 5 ; doit être utilisé avec `logprobs: true`.\n\n**Remarque** Même périmètre de prise en charge que `logprobs`.",
+            "minimum": 0,
+            "maximum": 5,
+            "example": 2
+          },
+          "n": {
+            "type": "integer",
+            "description": "Nombre de réponses candidates à générer, retournées sous forme de plusieurs entrées dans le tableau `choices`. Tous les tokens (y compris la sortie de chaque candidate) sont facturés.",
+            "default": 1,
+            "example": 1
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Graine aléatoire. Avec la même graine et la même combinaison de paramètres, le modèle s'efforce de retourner des résultats cohérents (au mieux ; une reproductibilité totale n'est pas garantie).",
+            "example": 42
+          },
+          "response_format": {
+            "type": "object",
+            "description": "Contrôle du format de sortie :\n\n- `{\"type\": \"text\"}` : texte libre, la valeur par défaut\n- `{\"type\": \"json_object\"}` : retourne un JSON valide et **exige que le mot `json` figure dans `messages`**, sinon `400` est retourné\n- `{\"type\": \"json_schema\", \"json_schema\": {...}}` : retourne des résultats structurés conformes au JSON Schema fourni ; associez-le à `\"strict\": true` pour imposer la conformité au schéma",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "json_object",
+                  "json_schema"
+                ],
+                "example": "json_schema"
+              },
+              "json_schema": {
+                "type": "object",
+                "description": "Obligatoire lorsque `type` vaut `json_schema` ; contient les champs `name`, `schema` et `strict`"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Liste d'outils, utilisée pour le Function Calling (appels de fonctions côté client, sans frais à l'appel).\n\nLes outils côté serveur (recherche web, exécution de code, etc.) ne sont pas proposés sur cette API ; utilisez plutôt l'[API Responses](../responses/responses-reference).",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Contrôle du choix des outils : `\"auto\"` (par défaut) / `\"none\"` / `\"required\"`, ou un objet désignant une fonction précise, comme `{\"type\": \"function\", \"function\": {\"name\": \"get_weather\"}}`.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "auto",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "parallel_tool_calls": {
+            "type": "boolean",
+            "description": "Indique si le modèle peut appeler plusieurs outils en parallèle au cours d'un même tour. Valeur par défaut `true` ; avec `false`, les appels sont forcés un par un.",
+            "default": true,
+            "example": true
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "Clé de regroupement du cache. Transmettre la même valeur pour des requêtes partageant le même préfixe améliore le taux de succès du cache de prompts.",
+            "example": "app-chat-v1"
+          },
+          "user": {
+            "type": "string",
+            "description": "Identifiant de l'utilisateur final, utilisé pour distinguer l'origine des appels.",
+            "example": "user-1024"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Rôle du message",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant",
+              "tool"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "description": "Contenu du message : une chaîne de caractères, ou un tableau de blocs de contenu (mélange de `text` / `image_url`).",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ],
+            "example": "Explain quantum entanglement in one sentence."
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Type de contenu\n\n- `text` : bloc de texte\n- `image_url` : entrée d'image",
+            "enum": [
+              "text",
+              "image_url"
+            ],
+            "example": "image_url"
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenu textuel lorsque `type=text`",
+            "example": "What is in this image?"
+          },
+          "image_url": {
+            "type": "object",
+            "description": "Entrée d'image (lorsque `type=image_url`). Peut aussi s'écrire directement sous forme de chaîne contenant l'URL de l'image, équivalent à `{ \"url\": \"...\" }`.",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL publique de l'image. Elle doit pouvoir être téléchargée, sinon `400` est retourné",
+                "example": "https://example.com/photo.png"
+              },
+              "detail": {
+                "type": "string",
+                "description": "Précision d'analyse de l'image\n\n- `low` : faible précision, consomme moins de tokens\n- `high` : haute précision, reconnaissance plus fine\n- `original` : analyse à la taille d'origine de l'image\n- `auto` (par défaut) : décidé automatiquement par le modèle",
+                "enum": [
+                  "auto",
+                  "low",
+                  "high",
+                  "original"
+                ],
+                "default": "auto",
+                "example": "auto"
+              }
+            }
+          }
+        },
+        "description": "Bloc de contenu multimodal. Déclarez le type via `type` et ne renseignez que les champs correspondant à ce type."
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "example": "function"
+          },
+          "function": {
+            "type": "object",
+            "description": "Function definition.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "get_weather"
+              },
+              "description": {
+                "type": "string",
+                "example": "Obtenir la météo d'une ville donnée"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "Définition des paramètres au format JSON Schema"
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifiant unique de cette conversation",
+            "example": "chatcmpl-CvJ2p8mQxK7nR4wS"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "chat.completion"
+            ],
+            "description": "Type de réponse",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Horodatage de création",
+            "example": 1786705221
+          },
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle réellement utilisé",
+            "example": "gpt-5.6-sol"
+          },
+          "choices": {
+            "type": "array",
+            "description": "Liste des résultats générés (sa longueur est égale à `n` dans la requête)",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Index du résultat",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "logprobs": {
+            "type": "object",
+            "description": "Informations de probabilité logarithmique, retournées uniquement si `logprobs` est activé dans la requête"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "Raison de l'arrêt : `stop` pour une fin normale, `length` lorsque la limite maximale de tokens est atteinte, `tool_calls` lorsqu'un appel d'outil est nécessaire",
+            "enum": [
+              "stop",
+              "length",
+              "tool_calls"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "Contenu textuel généré par le modèle ; peut être `null` lorsqu'un appel d'outil est déclenché",
+            "example": "Quantum entanglement means the states of two particles are correlated, so measuring one instantly determines the state of the other."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Liste des outils dont le modèle a demandé l'appel",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Statistiques d'utilisation des tokens. Le cache de prompts s'applique automatiquement ; les tokens d'entrée servis depuis le cache sont facturés au tarif de cache, plus bas.",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens d'entrée",
+            "example": 18
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "Nombre de tokens de sortie (tokens de raisonnement inclus)",
+            "example": 42
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Nombre total de jetons",
+            "example": 60
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Informations détaillées sur les tokens d'entrée",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Nombre de tokens servis depuis le cache",
+                "example": 0
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "description": "Informations détaillées sur les tokens de sortie",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Nombre de tokens de raisonnement",
+                "example": 16
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "Code d'erreur de statut HTTP"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              },
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur"
+              },
+              "param": {
+                "type": "string",
+                "description": "Nom du paramètre concerné"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Suggestion lorsqu'une erreur se produit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API :**\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête :**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completions",
+      "description": "API de complétion de conversation compatible OpenAI"
+    }
+  ]
+}

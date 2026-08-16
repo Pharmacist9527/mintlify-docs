@@ -1,0 +1,742 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPT Schnittstelle für alle Modelle - Responses vollständige Parameter",
+    "description": "Vollständiges Parameterhandbuch für den Aufruf von GPT-Textmodellen über die OpenAI-kompatible Responses API (einschließlich serverseitiger Tools).",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktion (empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "GPT Responses (alle Modelle, vollständige Parameter)",
+        "description": "- OpenAI-kompatible Responses API für GPT-Textmodelle; das konkrete Modell wird über `model` gewählt (alle möglichen Werte siehe Vergleichstabelle beim Parameter `model`)\n- Die gesamte Reihe besteht aus Reasoning-Modellen; die Reasoning-Tiefe wird über `reasoning.effort` gesteuert, Reasoning-Token werden als Ausgabe-Token abgerechnet\n- Prompt-Caching greift automatisch: im Cache getroffene Eingabe-Token werden zum günstigeren Cache-Preis abgerechnet\n- Unterstützt synchronen und Streaming-Modus (SSE)\n- Serverseitige Tools: `web_search` (Websuche), `code_interpreter` (Codeausführung), `file_search` (Dokumentensuche)\n- Gewöhnliche `function`-Werkzeuge (clientseitige Funktionsaufrufe) werden ebenfalls unterstützt\n- Mehrere Gesprächsrunden lassen sich mit `previous_response_id` verketten\n- **Hinweis** Der Unterstützungsumfang einiger Parameter unterscheidet sich je nach Modell; Einzelheiten siehe die Hinweise zu den jeweiligen Parametern unten",
+        "operationId": "gptResponsesReference",
+        "tags": [
+          "Responses"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Antwortgenerierung erfolgreich (JSON-Objekt oder – bei `stream=true` – ein SSE-Event-Stream, der mit `response.completed` endet)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Anfrageparameter (einschließlich vom Modell nicht unterstützter Parameter; die Fehlermeldung nennt den konkreten Parameternamen)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid value: '__bogus__'. Supported values are: 'auto' and 'disabled'.",
+                    "type": "invalid_request_error",
+                    "param": "truncation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nicht autorisiert, ungültiges oder abgelaufenes Token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Unzureichendes Kontingent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ratenlimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Interner Serverfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Aufzurufendes Modell:\n\n| Modell-ID | Kontextfenster | Positionierung |\n|---|---|---|\n| `gpt-5.6-sol` | 1.050.000 | GPT-5.6-Familie, Spitzen-Reasoning |\n| `gpt-5.6-terra` | 1.050.000 | GPT-5.6-Familie, ausgewogener Produktivbetrieb |\n| `gpt-5.6-luna` | 1.050.000 | GPT-5.6-Familie, hoher Durchsatz und Kostenkontrolle |\n| `gpt-5.5` | 400.000 | Allgemeines Reasoning-Modell |\n| `gpt-5.4` | 128.000 | Allgemeines Reasoning-Modell |\n| `gpt-5.2` | 400.000 | Allgemeines Reasoning-Modell |\n| `gpt-5.1` | 400.000 | Allgemeines Reasoning-Modell |",
+            "enum": [
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.6-luna",
+              "gpt-5.5",
+              "gpt-5.4",
+              "gpt-5.2",
+              "gpt-5.1"
+            ],
+            "example": "gpt-5.6-sol"
+          },
+          "input": {
+            "description": "Modelleingabe: eine reine Zeichenkette oder ein Array von Eingabeelementen.\n\nDas `content` eines Eingabeelements unterstützt zwei Blocktypen: `input_text` (Text) und `input_image` (Bild):\n\n```json\n\"input\": [\n  {\n    \"role\": \"user\",\n    \"content\": [\n      { \"type\": \"input_text\", \"text\": \"Was ist auf diesem Bild zu sehen?\" },\n      {\n        \"type\": \"input_image\",\n        \"image_url\": \"https://example.com/photo.png\",\n        \"detail\": \"auto\"\n      }\n    ]\n  }\n]\n```\n\n**Bild**\n- Übergeben Sie in `image_url` die öffentliche URL des Bildes\n- `image_url` muss eine Zeichenkette sein; die Schreibweise `{ \"url\": \"...\" }` gibt `400` zurück\n- `detail` steht auf derselben Ebene wie `image_url` (nicht darin verschachtelt): `auto` (Standard) / `low` / `high` / `original`\n- Das Bild muss herunterladbar sein, andernfalls wird `400` zurückgegeben\n\n**Werkzeugergebnisse**\n- Das Array kann auch Werkzeugergebnis-Elemente aus der vorherigen Runde zurückgeben, etwa `function_call_output`\n\n**Hinweis** Die Blocktypen dieser API unterscheiden sich von denen der Chat Completions API (dort `text` / `image_url`). Sie dürfen nicht vermischt werden; eine falsche Verwendung gibt `400` zurück.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputItem"
+                }
+              }
+            ],
+            "example": "Search for AI news from the past week and summarize it in three sentences."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Anweisungen auf Systemebene, gleichbedeutend mit dem Einfügen einer Systemnachricht ganz am Anfang von `input`. Wird die Konversation mit `previous_response_id` fortgesetzt, wird dieser Parameter nicht aus der vorherigen Runde übernommen und muss in jeder Runde übergeben werden.",
+            "example": "You are a concise assistant. Answer in no more than three sentences."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Ob eine Streaming-Antwort zurückgegeben wird (SSE-Events, endend mit `response.completed`). Standard `false`.",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "Maximale Anzahl zu generierender Token (einschließlich Reasoning-Token). Wird die Obergrenze erreicht, lautet `status` `incomplete`.",
+            "example": 2048
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "Reasoning-Steuerung.\n\n**Die möglichen Werte von `effort` (Reasoning-Tiefe) unterscheiden sich je nach Modell:**\n\n| Modell | Mögliche Werte |\n|---|---|\n| `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` | `none`, `low`, `medium`, `high`, `xhigh`, `max` |\n| `gpt-5.5` / `gpt-5.4` / `gpt-5.2` | `none`, `low`, `medium`, `high`, `xhigh` |\n| `gpt-5.1` | `none`, `low`, `medium`, `high` |\n\n**`summary` (Reasoning-Zusammenfassung)**: `auto` / `concise` / `detailed`, in der gesamten Reihe verfügbar. Nach der Aktivierung erscheint in `output` ein `reasoning`-Element.\n\n**`mode` (Reasoning-Modus)**: `standard` / `pro`, nur von der `gpt-5.6`-Familie unterstützt.\n\n**`context` (Reasoning-Kontextbereich)**: `auto` / `current_turn` / `all_turns`, nur von der `gpt-5.6`-Familie unterstützt.\n\nReasoning-Token werden als Ausgabe-Token abgerechnet und in `usage.output_tokens_details.reasoning_tokens` gezählt.",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "example": "medium"
+              },
+              "summary": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "concise",
+                  "detailed"
+                ],
+                "example": "auto"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "standard",
+                  "pro"
+                ],
+                "example": "standard"
+              },
+              "context": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "current_turn",
+                  "all_turns"
+                ],
+                "example": "current_turn"
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "description": "Steuerung des Ausgabetexts:\n\n- `format`: `{\"type\": \"text\"}` (Standard), `{\"type\": \"json_object\"}` oder `{\"type\": \"json_schema\", \"name\": \"...\", \"schema\": {...}, \"strict\": true}` für strukturierte Ergebnisse\n- `verbosity`: `low` / `medium` / `high`, steuert die Ausführlichkeit der Antwort",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "Definition des Ausgabeformats"
+              },
+              "verbosity": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "example": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Werkzeugdeklarationen. Serverseitige Tools werden auf dem Server ausgeführt; Ergebnisse müssen nicht vom Client zurückgesendet werden:\n\n| Werkzeugtyp | Fähigkeit |\n|---|---|\n| `web_search` | Durchsucht das Web und ruft Webseiten auf (Alias `web_search_preview`) |\n| `code_interpreter` | Führt Code in einer Sandbox aus, erfordert `\"container\": {\"type\": \"auto\"}` |\n| `file_search` | Durchsucht einen bestehenden Vektorspeicher, erfordert `vector_store_ids` |\n| `mcp` | Verbindet sich mit einem entfernten MCP-Dienst, erfordert `server_label` und `server_url` |\n\nGewöhnliche `function`-Werkzeuge (clientseitige Funktionsaufrufe) werden ebenfalls unterstützt.\n\n**Hinweis** `image_generation` ist auf dieser Modellreihe nicht verfügbar; verwenden Sie stattdessen die APIs der Bildmodellreihe.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "example": [
+              {
+                "type": "web_search"
+              }
+            ]
+          },
+          "tool_choice": {
+            "description": "Steuert die Tool-Auswahl: `\"auto\"` (Standard) / `\"none\"` / `\"required\"` oder ein Objekt, das ein bestimmtes Tool festlegt, z. B. `{\"type\": \"web_search\"}`.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "auto",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "Obergrenze für die Gesamtzahl der in dieser Antwort zulässigen Werkzeugaufrufe.",
+            "example": 5
+          },
+          "parallel_tool_calls": {
+            "type": "boolean",
+            "description": "Ob das Modell innerhalb einer Runde mehrere Werkzeuge parallel aufrufen darf. Standard `true`.\n\n**Hinweis** Nur die `gpt-5.6`-Familie und `gpt-5.5` unterstützen die Einstellung `false`; auf `gpt-5.4` / `gpt-5.2` / `gpt-5.1` hat dieser Parameter keine Wirkung und verhält sich stets wie `true`.",
+            "default": true,
+            "example": true
+          },
+          "previous_response_id": {
+            "type": "string",
+            "description": "Die `id` der vorherigen Antwort, dient dazu, mehrere Gesprächsrunden zu verketten, ohne den Verlauf erneut zu übertragen.\n\n**Hinweis** Muss zusammen mit `store: true` (Standardwert) verwendet werden. Antworten haben eine Aufbewahrungsfrist; nach deren Ablauf ist die ID ungültig, und die Anfrage wird als neue Konversation ohne Kontextübernahme behandelt. Für Szenarien mit hohen Anforderungen an die Kontextgenauigkeit wird empfohlen, den vollständigen `input`-Verlauf selbst zu pflegen.",
+            "example": "resp_0f5c2b2c20c39e8a006a7ef545443081979e478b10927984b5"
+          },
+          "store": {
+            "type": "boolean",
+            "description": "Ob diese Antwort serverseitig gespeichert wird; nur gespeicherte Antworten können über `previous_response_id` referenziert werden. Standard `true`.\n\n**Hinweis** Nur die `gpt-5.6`-Familie und `gpt-5.5` unterstützen die Einstellung `false`; auf `gpt-5.4` / `gpt-5.2` / `gpt-5.1` hat dieser Parameter keine Wirkung und verhält sich stets wie `true`. Wenn keine Speicherung gewünscht ist, wählen Sie ein Modell, das das Abschalten unterstützt.",
+            "default": true,
+            "example": true
+          },
+          "include": {
+            "type": "array",
+            "description": "Zusätzliche Inhalte, die in der Antwort zurückgegeben werden sollen. Mögliche Werte:\n\n- `reasoning.encrypted_content`\n- `message.output_text.logprobs`\n- `web_search_call.results`\n- `web_search_call.action.sources`\n- `file_search_call.results`\n- `code_interpreter_call.outputs`\n- `message.input_image.image_url`\n- `computer_call_output.output.image_url`",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Sampling-Temperatur, Wertebereich 0 bis 2. Niedrigere Werte machen die Ausgabe deterministischer.\n\n**Hinweis** Auf `gpt-5.4` / `gpt-5.2` / `gpt-5.1` hat der Wert `0` keine Wirkung (er wird wie nicht gesetzt behandelt und auf den Standardwert `1` zurückgesetzt); für deterministischere Ausgaben verwenden Sie einen Wert größer als 0, etwa `0.01`.",
+            "minimum": 0,
+            "maximum": 2,
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus-Sampling-Parameter, Wertebereich 0 bis 1. Es wird empfohlen, ihn nicht zusammen mit `temperature` anzupassen.",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "Anzahl der pro Position zurückgegebenen Kandidaten-Token, Wertebereich 0 bis 20; muss zusammen mit `include: [\"message.output_text.logprobs\"]` verwendet werden.\n\n**Hinweis** Nur von der `gpt-5.6`-Familie und `gpt-5.5` unterstützt; andere Modelle unterstützen diesen Parameter nicht.",
+            "minimum": 0,
+            "maximum": 20,
+            "example": 2
+          },
+          "frequency_penalty": {
+            "type": "number",
+            "description": "Frequency Penalty, Wertebereich -2 bis 2, verringert die Wahrscheinlichkeit wiederholter Inhalte.\n\n**Hinweis** Nur von der `gpt-5.6`-Familie unterstützt; andere Modelle unterstützen diesen Parameter nicht.",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "presence_penalty": {
+            "type": "number",
+            "description": "Presence Penalty, Wertebereich -2 bis 2, ermutigt das Modell, neue Themen anzusprechen.\n\n**Hinweis** Nur von der `gpt-5.6`-Familie unterstützt; andere Modelle unterstützen diesen Parameter nicht.",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "truncation": {
+            "type": "string",
+            "description": "Verhalten, wenn der Kontext das Fenster überschreitet: `disabled` (Standard, gibt direkt einen Fehler zurück) oder `auto` (kürzt den mittleren Teil automatisch).",
+            "enum": [
+              "auto",
+              "disabled"
+            ],
+            "default": "disabled",
+            "example": "auto"
+          },
+          "context_management": {
+            "type": "array",
+            "description": "Konfiguration der automatischen Verdichtung langer Konversationen, zum Beispiel `[{\"type\": \"compaction\", \"compact_threshold\": 100000}]`: Überschreitet der Kontext den Schwellenwert, wird der Verlauf automatisch verdichtet.\n\n**Hinweis** Nur von der `gpt-5.6`-Familie unterstützt; andere Modelle unterstützen diesen Parameter nicht.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "Cache-Gruppierungsschlüssel. Wenn Sie für Anfragen mit demselben Präfix denselben Wert übergeben, steigt die Trefferquote des Prompt-Caches.",
+            "example": "app-agent-v1"
+          },
+          "prompt_cache_retention": {
+            "type": "string",
+            "description": "Aufbewahrungsstrategie für den Prompt-Cache: `in_memory` (Standard) oder `24h` (verlängert die Aufbewahrungsdauer des Caches).",
+            "enum": [
+              "in_memory",
+              "24h"
+            ],
+            "example": "in_memory"
+          },
+          "prompt": {
+            "type": "object",
+            "description": "Verweist auf eine bereits erstellte Prompt-Vorlage, in der Form `{\"id\": \"pmpt_xxx\", \"version\": \"1\", \"variables\": {...}}`.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "variables": {
+                "type": "object"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Benutzerdefinierte Schlüssel-Wert-Paare, die unverändert mit der Antwort zurückgegeben werden und die Kennzeichnung auf Anwendungsseite erleichtern. Schlüssel und Werte sind jeweils Zeichenketten.",
+            "example": {
+              "trace_id": "abc-123"
+            }
+          },
+          "safety_identifier": {
+            "type": "string",
+            "description": "Stabile Kennung des Endnutzers, dient der Nachverfolgung von Missbrauch.\n\n**Hinweis** Nur von der `gpt-5.6`-Familie unterstützt; andere Modelle unterstützen diesen Parameter nicht.",
+            "example": "user-1024"
+          },
+          "user": {
+            "type": "string",
+            "description": "Kennung des Endnutzers, dient der Unterscheidung der Aufrufquelle.",
+            "example": "user-1024"
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "Eingabeelement: ein Nachrichtenelement (`role` + `content`) oder ein Werkzeugergebnis-Element aus der vorherigen Runde (etwa `function_call_output`)\n\nSo geben Sie ein Tool-Ergebnis zurück:\n\n```json\n{\n  \"type\": \"function_call_output\",\n  \"call_id\": \"call_abc123\",\n  \"output\": \"{\\\"temp_c\\\": 21}\"\n}\n```",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Nachrichtenrolle",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "description": "Eingabeinhalt: eine Zeichenkette oder ein Array von Content-Blöcken (Mischung aus `input_text` / `input_image`)",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputContentBlock"
+                }
+              }
+            ]
+          },
+          "type": {
+            "type": "string",
+            "description": "Typ des Eingabeelements. Bei Nachrichten optional; zur Rückgabe eines Tool-Ergebnisses `function_call_output` verwenden.",
+            "enum": [
+              "function_call_output"
+            ],
+            "example": "function_call_output"
+          },
+          "call_id": {
+            "type": "string",
+            "description": "Die `call_id` des zugehörigen `function_call`-Ausgabeelements aus der vorherigen Runde (nicht dessen `id`). Nur für `function_call_output`-Elemente erforderlich.",
+            "example": "call_abc123"
+          },
+          "output": {
+            "type": "string",
+            "description": "Das Ergebnis der Tool-Ausführung als Zeichenkette (JSON-Ergebnisse selbst serialisieren). Nur für `function_call_output`-Elemente erforderlich.",
+            "example": "{\"temp_c\": 21}"
+          }
+        }
+      },
+      "InputContentBlock": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltstyp\n\n- `input_text`: Textblock\n- `input_image`: Bildeingabe",
+            "enum": [
+              "input_text",
+              "input_image"
+            ],
+            "example": "input_image"
+          },
+          "text": {
+            "type": "string",
+            "description": "Textinhalt, wenn `type=input_text`",
+            "example": "What is in this image?"
+          },
+          "image_url": {
+            "type": "string",
+            "description": "Öffentliche URL des Bildes (wenn `type=input_image`). Muss eine Zeichenkette sein; die Schreibweise `{ \"url\": \"...\" }` gibt `400` zurück. Das Bild muss herunterladbar sein, andernfalls wird ebenfalls `400` zurückgegeben.",
+            "example": "https://example.com/photo.png"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Genauigkeit der Bildanalyse, auf derselben Ebene wie `image_url` (nicht darin verschachtelt)\n\n- `low`: geringe Genauigkeit, verbraucht weniger Token\n- `high`: hohe Genauigkeit, feinere Erkennung\n- `original`: Analyse in der Originalgröße des Bildes\n- `auto` (Standard): wird vom Modell automatisch entschieden",
+            "enum": [
+              "auto",
+              "low",
+              "high",
+              "original"
+            ],
+            "default": "auto",
+            "example": "auto"
+          }
+        },
+        "description": "Multimodaler Content-Block. Deklarieren Sie den Typ über `type` und füllen Sie nur die zu diesem Typ passenden Felder aus."
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Werkzeugtyp",
+            "enum": [
+              "web_search",
+              "web_search_preview",
+              "code_interpreter",
+              "file_search",
+              "mcp",
+              "function"
+            ],
+            "example": "web_search"
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutige ID dieser Antwort, kann als `previous_response_id` für die nächste Runde dienen",
+            "example": "resp_0f5c2b2c20c39e8a006a7ef545443081979e478b10927984b5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "response"
+            ],
+            "description": "Antworttyp",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "Antwortstatus: `completed` für ein normales Ende, `incomplete`, wenn die Generierung etwa wegen Erreichen von `max_output_tokens` nicht abgeschlossen wurde, `failed` bei fehlgeschlagener Generierung",
+            "enum": [
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "Tatsächlich verwendeter Modellname",
+            "example": "gpt-5.6-sol"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Erstellungszeitstempel",
+            "example": 1786705221
+          },
+          "output": {
+            "type": "array",
+            "description": "Ausgabeelemente in Generierungsreihenfolge: das `reasoning`-Element (Reasoning-Zusammenfassung / verschlüsselter Reasoning-Inhalt), Werkzeugaufruf-Elemente (etwa `web_search_call`, `code_interpreter_call`) und zuletzt das `message`-Element mit dem `output_text`-Inhalt.",
+            "items": {
+              "$ref": "#/components/schemas/OutputItem"
+            }
+          },
+          "incomplete_details": {
+            "type": "object",
+            "description": "Erläutert den Grund, wenn `status` gleich `incomplete` ist"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Benutzerdefinierte Schlüssel-Wert-Paare aus der Anfrage, unverändert zurückgegeben"
+          }
+        }
+      },
+      "OutputItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Bezeichner des Ausgabeelements"
+          },
+          "type": {
+            "type": "string",
+            "description": "Typ des Ausgabeelements",
+            "enum": [
+              "reasoning",
+              "message",
+              "web_search_call",
+              "code_interpreter_call",
+              "file_search_call",
+              "mcp_call",
+              "function_call"
+            ],
+            "example": "web_search_call"
+          },
+          "status": {
+            "type": "string",
+            "description": "Status des Ausgabeelements",
+            "example": "completed"
+          },
+          "content": {
+            "type": "array",
+            "description": "Inhaltsteile der Nachricht (`output_text`), vorhanden bei `message`-Elementen",
+            "items": {
+              "type": "object"
+            }
+          },
+          "encrypted_content": {
+            "type": "string",
+            "description": "Verschlüsselter Reasoning-Inhalt, erscheint am `reasoning`-Element; erfordert `include: [\"reasoning.encrypted_content\"]` in der Anfrage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Statistik zum Token-Verbrauch. Prompt-Caching greift automatisch; im Cache getroffene Eingabe-Token werden zum günstigeren Cache-Preis abgerechnet.",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Eingabe-Token",
+            "example": 18
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Ausgabe-Token (einschließlich Reasoning-Token)",
+            "example": 42
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Gesamtanzahl der Tokens",
+            "example": 60
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "Detaillierte Eingabe-Token-Informationen",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Anzahl der aus dem Cache gelieferten Token",
+                "example": 0
+              },
+              "cache_write_tokens": {
+                "type": "integer",
+                "description": "Anzahl der in den Cache geschriebenen Token",
+                "example": 0
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "Detaillierte Ausgabe-Token-Informationen",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Anzahl der Reasoning-Tokens",
+                "example": 16
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP-Status-Fehlercode"
+              },
+              "message": {
+                "type": "string",
+                "description": "Fehlerbeschreibung"
+              },
+              "type": {
+                "type": "string",
+                "description": "Fehlertyp"
+              },
+              "param": {
+                "type": "string",
+                "description": "Zugehöriger Parametername"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Vorschlag bei Fehlerauftreten"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle APIs erfordern Bearer-Token-Authentifizierung##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüsselverwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Responses",
+      "description": "OpenAI Responses API mit serverseitigen Tools"
+    }
+  ]
+}
