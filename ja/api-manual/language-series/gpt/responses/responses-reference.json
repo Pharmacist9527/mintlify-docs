@@ -1,0 +1,742 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPT 全モデルインターフェース - Responses 完全なパラメータ",
+    "description": "OpenAI 互換の Responses API で GPT シリーズのテキストモデルを呼び出すための完全なパラメータマニュアル（サーバーサイドツールを含む）。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "GPT Responses（全モデル、完全なパラメータ）",
+        "description": "- GPT シリーズのテキストモデル向け OpenAI 互換 Responses API。具体的なモデルは `model` で選択します（指定可能な値はすべて `model` パラメータの対照表を参照）\n- 全シリーズが推論モデルで、推論の深さは `reasoning.effort` で制御します。推論 token は出力 token として課金されます\n- Prompt キャッシュは自動的に有効：キャッシュにヒットした入力 token はより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- サーバーサイドツール：`web_search`（ウェブ検索）、`code_interpreter`（コード実行）、`file_search`（ドキュメント検索）\n- 通常の `function` ツール（クライアント側の関数呼び出し）にも対応\n- 複数ターンの会話は `previous_response_id` でつなげられます\n- **注意** 一部のパラメータは対応範囲がモデルごとに異なります。詳細は下記の各パラメータの説明をご覧ください",
+        "operationId": "gptResponsesReference",
+        "tags": [
+          "Responses"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "レスポンス生成成功（JSON オブジェクト、または `stream=true` の場合は `response.completed` で終わる SSE イベントストリーム）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正（そのモデルが対応していないパラメータを含む。エラーメッセージに該当するパラメータ名が示されます）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid value: '__bogus__'. Supported values are: 'auto' and 'disabled'.",
+                    "type": "invalid_request_error",
+                    "param": "truncation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認可、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限を超えました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービス一時利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル：\n\n| モデル ID | コンテキストウィンドウ | 位置づけ |\n|---|---|---|\n| `gpt-5.6-sol` | 1,050,000 | GPT-5.6 ファミリー、最先端の推論 |\n| `gpt-5.6-terra` | 1,050,000 | GPT-5.6 ファミリー、バランス型の本番運用 |\n| `gpt-5.6-luna` | 1,050,000 | GPT-5.6 ファミリー、高スループットとコスト管理 |\n| `gpt-5.5` | 400,000 | 汎用推論モデル |\n| `gpt-5.4` | 128,000 | 汎用推論モデル |\n| `gpt-5.2` | 400,000 | 汎用推論モデル |\n| `gpt-5.1` | 400,000 | 汎用推論モデル |",
+            "enum": [
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.6-luna",
+              "gpt-5.5",
+              "gpt-5.4",
+              "gpt-5.2",
+              "gpt-5.1"
+            ],
+            "example": "gpt-5.6-sol"
+          },
+          "input": {
+            "description": "モデル入力：単なる文字列、または入力項目の配列。\n\n入力項目の `content` は `input_text`（テキスト）と `input_image`（画像）の 2 種類のブロックに対応しています：\n\n```json\n\"input\": [\n  {\n    \"role\": \"user\",\n    \"content\": [\n      { \"type\": \"input_text\", \"text\": \"この画像には何が写っていますか？\" },\n      {\n        \"type\": \"input_image\",\n        \"image_url\": \"https://example.com/photo.png\",\n        \"detail\": \"auto\"\n      }\n    ]\n  }\n]\n```\n\n**画像**\n- `image_url` に画像の公開 URL を渡します\n- `image_url` は必ず文字列で指定します。`{ \"url\": \"...\" }` と書くと `400` が返されます\n- `detail` は `image_url` と同じ階層に置きます（その中に入れ子にはしません）。`auto`（デフォルト）/ `low` / `high` / `original`\n- 画像は正常にダウンロードできる必要があり、できない場合は `400` が返されます\n\n**ツール結果**\n- 配列には前のターンの `function_call_output` などのツール結果項目を差し戻すこともできます\n\n**注意** この API のブロックの種類は Chat Completions API とは異なります（Chat は `text` / `image_url` を使用）。両者は混在させられず、誤って指定すると `400` が返されます。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputItem"
+                }
+              }
+            ],
+            "example": "Search for AI news from the past week and summarize it in three sentences."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "システムレベルの指示。`input` の先頭にシステムメッセージを 1 件挿入するのと同等です。`previous_response_id` で会話を継続する場合、このパラメータは前のターンから引き継がれないため、毎ターン渡す必要があります。",
+            "example": "You are a concise assistant. Answer in no more than three sentences."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "ストリーミングでレスポンスを返すかどうか（SSE イベント。`response.completed` で終了）。デフォルトは `false`。",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "生成する最大 token 数（推論 token を含む）。上限に達した場合、`status` は `incomplete` になります。",
+            "example": 2048
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "推論の制御。\n\n**`effort`（推論の深さ）の指定可能な値はモデルによって異なります：**\n\n| モデル | 指定可能な値 |\n|---|---|\n| `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` | `none`、`low`、`medium`、`high`、`xhigh`、`max` |\n| `gpt-5.5` / `gpt-5.4` / `gpt-5.2` | `none`、`low`、`medium`、`high`、`xhigh` |\n| `gpt-5.1` | `none`、`low`、`medium`、`high` |\n\n**`summary`（推論サマリー）**：`auto` / `concise` / `detailed`。全シリーズで利用できます。有効にすると `output` に `reasoning` 項目が現れます。\n\n**`mode`（推論モード）**：`standard` / `pro`。`gpt-5.6` ファミリーのみ対応。\n\n**`context`（推論のコンテキスト範囲）**：`auto` / `current_turn` / `all_turns`。`gpt-5.6` ファミリーのみ対応。\n\n推論 token は出力 token として課金され、`usage.output_tokens_details.reasoning_tokens` に計上されます。",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "example": "medium"
+              },
+              "summary": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "concise",
+                  "detailed"
+                ],
+                "example": "auto"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "standard",
+                  "pro"
+                ],
+                "example": "standard"
+              },
+              "context": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "current_turn",
+                  "all_turns"
+                ],
+                "example": "current_turn"
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "description": "出力テキストの制御：\n\n- `format`：`{\"type\": \"text\"}`（デフォルト）、`{\"type\": \"json_object\"}`、または構造化結果を出力する `{\"type\": \"json_schema\", \"name\": \"...\", \"schema\": {...}, \"strict\": true}`\n- `verbosity`：`low` / `medium` / `high`。回答の詳しさを制御します",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "出力形式の定義"
+              },
+              "verbosity": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "example": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツールの宣言。サーバーサイドツールはサーバー側で実行されるため、クライアントが結果を返す必要はありません：\n\n| ツールの種類 | 機能 |\n|---|---|\n| `web_search` | ウェブ検索とページの閲覧（別名 `web_search_preview`） |\n| `code_interpreter` | サンドボックスでコードを実行。`\"container\": {\"type\": \"auto\"}` が必要 |\n| `file_search` | 作成済みのベクトルストアを検索。`vector_store_ids` が必要 |\n| `mcp` | リモートの MCP サービスに接続。`server_label` と `server_url` が必要 |\n\n通常の `function` ツール（クライアント側の関数呼び出し）にも対応しています。\n\n**注意** `image_generation` は本シリーズのモデルでは利用できません。画像シリーズのモデル API をご利用ください。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "example": [
+              {
+                "type": "web_search"
+              }
+            ]
+          },
+          "tool_choice": {
+            "description": "ツールの選択を制御します：`\"auto\"`（デフォルト）/ `\"none\"` / `\"required\"`、または特定のツールを指定するオブジェクト（例：`{\"type\": \"web_search\"}`）。",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "auto",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "このレスポンスで許可されるツール呼び出しの合計回数の上限。",
+            "example": 5
+          },
+          "parallel_tool_calls": {
+            "type": "boolean",
+            "description": "1 ターン内でモデルが複数のツールを並列に呼び出せるかどうか。デフォルトは `true`。\n\n**注意** `false` に設定できるのは `gpt-5.6` ファミリーと `gpt-5.5` のみです。`gpt-5.4` / `gpt-5.2` / `gpt-5.1` ではこのパラメータは無効で、常に `true` として動作します。",
+            "default": true,
+            "example": true
+          },
+          "previous_response_id": {
+            "type": "string",
+            "description": "前のレスポンスの `id`。複数ターンの会話をつなげるために使用し、履歴メッセージを再送信する必要がなくなります。\n\n**注意** `store: true`（デフォルト値）と併用する必要があります。レスポンスには保持期限があり、期限が切れるとその ID は無効になります。この場合、リクエストは新しい会話として処理され、コンテキストは引き継がれません。コンテキストの正確性が強く求められる場面では、`input` の履歴全体をご自身で管理することを推奨します。",
+            "example": "resp_0f5c2b2c20c39e8a006a7ef545443081979e478b10927984b5"
+          },
+          "store": {
+            "type": "boolean",
+            "description": "このレスポンスをサーバー側に保持するかどうか。保持されたレスポンスのみ `previous_response_id` から参照できます。デフォルトは `true`。\n\n**注意** `false` に設定できるのは `gpt-5.6` ファミリーと `gpt-5.5` のみです。`gpt-5.4` / `gpt-5.2` / `gpt-5.1` ではこのパラメータは無効で、常に `true` として動作します。保持を望まない場合は、無効化に対応したモデルをお選びください。",
+            "default": true,
+            "example": true
+          },
+          "include": {
+            "type": "array",
+            "description": "レスポンスに追加で返すよう要求する内容。指定可能な値：\n\n- `reasoning.encrypted_content`\n- `message.output_text.logprobs`\n- `web_search_call.results`\n- `web_search_call.action.sources`\n- `file_search_call.results`\n- `code_interpreter_call.outputs`\n- `message.input_image.image_url`\n- `computer_call_output.output.image_url`",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度。値の範囲は 0 ～ 2。値が低いほど出力が決定的になります。\n\n**注意** `gpt-5.4` / `gpt-5.2` / `gpt-5.1` では値 `0` は無効です（渡さなかった場合と同じ扱いになり、デフォルト値 `1` が適用されます）。より決定的な出力が必要な場合は `0.01` など 0 より大きい値をご利用ください。",
+            "minimum": 0,
+            "maximum": 2,
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus サンプリングのパラメータ。値の範囲は 0 ～ 1。`temperature` と同時に調整しないことを推奨します。",
+            "minimum": 0,
+            "maximum": 1,
+            "example": 0.9
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "description": "各位置で返される候補 token の数。値の範囲は 0 ～ 20。`include: [\"message.output_text.logprobs\"]` と併用する必要があります。\n\n**注意** `gpt-5.6` ファミリーと `gpt-5.5` のみ対応。その他のモデルはこのパラメータに対応していません。",
+            "minimum": 0,
+            "maximum": 20,
+            "example": 2
+          },
+          "frequency_penalty": {
+            "type": "number",
+            "description": "Frequency ペナルティ。値の範囲は -2 ～ 2。内容の繰り返しが起きる確率を下げます。\n\n**注意** `gpt-5.6` ファミリーのみ対応。その他のモデルはこのパラメータに対応していません。",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "presence_penalty": {
+            "type": "number",
+            "description": "Presence ペナルティ。値の範囲は -2 ～ 2。モデルが新しい話題に触れることを促します。\n\n**注意** `gpt-5.6` ファミリーのみ対応。その他のモデルはこのパラメータに対応していません。",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 0.5
+          },
+          "truncation": {
+            "type": "string",
+            "description": "コンテキストがウィンドウを超えた場合の処理方法：`disabled`（デフォルト。そのままエラーを返す）または `auto`（中間部分を自動的に切り詰める）。",
+            "enum": [
+              "auto",
+              "disabled"
+            ],
+            "default": "disabled",
+            "example": "auto"
+          },
+          "context_management": {
+            "type": "array",
+            "description": "長い会話の自動圧縮設定。例：`[{\"type\": \"compaction\", \"compact_threshold\": 100000}]`。コンテキストがしきい値を超えると履歴が自動的に圧縮されます。\n\n**注意** `gpt-5.6` ファミリーのみ対応。その他のモデルはこのパラメータに対応していません。",
+            "items": {
+              "type": "object"
+            }
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "キャッシュのグループ化キー。同じプレフィックスを持つリクエストに同じ値を渡すと、Prompt キャッシュのヒット率が向上します。",
+            "example": "app-agent-v1"
+          },
+          "prompt_cache_retention": {
+            "type": "string",
+            "description": "Prompt キャッシュの保持ポリシー：`in_memory`（デフォルト）または `24h`（キャッシュの保持期間を延長）。",
+            "enum": [
+              "in_memory",
+              "24h"
+            ],
+            "example": "in_memory"
+          },
+          "prompt": {
+            "type": "object",
+            "description": "作成済みの Prompt テンプレートを参照します。形式は `{\"id\": \"pmpt_xxx\", \"version\": \"1\", \"variables\": {...}}`。",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "variables": {
+                "type": "object"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "カスタムのキーと値のペア。レスポンスにそのまま返されるため、業務側でのタグ付けに便利です。キーと値はいずれも文字列です。",
+            "example": {
+              "trace_id": "abc-123"
+            }
+          },
+          "safety_identifier": {
+            "type": "string",
+            "description": "エンドユーザーの安定した識別子。不正利用の追跡に使用します。\n\n**注意** `gpt-5.6` ファミリーのみ対応。その他のモデルはこのパラメータに対応していません。",
+            "example": "user-1024"
+          },
+          "user": {
+            "type": "string",
+            "description": "エンドユーザー識別子。呼び出し元を区別するために使用します。",
+            "example": "user-1024"
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "入力項目：メッセージ項目（`role` + `content`）、または前のターンのツール結果項目（`function_call_output` など）\n\nツール結果を返す場合の書き方：\n\n```json\n{\n  \"type\": \"function_call_output\",\n  \"call_id\": \"call_abc123\",\n  \"output\": \"{\\\"temp_c\\\": 21}\"\n}\n```",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "メッセージのロール",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "description": "入力内容：文字列、またはコンテンツブロックの配列（`input_text` / `input_image` の混在）",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputContentBlock"
+                }
+              }
+            ]
+          },
+          "type": {
+            "type": "string",
+            "description": "入力項目のタイプ。通常のメッセージ項目では省略できます。ツール結果を返す場合は `function_call_output` を指定します。",
+            "enum": [
+              "function_call_output"
+            ],
+            "example": "function_call_output"
+          },
+          "call_id": {
+            "type": "string",
+            "description": "前のターンの `function_call` 出力項目に対応する `call_id`（その `id` ではありません）。`function_call_output` 項目にのみ必要です。",
+            "example": "call_abc123"
+          },
+          "output": {
+            "type": "string",
+            "description": "ツールの実行結果（文字列）。JSON の結果は自分で文字列にシリアライズしてください。`function_call_output` 項目にのみ必要です。",
+            "example": "{\"temp_c\": 21}"
+          }
+        }
+      },
+      "InputContentBlock": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "コンテンツの種類\n\n- `input_text`：テキストブロック\n- `input_image`：画像入力",
+            "enum": [
+              "input_text",
+              "input_image"
+            ],
+            "example": "input_image"
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=input_text` のときのテキスト内容",
+            "example": "What is in this image?"
+          },
+          "image_url": {
+            "type": "string",
+            "description": "画像の公開 URL（`type=input_image` の場合）。必ず文字列で指定します。`{ \"url\": \"...\" }` と書くと `400` が返されます。画像は正常にダウンロードできる必要があり、できない場合も `400` が返されます。",
+            "example": "https://example.com/photo.png"
+          },
+          "detail": {
+            "type": "string",
+            "description": "画像解析の精度。`image_url` と同じ階層に置きます（その中に入れ子にはしません）\n\n- `low`：低精度。token の消費が少ない\n- `high`：高精度。より細かく認識\n- `original`：元画像のサイズで解析\n- `auto`（デフォルト）：モデルが自動的に決定",
+            "enum": [
+              "auto",
+              "low",
+              "high",
+              "original"
+            ],
+            "default": "auto",
+            "example": "auto"
+          }
+        },
+        "description": "マルチモーダルコンテンツブロック。`type` で種類を宣言し、その種類に一致するフィールドのみを記入します。"
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "ツールタイプ",
+            "enum": [
+              "web_search",
+              "web_search_preview",
+              "code_interpreter",
+              "file_search",
+              "mcp",
+              "function"
+            ],
+            "example": "web_search"
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "このレスポンスの一意の ID。次のターンの `previous_response_id` として使用できます",
+            "example": "resp_0f5c2b2c20c39e8a006a7ef545443081979e478b10927984b5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "response"
+            ],
+            "description": "レスポンスタイプ",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "レスポンスのステータス：`completed` は正常終了、`incomplete` は `max_output_tokens` への到達などの理由で完了しなかった状態、`failed` は生成失敗",
+            "enum": [
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "gpt-5.6-sol"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "作成タイムスタンプ",
+            "example": 1786705221
+          },
+          "output": {
+            "type": "array",
+            "description": "生成順に並んだ出力項目：`reasoning` 項目（推論サマリー / 暗号化された推論内容）、ツール呼び出し項目（`web_search_call`、`code_interpreter_call` など）、そして最後に `output_text` の内容を含む `message` 項目。",
+            "items": {
+              "$ref": "#/components/schemas/OutputItem"
+            }
+          },
+          "incomplete_details": {
+            "type": "object",
+            "description": "`status` が `incomplete` の場合にその理由を示します"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "リクエストで渡したカスタムのキーと値のペア。そのまま返されます"
+          }
+        }
+      },
+      "OutputItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "出力アイテムの識別子"
+          },
+          "type": {
+            "type": "string",
+            "description": "出力アイテムのタイプ",
+            "enum": [
+              "reasoning",
+              "message",
+              "web_search_call",
+              "code_interpreter_call",
+              "file_search_call",
+              "mcp_call",
+              "function_call"
+            ],
+            "example": "web_search_call"
+          },
+          "status": {
+            "type": "string",
+            "description": "出力アイテムのステータス",
+            "example": "completed"
+          },
+          "content": {
+            "type": "array",
+            "description": "メッセージ内容のパート（`output_text`）。`message` アイテムに出力されます",
+            "items": {
+              "type": "object"
+            }
+          },
+          "encrypted_content": {
+            "type": "string",
+            "description": "暗号化された推論内容。`reasoning` 項目に現れます。リクエストで `include: [\"reasoning.encrypted_content\"]` を指定する必要があります"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 使用量の統計。Prompt キャッシュは自動的に有効となり、キャッシュにヒットした入力 token はより安いキャッシュ料金で課金されます。",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "入力トークン数",
+            "example": 18
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力トークン数（推論トークンを含む）",
+            "example": 42
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "トークンの合計数",
+            "example": 60
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "入力トークンの詳細情報",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "キャッシュにヒットした token 数",
+                "example": 0
+              },
+              "cache_write_tokens": {
+                "type": "integer",
+                "description": "キャッシュに書き込まれた token 数",
+                "example": 0
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "出力トークンの詳細情報",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "推論トークン数",
+                "example": 16
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP ステータスエラーコード"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              },
+              "param": {
+                "type": "string",
+                "description": "関連パラメータ名"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "エラー発生時の提案"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIにBearer Token認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Responses",
+      "description": "サーバーサイドツール対応 OpenAI Responses API"
+    }
+  ]
+}

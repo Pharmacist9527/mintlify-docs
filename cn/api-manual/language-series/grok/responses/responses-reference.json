@@ -1,0 +1,489 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Grok 全模型接口 - Responses 完整参数",
+    "description": "通过 OpenAI 兼容的 Responses 接口调用 xAI Grok 系列文本模型的完整参数手册（含服务端工具）。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Grok Responses（全模型，完整参数）",
+        "description": "- xAI Grok 系列文本模型的 OpenAI 兼容 Responses 接口，通过 `model` 选择具体模型（全部可选值见 `model` 参数的对照表）\n- 50 万 token 上下文窗口；Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费\n- Prompt 缓存自动生效：命中缓存的输入 token 按更低的缓存价计费\n- 支持同步与流式（SSE）两种模式\n- xAI 服务端工具在 xAI 基础设施上执行、按成功调用次数计费：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`\n- 同时支持普通 `function` 工具（客户端函数调用，无按次费用）",
+        "operationId": "grokResponsesReference",
+        "tags": [
+          "Responses"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "响应生成成功（JSON 对象；`stream=true` 时为 SSE 事件流，以 `response.completed` 结束）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效（包括未识别的 `tools[].type`，会在到达模型前被拒绝）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，Token 无效或已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "额度不足。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "要调用的模型：\n\n| 模型 ID | 定位 |\n|---|---|\n| `grok-4.6` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；额外支持 `xhigh` 推理档；知识截止 2026-02-01 |\n| `grok-4.5` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；推理档最高到 `high`（传 `xhigh` 会被降级为 `high`） |",
+            "enum": [
+              "grok-4.6",
+              "grok-4.5"
+            ],
+            "example": "grok-4.6"
+          },
+          "input": {
+            "description": "模型输入：纯字符串，或 OpenAI Responses 输入项数组（如 `{\"role\":\"user\",\"content\":[...]}`）。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ],
+            "example": "搜索最新的 SpaceX 发射并用一句话总结。"
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否流式返回（SSE 事件流，以 `response.completed` 结束）。默认 `false`。",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "生成的最大 token 数（含推理 token）。",
+            "example": 2048
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "推理深度控制，对象形式：`{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`。默认 `high`，推理无法关闭。`xhigh` 仅 `grok-4.6` 支持——`grok-4.5` 接受该值但会降级为 `high`。推理 token 按输出 token 计费，并计入 `usage.output_tokens_details.reasoning_tokens`。",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "default": "high"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "工具声明。xAI 服务端工具（按成功调用次数计费，工具费不受长上下文倍率影响）：\n\n| 工具类型 | 能力 | 单次价格 |\n|---|---|---|\n| `web_search` | 联网搜索并浏览网页 | $0.005 |\n| `x_search` | 搜索 X 帖子、账号与话题 | $0.005 |\n| `code_execution` | 在沙箱中运行 Python（别名 `code_interpreter`） | $0.005 |\n| `attachment_search` | 搜索对话附件文件（输入含文件时可能自动启用） | $0.01 |\n| `collections_search` | 检索已上传的文档集（别名 `file_search`） | $0.0025 |\n\n同时支持普通 `function` 工具（客户端函数调用，无按次费用）。\n\n⚠️ `image_generation` 目前不可用：为兼容会接受该声明，但会在请求到达模型前被移除。未识别的工具类型返回 `400`。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "example": [
+              {
+                "type": "web_search"
+              }
+            ]
+          },
+          "tool_choice": {
+            "description": "工具选择控制：`\"auto\"`（默认）/ `\"none\"` / `\"required\"`，或用对象指定某个工具，如 `{\"type\": \"web_search\"}`。",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "工具类型",
+            "enum": [
+              "web_search",
+              "x_search",
+              "code_execution",
+              "code_interpreter",
+              "attachment_search",
+              "collections_search",
+              "file_search",
+              "function"
+            ],
+            "example": "web_search"
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "响应的唯一标识",
+            "example": "55d44212-8d5e-90cc-975f-36d341ce21f5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "response"
+            ],
+            "description": "响应类型",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "响应状态",
+            "enum": [
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "grok-4.6"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "创建时间戳",
+            "example": 1786538000
+          },
+          "output": {
+            "type": "array",
+            "description": "按生成顺序排列的输出项：`reasoning` 项（思考摘要）、服务端工具调用项（如 `web_search_call` / `code_interpreter_call`，状态 `completed` 表示成功且计费的调用），以及最后含 `output_text` 内容的 `message` 项。",
+            "items": {
+              "$ref": "#/components/schemas/OutputItem"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "OutputItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "输出项标识"
+          },
+          "type": {
+            "type": "string",
+            "description": "输出项类型",
+            "enum": [
+              "reasoning",
+              "message",
+              "web_search_call",
+              "x_search_call",
+              "code_interpreter_call",
+              "code_execution_call",
+              "attachment_search_call",
+              "file_search_call",
+              "function_call"
+            ],
+            "example": "web_search_call"
+          },
+          "status": {
+            "type": "string",
+            "description": "输出项状态；状态为 `completed` 的工具调用才计费",
+            "example": "completed"
+          },
+          "content": {
+            "type": "array",
+            "description": "消息内容片段（`output_text`），出现在 `message` 项上",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 与工具用量统计。Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费；工具费不受倍率影响。",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "输入 token 数",
+            "example": 10329
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "输出 token 数（含推理 token）",
+            "example": 299
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "总 token 数",
+            "example": 10628
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "输入 token 明细",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "命中缓存的 token 数（按更低的缓存输入价计费；缓存自动生效）",
+                "example": 6016
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "输出 token 明细",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "推理 token 数",
+                "example": 128
+              }
+            }
+          },
+          "num_server_side_tools_used": {
+            "type": "integer",
+            "description": "本次响应中服务端工具的总调用次数",
+            "example": 2
+          },
+          "server_side_tool_usage_details": {
+            "type": "object",
+            "description": "各工具的调用次数明细（部分第三方线路可能不返回该对象；此时计费按状态为 completed 的工具调用输出项计数）",
+            "properties": {
+              "web_search_calls": {
+                "type": "integer",
+                "example": 2
+              },
+              "x_search_calls": {
+                "type": "integer",
+                "example": 0
+              },
+              "code_interpreter_calls": {
+                "type": "integer",
+                "example": 0
+              },
+              "document_search_calls": {
+                "type": "integer",
+                "description": "附件搜索调用次数",
+                "example": 0
+              },
+              "file_search_calls": {
+                "type": "integer",
+                "description": "文档集搜索调用次数",
+                "example": 0
+              },
+              "mcp_calls": {
+                "type": "integer",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 状态错误码"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": "string",
+                "description": "相关参数名"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "出错时的处理建议"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需 Bearer Token 认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取你的 API Key\n\n**添加到请求头：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Responses",
+      "description": "OpenAI Responses 接口与 xAI 服务端工具"
+    }
+  ]
+}

@@ -1,0 +1,465 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Grok Schnittstelle für alle Modelle - Chat Completions vollständige Parameter",
+    "description": "Vollständige Parameterreferenz für den Aufruf von xAI-Grok-Textmodellen über die OpenAI-kompatible Chat-Completions-API.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktion (empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Grok Chat-Vervollständigung (alle Modelle, vollständige Parameter)",
+        "description": "- OpenAI-kompatibler Chat-Completions-Endpunkt für xAI-Grok-Textmodelle; Modellauswahl über den Parameter `model` (alle Werte siehe Tabelle beim Parameter `model`)\n- Kontextfenster von 500K Token; ab 200K Token im Prompt werden alle Token-Typen zum doppelten Preis abgerechnet\n- Prompt-Caching greift automatisch: Token aus dem Cache werden zum günstigeren Cache-Eingabepreis abgerechnet\n- Synchroner und Streaming-Modus (SSE)\n- Reguläre `function`-Tool-Aufrufe werden unterstützt; serverseitige xAI-Tools stehen ausschließlich über die [Responses API](../responses/responses-reference) bereit",
+        "operationId": "grokChatCompletionsReference",
+        "tags": [
+          "Chat-Vervollständigung"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat-Vervollständigung erfolgreich generiert (JSON-Objekt oder – bei `stream=true` – ein SSE-Stream von `chat.completion.chunk`-Events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Anfrageparameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nicht autorisiert, ungültiges oder abgelaufenes Token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Unzureichendes Kontingent, Aufladung erforderlich",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ratenlimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Interner Serverfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Aufzurufendes Modell:\n\n| Modell-ID | Positionierung |\n|---|---|\n| `grok-4.6` | xAI-Modell für Reasoning und Tool-Aufrufe, Kontextfenster von 500K; zusätzlich mit Reasoning-Stufe `xhigh`; Wissensstand 2026-02-01 |\n| `grok-4.5` | xAI-Modell für Reasoning und Tool-Aufrufe, Kontextfenster von 500K; Reasoning-Stufen bis `high` (`xhigh` wird akzeptiert, aber auf `high` herabgestuft) |",
+            "enum": [
+              "grok-4.6",
+              "grok-4.5"
+            ],
+            "example": "grok-4.6"
+          },
+          "messages": {
+            "type": "array",
+            "description": "Liste der Chat-Nachrichten. Unterstützt die Rollen `system`, `user` und `assistant`.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "minItems": 1,
+            "example": [
+              {
+                "role": "system",
+                "content": "You are a concise assistant."
+              },
+              {
+                "role": "user",
+                "content": "Explain prompt caching in one sentence."
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Ob eine Streaming-Antwort zurückgegeben wird (SSE, `chat.completion.chunk`-Events). Standard `false`.",
+            "default": false,
+            "example": false
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Maximale Anzahl der zu generierenden Token.",
+            "example": 1024
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default": "high",
+            "description": "Reasoning-Tiefe: `low` / `medium` / `high` (Standard) / `xhigh`. Reasoning lässt sich nicht abschalten. `xhigh` wird nur von `grok-4.6` unterstützt – `grok-4.5` akzeptiert den Wert, stuft ihn aber auf `high` herab. Reasoning-Tokens werden als Ausgabe-Tokens abgerechnet."
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Sampling-Temperatur (0-2). Höhere Werte erzeugen zufälligere Ausgaben.",
+            "example": 0.7
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus-Sampling-Parameter (0-1).",
+            "example": 0.95
+          },
+          "tools": {
+            "type": "array",
+            "description": "Reguläre OpenAI-`function`-Tool-Definitionen (clientseitige Funktionsaufrufe, keine zusätzliche Gebühr pro Aufruf). Serverseitige xAI-Tools stehen ausschließlich über die Responses API bereit.",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Steuert die Funktionsauswahl: `\"auto\"` / `\"none\"` / `\"required\"` oder ein Objekt, das eine bestimmte Funktion festlegt.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Nachrichtenrolle",
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "Nachrichteninhalt"
+          }
+        }
+      },
+      "FunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "description": "Tool-Typ; der Chat-Completions-Endpunkt akzeptiert ausschließlich `function`"
+          },
+          "function": {
+            "type": "object",
+            "description": "Funktionsdefinition: `name`, `description` und ein `parameters`-Objekt im JSON-Schema-Format"
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutiger Bezeichner für die Chat-Vervollständigung",
+            "example": "chatcmpl-20260812164515123456789AbCdEfGh"
+          },
+          "model": {
+            "type": "string",
+            "description": "Tatsächlich verwendeter Modellname",
+            "example": "grok-4.6"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "chat.completion"
+            ],
+            "description": "Antworttyp",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Erstellungszeitstempel",
+            "example": 1786538000
+          },
+          "choices": {
+            "type": "array",
+            "description": "Liste der Chat-Vervollständigungsoptionen",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Auswahlindex",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "Abschlussgrund",
+            "enum": [
+              "stop",
+              "length",
+              "tool_calls",
+              "content_filter"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Rolle des Nachrichtenabsenders",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "Inhalt der KI-Antwortnachricht",
+            "example": "Prompt caching reuses previously processed prompt prefixes so repeated context is billed at a lower rate."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Vom Modell angeforderte Funktionsaufrufe (vorhanden bei Verwendung von `function`-Tools)",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Statistik zur Token-Nutzung. Ab 200K Token im Prompt werden alle Token-Typen (Eingabe, Cache-Eingabe, Ausgabe) zum doppelten Preis abgerechnet.",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Tokens im Eingabeinhalt",
+            "example": 504
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Tokens im Ausgabeinhalt",
+            "example": 2
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Gesamtanzahl der Tokens",
+            "example": 526
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Detaillierte Eingabe-Token-Informationen",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Anzahl der Prompt-Token aus dem Cache (Abrechnung zum günstigeren Cache-Eingabepreis; Caching greift automatisch)",
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP-Status-Fehlercode"
+              },
+              "message": {
+                "type": "string",
+                "description": "Fehlerbeschreibung"
+              },
+              "type": {
+                "type": "string",
+                "description": "Fehlertyp"
+              },
+              "param": {
+                "type": "string",
+                "description": "Zugehöriger Parametername"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Vorschlag bei Fehlerauftreten"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle APIs erfordern Bearer-Token-Authentifizierung##\n\n**API-Schlüssel erhalten:**\n\nBesuchen Sie die [API-Schlüsselverwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completion",
+      "description": "KI-Chat-Vervollständigung zugehörige APIs"
+    }
+  ]
+}
