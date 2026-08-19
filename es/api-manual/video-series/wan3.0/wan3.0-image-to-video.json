@@ -1,0 +1,418 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Wan3.0 Image-to-Video API",
+    "description": "Wan 3.0 imagen a video: el primer fotograma, o la pareja primer/último fotograma, controla estrictamente dónde empieza y termina el video",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Entorno de producción"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Wan3.0 Image-to-Video",
+        "description": "- Envíe `image_start` para fijar estrictamente el **primer fotograma** del video; añada `image_end` para fijar estrictamente también el **último fotograma**\n- **No se aceptan materiales de referencia** (videos de referencia / audio de referencia / archivos / páginas web): los fotogramas inicial y final son excluyentes con los materiales de referencia. Si necesita referencias mixtas, use [Wan3.0 referencia a video](/es/api-manual/video-series/wan3.0/wan3.0-reference-video)\n- Como máximo 2 imágenes (primer fotograma + último fotograma). Si necesita 3 o más imágenes de referencia, use referencia a video\n- Modo de procesamiento asíncrono, use el ID de tarea devuelto para [consultar el estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de video generados son válidos durante 24 horas, guárdelos cuanto antes\n\n## Facturación\n\n- **Fórmula de facturación**: duración facturada = duración del video de entrada + duración del video de salida, facturación por segundo\n- **Multiplicador de resolución**: `480p` = 1x (base), `720p` = 2x, `1080p` = 4x\n- Las imágenes de referencia, el audio de referencia, los archivos de referencia y los enlaces de páginas web **no se facturan**\n- Cuando `duration` es `-1` (duración inteligente) se preautoriza el máximo de `30` segundos; tras completarse la tarea se liquida según la duración realmente producida y la diferencia se reembolsa automáticamente\n- Activar o desactivar la pista `audio` **cuesta lo mismo**\n- **Las tareas fallidas no se facturan**, los créditos congelados se reembolsan íntegramente",
+        "operationId": "createWan30ImageToVideo",
+        "tags": [
+          "Generación de video"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "first_frame": {
+                  "summary": "Primer fotograma a video",
+                  "value": {
+                    "model": "wan3.0-image-to-video",
+                    "prompt": "The boy in the frame “comes alive” out of the wall and performs an English rap at breakneck speed, while street lights under a railway bridge at night create a cinematic mood.",
+                    "image_start": "https://example.com/first_frame.png",
+                    "duration": 5,
+                    "quality": "720p"
+                  }
+                },
+                "first_last_frame": {
+                  "summary": "Primer y último fotograma a video",
+                  "value": {
+                    "model": "wan3.0-image-to-video",
+                    "prompt": "A young girl's smile gradually turns into a big laugh, the camera slowly pushes in, and the background light shifts from cool tones to warm tones.",
+                    "image_start": "https://example.com/first_frame.jpg",
+                    "image_end": "https://example.com/last_frame.jpg",
+                    "duration": 5,
+                    "quality": "720p",
+                    "aspect_ratio": "16:9"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tarea de generación de video creada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_parameter",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autenticado, token inválido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente, se requiere recarga",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso denegado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: wan3.0-image-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de velocidad excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "image_start"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo, fijo en `wan3.0-image-to-video`",
+            "enum": [
+              "wan3.0-image-to-video"
+            ],
+            "example": "wan3.0-image-to-video",
+            "default": "wan3.0-image-to-video"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt de texto para la generación de video. Admite chino e inglés, **cada carácter chino / letra cuenta como 1 carácter**, longitud máxima `20000` caracteres; el excedente se trunca automáticamente (sin error)\n\nSirve para describir la acción, el movimiento de cámara y los cambios de imagen esperados entre el primer fotograma (o entre el primero y el último).",
+            "example": "A young girl's smile gradually turns into a big laugh, the camera slowly pushes in, and the background light shifts from cool tones to warm tones."
+          },
+          "image_start": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL de la imagen del primer fotograma, usada estrictamente como primer fotograma del video generado. **Obligatorio**\n\n**Límites de imagen:**\n- Formatos: JPEG, JPG, PNG (sin transparencia), BMP, WEBP\n- Resolución: ancho y alto en `[240, 8000]` píxeles\n- Relación de aspecto: 1:8 ~ 8:1\n- Tamaño de archivo: hasta `20MB`",
+            "example": "https://example.com/first_frame.jpg"
+          },
+          "image_end": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL de la imagen del último fotograma, usada estrictamente como último fotograma del video generado. Opcional\n\n**Restricción:** debe usarse junto con `image_start`, **no se admite enviar solo el último fotograma**.\n\n**Límites de imagen:**\n- Formatos: JPEG, JPG, PNG (sin transparencia), BMP, WEBP\n- Resolución: ancho y alto en `[240, 8000]` píxeles\n- Relación de aspecto: 1:8 ~ 8:1\n- Tamaño de archivo: hasta `20MB`",
+            "example": "https://example.com/last_frame.jpg"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Duración del video generado (segundos), `5` de forma predeterminada\n\n**Valores admitidos:**\n- Cualquier entero entre `2` y `30`\n- `-1`: duración inteligente, el modelo decide la longitud de salida a partir del prompt y los materiales de entrada\n\n**Cómo se factura la duración inteligente:** al enviar la solicitud no se sabe cuánto durará el resultado, por lo que se **preautoriza el máximo** de `30` segundos; tras completarse la tarea se liquida según la duración realmente producida y el exceso congelado se libera automáticamente. Si su saldo no cubre la preautorización máxima, indique un número de segundos explícito.",
+            "default": 5,
+            "example": 5
+          },
+          "quality": {
+            "type": "string",
+            "description": "Resolución del video, `720p` de forma predeterminada\n\n**Valores posibles:**\n- `480p`: menor definición, precio más bajo (base de facturación)\n- `720p`: definición estándar, valor predeterminado, precio 2x el de `480p`\n- `1080p`: alta definición, precio 4x el de `480p`",
+            "enum": [
+              "480p",
+              "720p",
+              "1080p"
+            ],
+            "default": "720p",
+            "example": "720p"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Relación de aspecto del video, `adaptive` de forma predeterminada\n\n**Valores posibles:**\n- `adaptive`: adaptativa, el modelo recomienda una relación de aspecto adecuada según la proporción de los materiales de entrada y la intención del prompt, valor predeterminado\n- `16:9` (horizontal), `9:16` (vertical), `1:1` (cuadrado), `4:3`, `3:4`",
+            "enum": [
+              "adaptive",
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "default": "adaptive",
+            "example": "16:9"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "description": "Indica si el video de salida incluye pista de audio, `true` de forma predeterminada\n\n**Valores posibles:**\n- `true`: el video de salida incluye sonido (voces, efectos, música de fondo), valor predeterminado\n- `false`: video de salida sin sonido\n\n**Con o sin sonido el precio es el mismo**, no hay cargo adicional.",
+            "default": true,
+            "example": true
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Semilla aleatoria, sirve para reproducir los resultados, aleatoria de forma predeterminada\n\n**Notas:**\n- Rango: `0` ~ `2147483647`\n- Fijar la semilla reduce la variación al iterar prompts y mejora la reproducibilidad",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "example": 42
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "URL de callback HTTPS después de completar la tarea\n\n**Momento del callback:**\n- Se activa cuando la tarea se completa (completed), falla (failed) o se cancela (cancelled)\n- Se envía después de completar la confirmación de facturación\n\n**Restricciones de seguridad:**\n- Solo se admite el protocolo HTTPS\n- Se prohíben los callbacks a direcciones IP de red interna (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longitud de la URL no debe exceder `2048` caracteres\n\n**Mecanismo de callback:**\n- Tiempo de espera: `10` segundos\n- Máximo de `3` reintentos después de un fallo (los reintentos ocurren después de `1`/`2`/`4` segundos tras el fallo)\n- El formato del cuerpo de respuesta del callback es consistente con el formato de respuesta de la API de consulta de tareas\n- Un código de estado 2xx se considera exitoso, otros códigos de estado activan reintentos",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Marca de tiempo de creación de la tarea",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tarea",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo realmente utilizado",
+            "example": "wan3.0-image-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Tipo específico de la tarea"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Porcentaje de progreso de la tarea (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la tarea",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Información detallada de la tarea de video"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Tipo de salida de la tarea",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Información de uso y facturación"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Si la tarea puede ser cancelada",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Tiempo estimado de finalización (segundos)",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Duración del video (segundos)",
+            "example": 8
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Información de uso y facturación",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Regla de facturación",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Créditos estimados consumidos",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Categoría de grupo de usuarios",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Identificador del código de error"
+              },
+              "message": {
+                "type": "string",
+                "description": "Descripción del error"
+              },
+              "type": {
+                "type": "string",
+                "description": "Tipo de error"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las APIs requieren autenticación Bearer Token##\n\n**Obtener API Key:**\n\nVisita la [Página de gestión de API Key](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Agregar al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Generación de video",
+      "description": "APIs de generación de video con IA"
+    }
+  ]
+}
