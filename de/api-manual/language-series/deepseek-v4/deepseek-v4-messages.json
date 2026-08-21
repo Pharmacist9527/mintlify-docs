@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "DeepSeek V4 Anthropic-kompatible API",
-    "description": "Die DeepSeek V4 Serie wird über das Anthropic Messages Protokoll aufgerufen (`deepseek-v4-flash` / `deepseek-v4-pro`).\n\n**Kompatibilitätshinweise**:\n- Pfad: `/v1/messages` (Anthropic-Standardpfad)\n- Request- / Response-Struktur ist mit der Anthropic Messages API identisch\n- Unterstützte Felder: `model` `max_tokens` (Pflicht) `messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **Nicht unterstützte Felder**: `top_k`, `container`, `mcp_servers`, `metadata`, `service_tier`, `cache_control`\n- **Nicht unterstützte Inhaltstypen**: Bilder (`image`), Dokumente (`document`), Suchergebnisse, `redacted_thinking`, `server_tool_use`\n\n**Modellfähigkeiten**:\n- Kontext 1M Tokens, maximale Ausgabe 384K Tokens\n- Pro hat `thinking` standardmäßig aktiviert, die Antwort enthält einen `thinking` Content-Block\n\n**Abrechnungsstufen (UC/1K Tokens, EvoLink-interne Einheit)**:\n| Modell | Input Cache-Treffer | Input Cache-Fehltreffer | Output |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 20 | 100 | 200 |\n| deepseek-v4-pro | 100 | 1200 | 2400 |",
+    "description": "Die DeepSeek V4 Serie wird über das Anthropic Messages Protokoll aufgerufen (`deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`).\n\n**Kompatibilitätshinweise**:\n- Pfad: `/v1/messages` (Anthropic-Standardpfad)\n- Request- / Response-Struktur ist mit der Anthropic Messages API identisch\n- Unterstützte Felder: `model` `max_tokens` (Pflicht) `messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **Nicht unterstützte Felder**: `top_k`, `container`, `mcp_servers`, `metadata`, `service_tier`, `cache_control`\n- **Bilder (`image`)**: Nur von `deepseek-v4-flash-vision-exp` unterstützt; `source` kann `base64` oder `url` verwenden\n- **Nicht unterstützte Inhaltstypen**: Dokumente (`document`), Suchergebnisse, `redacted_thinking` und `server_tool_use`\n\n**Modellfähigkeiten**:\n- Kontext 1M Tokens, maximale Ausgabe 384K Tokens\n- Pro hat `thinking` standardmäßig aktiviert, die Antwort enthält einen `thinking` Content-Block\n\nBilder werden als Input-Tokens zum gleichen Preis wie Text und ohne Aufpreis berechnet.",
     "license": {
       "name": "MIT"
     },
@@ -27,7 +27,7 @@
     "/v1/messages": {
       "post": {
         "summary": "DeepSeek V4 Messages-Schnittstelle (Anthropic-kompatibel)",
-        "description": "- Verwenden Sie das Anthropic Messages Protokoll, um die DeepSeek V4 Modelle aufzurufen\n- Unterstützt `deepseek-v4-flash` / `deepseek-v4-pro`\n- Request- / Response-Struktur ist an die Anthropic API angeglichen\n- **Reine Textkonversation** (Bilder / Dokumente als Inhaltstypen werden noch nicht unterstützt)\n- **System-Prompts**: Über das Top-Level-Feld `system` übergeben\n- **Thinking-Modus**: Schalter über das `thinking`-Objekt; Denkinhalte werden über `content[type=thinking]` Block zurückgegeben\n- **Streaming-Ausgabe**: SSE-Event-Stream\n- **Tool-Aufrufe**: Kompatibel mit Anthropic `tool_use` / `tool_result` Ablauf",
+        "description": "- Verwenden Sie das Anthropic Messages Protokoll, um die DeepSeek V4 Modelle aufzurufen\n- Unterstützt `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`\n- Request- / Response-Struktur ist an die Anthropic API angeglichen\n- **Bildverständnis**: `deepseek-v4-flash-vision-exp` unterstützt `image`-Content-Blöcke (`source.type` kann `base64` oder `url` sein)\n- **System-Prompts**: Über das Top-Level-Feld `system` übergeben\n- **Thinking-Modus**: Schalter über das `thinking`-Objekt; Denkinhalte werden über `content[type=thinking]` Block zurückgegeben\n- **Streaming-Ausgabe**: SSE-Event-Stream\n- **Tool-Aufrufe**: Kompatibel mit Anthropic `tool_use` / `tool_result` Ablauf\n\n> ⚠️ **Wichtig**: Ein `image`-Block an `deepseek-v4-flash` / `deepseek-v4-pro` **löst keinen Fehler aus**; der Upstream ersetzt das Bild jedoch durch den Platzhalter `[Unsupported Image]`. Das Modell sieht das Bild nicht, und die Anfrage wird dennoch berechnet. Setzen Sie für Bildverständnis `model` immer auf `deepseek-v4-flash-vision-exp`.",
         "operationId": "createMessageDeepSeekV4",
         "tags": [
           "Messages"
@@ -49,6 +49,57 @@
                       {
                         "role": "user",
                         "content": "Hello, world"
+                      }
+                    ]
+                  }
+                },
+                "vision_base64": {
+                  "summary": "Bildverständnis – Inline-Base64 (empfohlen)",
+                  "value": {
+                    "model": "deepseek-v4-flash-vision-exp",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Was steht auf diesem Bild? Antworten Sie nur mit dem Inhalt."
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/png",
+                              "data": "iVBORw0KGgoAAAANSUhEUgAA..."
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "vision_url": {
+                  "summary": "Bildverständnis – öffentliche Bild-URL",
+                  "value": {
+                    "model": "deepseek-v4-flash-vision-exp",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Beschreiben Sie den Inhalt dieses Bildes."
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/photo.jpg"
+                            }
+                          }
+                        ]
                       }
                     ]
                   }
@@ -407,10 +458,11 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Aufzurufendes Modell\n\n- `deepseek-v4-flash`: Schnell und universell\n- `deepseek-v4-pro`: Tiefes Reasoning\n\n**Hinweis**: Beide Modelle **haben thinking standardmäßig aktiviert**, die Antwort enthält stets einen `type=\"thinking\"` Content-Block; zum Deaktivieren bitte explizit `thinking.type=\"disabled\"` setzen. Nicht angegebene oder nicht unterstützte Modelle werden automatisch auf `deepseek-v4-flash` abgebildet.",
+            "description": "Aufzurufendes Modell\n\n- `deepseek-v4-flash`: Schnell und universell\n- `deepseek-v4-pro`: Tiefes Reasoning\n- `deepseek-v4-flash-vision-exp`: Experimentelles Modell mit **Bildverständnis**; Textfähigkeiten, Parameter und Preise entsprechen Flash\n\n**Hinweis**: Alle drei Modelle **haben thinking standardmäßig aktiviert**; die Antwort enthält stets einen `type=\"thinking\"`-Content-Block. Zum Deaktivieren setzen Sie explizit `thinking.type=\"disabled\"`. Ein nicht angegebenes oder nicht unterstütztes Modell wird automatisch auf `deepseek-v4-flash` abgebildet.\n\n**Bildverständnis erfordert `deepseek-v4-flash-vision-exp`**: Bei den beiden anderen Modellen führt ein `image`-Block nicht zu einem Fehler, wird aber durch `[Unsupported Image]` ersetzt und das eigentliche Bild verworfen.\n\n**Experimenteller Hinweis**: `-exp` kennzeichnet eine experimentelle Upstream-Version. Modellname und Verfügbarkeit können sich ändern; implementieren Sie für den Produktiveinsatz einen Fallback.",
             "enum": [
               "deepseek-v4-flash",
-              "deepseek-v4-pro"
+              "deepseek-v4-pro",
+              "deepseek-v4-flash-vision-exp"
             ],
             "default": "deepseek-v4-flash",
             "example": "deepseek-v4-flash"
@@ -424,7 +476,7 @@
           },
           "messages": {
             "type": "array",
-            "description": "Liste der Konversationsnachrichten, abwechselnd nach user / assistant-Runden\n\n**Hinweis**:\n- Enthält mindestens 1 Nachricht\n- Die letzte Nachricht ist in der Regel `role=user`\n- Inhaltstypen `image` / `document` werden noch nicht unterstützt",
+            "description": "Liste der Konversationsnachrichten, abwechselnd nach user / assistant-Runden\n\n**Hinweis**:\n- Enthält mindestens 1 Nachricht\n- Die letzte Nachricht ist in der Regel `role=user`\n- Der Inhaltstyp `image` wird nur von `deepseek-v4-flash-vision-exp` unterstützt; `document` wird nicht unterstützt",
             "items": {
               "$ref": "#/components/schemas/InputMessage"
             },
@@ -569,7 +621,7 @@
             "description": "Nachrichtenrolle\n\n- `user`: Benutzernachricht (wird auch zum Rückgeben von `tool_result`-Blöcken verwendet)\n- `assistant`: Historische Assistent-Antwort (kann `text` / `thinking` / `tool_use` Blöcke enthalten)\n\n**Akzeptiert kein `system`**: System-Prompts müssen über das Top-Level-Feld `system` übergeben werden; das Auftreten von `role=\"system\"` in messages wird abgelehnt (400 unknown variant)."
           },
           "content": {
-            "description": "Nachrichteninhalt\n\n**Hinweis**:\n- Bei reinem Text direkt eine Zeichenkette übergeben\n- Bei Strukturierung ein Array von Content-Blöcken übergeben (`text` / `tool_use` / `tool_result`)\n- **Nicht unterstützt** werden multimodale Typen wie `image` / `document`",
+            "description": "Nachrichteninhalt\n\n**Hinweis**:\n- Bei reinem Text direkt eine Zeichenkette übergeben\n- Bei Strukturierung ein Array von Content-Blöcken übergeben (`text` / `image` / `tool_use` / `tool_result`)\n- Der `image`-Block wird **nur von `deepseek-v4-flash-vision-exp` unterstützt**; andere multimodale Typen wie `document` werden nicht unterstützt",
             "oneOf": [
               {
                 "type": "string"
@@ -586,12 +638,13 @@
       },
       "ContentBlock": {
         "type": "object",
-        "description": "Nachrichteninhaltsblock\n\n**Unterstützte type**:\n- `text`: Textfragment\n- `tool_use`: Assistant initiiert Tool-Aufruf\n- `tool_result`: User gibt Ergebnis der Tool-Ausführung zurück",
+        "description": "Nachrichteninhaltsblock\n\n**Unterstützte type**:\n- `text`: Textfragment\n- `image`: Bild (**nur mit `deepseek-v4-flash-vision-exp`**)\n- `tool_use`: Assistant initiiert Tool-Aufruf\n- `tool_result`: User gibt Ergebnis der Tool-Ausführung zurück",
         "properties": {
           "type": {
             "type": "string",
             "enum": [
               "text",
+              "image",
               "tool_use",
               "tool_result"
             ]
@@ -599,6 +652,44 @@
           "text": {
             "type": "string",
             "description": "Textinhalt, wenn type=`text`"
+          },
+          "source": {
+            "type": "object",
+            "description": "Bildquelle (bei type=`image` erforderlich; **nur von `deepseek-v4-flash-vision-exp` unterstützt**)\n\nUnterstützte Formate: **PNG / JPEG / WebP / GIF**. Das Format wird anhand des tatsächlichen Dateiinhalts erkannt, nicht anhand des Dateinamens oder der MIME-Deklaration.\n\nDer Token-Verbrauch pro Bild hängt nur von der Auflösung ab: 115 Tokens bei ≤336×336 (Minimum), ab 784×784 auf etwa 347 Tokens begrenzt.\n\n**Nutzungslimits**:\n- Bilder dürfen nur in Nachrichten mit `role: user` vorkommen; in `system` oder `assistant` führen sie zu HTTP 400\n- Höchstens **600 Bilder** pro Anfrage\n- Maximal **32 MiB** pro Bild und **48 MiB** für den gesamten Request-Body (die Base64-codierte Größe zählt zu diesem Limit)\n- Maximale Kantenlänge: **8192 px**; bei mehr als 15 Bildern in einer Anfrage sinkt sie auf **4096 px**",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "Art der Bildübergabe\n\n- `base64`: Inline-Bilddaten (empfohlen und am zuverlässigsten)\n- `url`: Öffentliche Bild-URL, die vom Upstream-Server heruntergeladen wird; externe Hosts oder authentifizierungspflichtige URLs können fehlschlagen"
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/webp",
+                  "image/gif"
+                ],
+                "description": "Bild-MIME-Typ (bei `type=base64` erforderlich)",
+                "example": "image/png"
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-codierte Bilddaten (bei `type=base64` erforderlich, ohne Präfix `data:`)",
+                "example": "iVBORw0KGgoAAAANSUhEUgAA..."
+              },
+              "url": {
+                "type": "string",
+                "description": "Öffentliche Bild-URL (bei `type=url` erforderlich)",
+                "example": "https://example.com/photo.jpg"
+              }
+            }
           },
           "id": {
             "type": "string",
@@ -767,7 +858,7 @@
           },
           "cache_read_input_tokens": {
             "type": "integer",
-            "description": "Anzahl der aus dem Cache gelesenen Input-Tokens\n\n**Hinweis**: Abrechnung zum Cache-Treffer-Preis (Flash 20 UC/1K, Pro 100 UC/1K)",
+            "description": "Anzahl der Input-Tokens mit Cache-Treffer\n\n**Hinweis**: Abrechnung zum Cache-Trefferpreis, der deutlich unter dem regulären Input-Preis liegt",
             "example": 0
           },
           "service_tier": {
