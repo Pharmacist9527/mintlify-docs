@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "DeepSeek V4 Anthropic-Compatible API",
-    "description": "Invoke the DeepSeek V4 series (`deepseek-v4-flash` / `deepseek-v4-pro`) via the Anthropic Messages protocol.\n\n**Compatibility notes**:\n- Path: `/v1/messages` (Anthropic standard path)\n- Request / response structures aligned with the Anthropic Messages API\n- Supported fields: `model` `max_tokens` (required) `messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **Unsupported fields**: `top_k`, `container`, `mcp_servers`, `metadata`, `service_tier`, `cache_control`\n- **Unsupported content types**: images (`image`), documents (`document`), search results, `redacted_thinking`, `server_tool_use`\n\n**Model capabilities**:\n- 1M token context, max output 384K tokens\n- Pro has `thinking` enabled by default; responses include a `thinking` content block\n\n**Billing tiers (UC/1K tokens, EvoLink internal unit)**:\n| Model | Input cache hit | Input cache miss | Output |\n| --- | --- | --- | --- |\n| deepseek-v4-flash | 20 | 100 | 200 |\n| deepseek-v4-pro | 100 | 1200 | 2400 |",
+    "description": "Invoke the DeepSeek V4 series (`deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`) via the Anthropic Messages protocol.\n\n**Compatibility notes**:\n- Path: `/v1/messages` (Anthropic standard path)\n- Request / response structures aligned with the Anthropic Messages API\n- Supported fields: `model` `max_tokens` (required) `messages` `system` `temperature` `top_p` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `output_config`\n- **Unsupported fields**: `top_k`, `container`, `mcp_servers`, `metadata`, `service_tier`, `cache_control`\n- **Images (`image`)**: Supported only by `deepseek-v4-flash-vision-exp`; `source` may use either `base64` or `url`\n- **Unsupported content types**: Documents (`document`), search results, `redacted_thinking`, and `server_tool_use`\n\n**Model capabilities**:\n- 1M token context, max output 384K tokens\n- Pro has `thinking` enabled by default; responses include a `thinking` content block\n\nImages count toward input tokens at the same price as text, with no surcharge.",
     "license": {
       "name": "MIT"
     },
@@ -27,7 +27,7 @@
     "/v1/messages": {
       "post": {
         "summary": "DeepSeek V4 Messages API (Anthropic-Compatible)",
-        "description": "- Invoke DeepSeek V4 models using the Anthropic Messages protocol\n- Supports `deepseek-v4-flash` / `deepseek-v4-pro`\n- Request / response structures aligned with the Anthropic API\n- **Plain text conversation** (image / document content types are not yet supported)\n- **System prompts**: Passed via the top-level `system` field\n- **Thinking mode**: Controlled by the `thinking` object; thinking content is returned as a `content[type=thinking]` block\n- **Streaming output**: SSE event stream\n- **Tool calling**: Compatible with Anthropic `tool_use` / `tool_result` flow",
+        "description": "- Invoke DeepSeek V4 models using the Anthropic Messages protocol\n- Supports `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`\n- Request / response structures aligned with the Anthropic API\n- **Image understanding**: `deepseek-v4-flash-vision-exp` supports `image` content blocks (`source.type` may be `base64` or `url`)\n- **System prompts**: Passed via the top-level `system` field\n- **Thinking mode**: Controlled by the `thinking` object; thinking content is returned as a `content[type=thinking]` block\n- **Streaming output**: SSE event stream\n- **Tool calling**: Compatible with Anthropic `tool_use` / `tool_result` flow\n\n> ⚠️ **Important**: Sending an `image` block to `deepseek-v4-flash` / `deepseek-v4-pro` **does not raise an error**, but the upstream replaces the image with an `[Unsupported Image]` placeholder. The model cannot see the image, and the request is still billed. For image understanding, always set `model` to `deepseek-v4-flash-vision-exp`.",
         "operationId": "createMessageDeepSeekV4",
         "tags": [
           "Messages"
@@ -49,6 +49,57 @@
                       {
                         "role": "user",
                         "content": "Hello, world"
+                      }
+                    ]
+                  }
+                },
+                "vision_base64": {
+                  "summary": "Image understanding - Inline Base64 (recommended)",
+                  "value": {
+                    "model": "deepseek-v4-flash-vision-exp",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "What does this image say? Return only the content."
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/png",
+                              "data": "iVBORw0KGgoAAAANSUhEUgAA..."
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "vision_url": {
+                  "summary": "Image understanding - Public image URL",
+                  "value": {
+                    "model": "deepseek-v4-flash-vision-exp",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Describe the content of this image."
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/photo.jpg"
+                            }
+                          }
+                        ]
                       }
                     ]
                   }
@@ -407,10 +458,11 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Model to invoke\n\n- `deepseek-v4-flash`: Fast general-purpose\n- `deepseek-v4-pro`: Deep reasoning\n\n**Tip**: Both models **have thinking enabled by default**, and responses always contain a `type=\"thinking\"` content block; set `thinking.type=\"disabled\"` explicitly to turn it off. An unspecified or unsupported model is automatically mapped to `deepseek-v4-flash`.",
+            "description": "Model to invoke\n\n- `deepseek-v4-flash`: Fast general-purpose\n- `deepseek-v4-pro`: Deep reasoning\n- `deepseek-v4-flash-vision-exp`: Experimental model with **image understanding**; its text capabilities, parameters, and pricing match Flash\n\n**Tip**: All three models **have thinking enabled by default**, and responses always contain a `type=\"thinking\"` content block; set `thinking.type=\"disabled\"` explicitly to turn it off. An unspecified or unsupported model is automatically mapped to `deepseek-v4-flash`.\n\n**Image understanding requires `deepseek-v4-flash-vision-exp`**: The other two models do not raise an error for an `image` block, but replace it with an `[Unsupported Image]` placeholder and discard the actual image.\n\n**Experimental notice**: `-exp` marks an experimental upstream release. The model name and availability may change, so implement a fallback for production use.",
             "enum": [
               "deepseek-v4-flash",
-              "deepseek-v4-pro"
+              "deepseek-v4-pro",
+              "deepseek-v4-flash-vision-exp"
             ],
             "default": "deepseek-v4-flash",
             "example": "deepseek-v4-flash"
@@ -424,7 +476,7 @@
           },
           "messages": {
             "type": "array",
-            "description": "List of conversation messages, alternating between user / assistant turns\n\n**Notes**:\n- At least one message must be included\n- The final message is typically `role=user`\n- `image` / `document` content types are not yet supported",
+            "description": "List of conversation messages, alternating between user / assistant turns\n\n**Notes**:\n- At least one message must be included\n- The final message is typically `role=user`\n- The `image` content type is supported only by `deepseek-v4-flash-vision-exp`; `document` is not supported",
             "items": {
               "$ref": "#/components/schemas/InputMessage"
             },
@@ -569,7 +621,7 @@
             "description": "Message role\n\n- `user`: User message (also used to return `tool_result` blocks)\n- `assistant`: Historical assistant reply (may contain `text` / `thinking` / `tool_use` blocks)\n\n**Does not accept `system`**: system prompts must go through the top-level `system` field; `role=\"system\"` in messages will be rejected (400 unknown variant)."
           },
           "content": {
-            "description": "Message content\n\n**Notes**:\n- Pass a string directly for plain text\n- Pass an array of content blocks (`text` / `tool_use` / `tool_result`) for structured content\n- **Not supported**: multimodal types such as `image` / `document`",
+            "description": "Message content\n\n**Notes**:\n- Pass a string directly for plain text\n- Pass an array of content blocks (`text` / `image` / `tool_use` / `tool_result`) for structured content\n- The `image` block is **supported only by `deepseek-v4-flash-vision-exp`**; other multimodal types such as `document` are not supported",
             "oneOf": [
               {
                 "type": "string"
@@ -586,12 +638,13 @@
       },
       "ContentBlock": {
         "type": "object",
-        "description": "Message content block\n\n**Supported types**:\n- `text`: Text fragment\n- `tool_use`: Assistant-initiated tool call\n- `tool_result`: User-returned tool execution result",
+        "description": "Message content block\n\n**Supported types**:\n- `text`: Text fragment\n- `image`: Image (**only with `deepseek-v4-flash-vision-exp`**)\n- `tool_use`: Assistant-initiated tool call\n- `tool_result`: User-returned tool execution result",
         "properties": {
           "type": {
             "type": "string",
             "enum": [
               "text",
+              "image",
               "tool_use",
               "tool_result"
             ]
@@ -599,6 +652,44 @@
           "text": {
             "type": "string",
             "description": "Text content when type=`text`"
+          },
+          "source": {
+            "type": "object",
+            "description": "Image source (required when type=`image`; **supported only by `deepseek-v4-flash-vision-exp`**)\n\nSupported formats: **PNG / JPEG / WebP / GIF**. The format is detected from the actual file contents, not the filename or MIME declaration.\n\nToken usage per image depends only on resolution: 115 tokens at ≤336×336 (minimum), capped at about 347 tokens from 784×784 and above.\n\n**Usage limits**:\n- Images may appear only in messages with `role: user`; placing one in `system` or `assistant` returns HTTP 400\n- At most **600 images** per request\n- Maximum **32 MiB** per image and **48 MiB** for the entire request body (the Base64-encoded size counts toward this limit)\n- Maximum image dimension: **8192 px** on either side; when a request contains more than 15 images, the per-side limit drops to **4096 px**",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "How the image is supplied\n\n- `base64`: Inline image data (recommended and most reliable)\n- `url`: Public image URL downloaded by the upstream server; external hosts or URLs requiring authentication may fail"
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/webp",
+                  "image/gif"
+                ],
+                "description": "Image MIME type (required when `type=base64`)",
+                "example": "image/png"
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-encoded image data (required when `type=base64`, without the `data:` prefix)",
+                "example": "iVBORw0KGgoAAAANSUhEUgAA..."
+              },
+              "url": {
+                "type": "string",
+                "description": "Public image URL (required when `type=url`)",
+                "example": "https://example.com/photo.jpg"
+              }
+            }
           },
           "id": {
             "type": "string",
@@ -767,7 +858,7 @@
           },
           "cache_read_input_tokens": {
             "type": "integer",
-            "description": "Number of input tokens that hit the cache\n\n**Notes**: Billed at the cache-hit rate (Flash 20 UC/1K, Pro 100 UC/1K)",
+            "description": "Number of input tokens that hit the cache\n\n**Notes**: Billed at the cache-hit rate, which is substantially lower than the standard input rate",
             "example": 0
           },
           "service_tier": {
