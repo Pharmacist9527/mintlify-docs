@@ -1,0 +1,495 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Wan3.0 Prime Reference-to-Video API",
+    "description": "Wan 3.0 Prime référence vers vidéo, prend en charge les entrées multimodales mixtes : images, vidéos et audio de référence, fichiers et pages web",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Wan3.0 Prime Reference-to-Video",
+        "description": "- Les images / vidéos / audio de référence, les fichiers et les pages web servent d'éléments ; le modèle comprend automatiquement l'intention puis génère la vidéo\n- Dans le prompt, désignez les éléments par \"Image 1\", \"Video 1\" et \"Audio 1\" ; **les trois types d'éléments sont comptés indépendamment**\n- Le `prompt` et les éléments de référence : **au moins l'un des deux doit être fourni**\n- **La première et la dernière image ne sont pas acceptées** (`image_start` / `image_end`) : les éléments de référence et les images de début/fin s'excluent mutuellement. Pour contrôler strictement le début et la fin de l'image, utilisez [Wan3.0 Prime image vers vidéo](/fr/api-manual/video-series/wan3.0/wan3.0-prime-image-to-video)\n- **🔴 Les vidéos de référence comptent dans la facturation**, les images de référence / audio de référence / fichiers / pages web ne sont pas facturés\n- Mode de traitement asynchrone, utilisez l'ID de tâche renvoyé pour [interroger le statut](/fr/api-manual/task-management/get-task-detail)\n- Les liens vidéo générés sont valides 24 heures, veuillez les sauvegarder rapidement\n\n## Facturation\n\n- **Formule de facturation** : durée facturée = durée de la vidéo d'entrée + durée de la vidéo de sortie, facturation à la seconde\n- **Multiplicateur de résolution** : `480p` = 1x (référence), `720p` = 2.06x, `1080p` = 4.12x\n- Les images de référence, l'audio de référence, les fichiers de référence et les liens de pages web **ne sont pas facturés**\n- Lorsque `duration` vaut `-1` (durée intelligente), le montant est préautorisé au plafond de `30` secondes ; après le succès de la tâche, la facturation porte sur la durée réellement produite et la différence est remboursée automatiquement\n- Activer ou désactiver la piste `generate_audio` **coûte le même prix**\n- **Les tâches en échec ne sont pas facturées**, les crédits gelés sont intégralement remboursés",
+        "operationId": "createWan30PrimeReferenceVideo",
+        "tags": [
+          "Génération vidéo"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "multi_modal": {
+                  "summary": "Références multiples (images + vidéo)",
+                  "value": {
+                    "model": "wan3.0-prime-reference-video",
+                    "prompt": "The character in Video 1 holds Image 3 and plays a soft country folk tune on the chair in Image 4, saying: “What lovely sunshine today.”",
+                    "image_urls": [
+                      "https://example.com/role.jpg",
+                      "https://example.com/object.png",
+                      "https://example.com/guitar.png",
+                      "https://example.com/chair.png"
+                    ],
+                    "video_urls": [
+                      "https://example.com/ref_role.mp4"
+                    ],
+                    "duration": 10,
+                    "quality": "720p",
+                    "aspect_ratio": "adaptive"
+                  }
+                },
+                "with_audio": {
+                  "summary": "Avec audio de référence",
+                  "value": {
+                    "model": "wan3.0-prime-reference-video",
+                    "prompt": "The character in Image 1 dances to the rhythm of Audio 1, with the camera orbiting around them.",
+                    "image_urls": [
+                      "https://example.com/dancer.jpg"
+                    ],
+                    "audio_urls": [
+                      "https://example.com/beat.mp3"
+                    ],
+                    "duration": 10
+                  }
+                },
+                "from_file": {
+                  "summary": "Fichier de référence vers vidéo (PPT en film promotionnel)",
+                  "value": {
+                    "model": "wan3.0-prime-reference-video",
+                    "prompt": "Turn this product deck into a high-end product ad, minimalist, futuristic and upmarket overall, with restrained lighting.",
+                    "model_params": {
+                      "file_url": "https://example.com/product-deck.pptx"
+                    },
+                    "duration": 10,
+                    "quality": "1080p",
+                    "aspect_ratio": "16:9"
+                  }
+                },
+                "from_link": {
+                  "summary": "Page web de référence vers vidéo",
+                  "value": {
+                    "model": "wan3.0-prime-reference-video",
+                    "prompt": "Turn the key points of this article into a short infographic-style video.",
+                    "model_params": {
+                      "link_url": "https://example.com/article/12345"
+                    },
+                    "duration": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tâche de génération vidéo créée avec succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_parameter",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Quota insuffisant, recharge requise",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès refusé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: wan3.0-prime-reference-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de débit dépassée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle, fixé à `wan3.0-prime-reference-video`",
+            "enum": [
+              "wan3.0-prime-reference-video"
+            ],
+            "example": "wan3.0-prime-reference-video",
+            "default": "wan3.0-prime-reference-video"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt textuel pour la génération vidéo. Le chinois et l'anglais sont pris en charge, **chaque caractère chinois / lettre compte pour 1 caractère**, longueur maximale `20000` caractères ; le surplus est tronqué automatiquement (sans erreur)\n\n**Règles de désignation des éléments :**\n- \"Image 1\", \"Image 2\" désignent les images à la position correspondante dans `image_urls` (à partir de 1)\n- \"Video 1\", \"Video 2\" désignent les vidéos à la position correspondante dans `video_urls`\n- \"Audio 1\", \"Audio 2\" désignent les fichiers audio à la position correspondante dans `audio_urls`\n- **Images, vidéos et audio sont comptés indépendamment**, \"Image 1\" et \"Video 1\" peuvent donc coexister\n- Dans les prompts en anglais, écrivez \"Image 1\", \"Video 1\", \"Audio 1\" (initiale en majuscule, espace entre le mot et le chiffre)",
+            "example": "The character in Video 1 holds Image 3 and plays a soft country folk tune on the chair in Image 4, saying: “What lovely sunshine today.”"
+          },
+          "image_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 10,
+            "description": "Tableau d'URL d'images de référence, **10 images au maximum**. Il peut fournir des sujets (personnes/animaux/objets) ou des arrière-plans de scène ; lorsqu'un sujet est inclus, chaque image ne devrait contenir qu'un **seul** personnage\n\nL'ordre du tableau correspond à \"Image 1, Image 2...\" dans le prompt.\n\n**Limites d'image :**\n- Formats : JPEG, JPG, PNG (transparence non prise en charge), BMP, WEBP\n- Résolution : largeur et hauteur dans `[240, 8000]` pixels\n- Rapport d'aspect : 1:8 ~ 8:1\n- Taille du fichier : jusqu'à `20MB`",
+            "example": [
+              "https://example.com/ref1.jpg",
+              "https://example.com/ref2.png"
+            ]
+          },
+          "video_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 5,
+            "description": "Tableau d'URL de vidéos de référence, **5 séquences au maximum**. L'ordre du tableau correspond à \"Video 1, Video 2...\" dans le prompt\n\n**Limites de durée :**\n- `1 ~ 15` secondes par séquence\n- **15 secondes au total au maximum**\n- Durée totale des vidéos de référence + durée de la vidéo de sortie **ne doit pas dépasser 30 secondes**\n\n**🔴 Les vidéos de référence comptent dans la facturation** : durée facturée = durée de la vidéo d'entrée + durée de la vidéo de sortie. Les images de référence, l'audio de référence, les fichiers et les pages web ne sont pas facturés\n\n**Limites vidéo :**\n- Formats : mp4, mov\n- Résolution : largeur et hauteur dans `[240, 4096]` pixels\n- Rapport d'aspect : 1:8 ~ 8:1\n- Taille par fichier : jusqu'à `100MB`",
+            "example": [
+              "https://example.com/ref_video.mp4"
+            ]
+          },
+          "audio_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 5,
+            "description": "Tableau d'URL d'audio de référence, **5 séquences au maximum**. L'ordre du tableau correspond à \"Audio 1, Audio 2...\" dans le prompt\n\n**Sémantique différente de Wan2.7 :** dans Wan2.7, `audio_urls` portait une **voix** liée à une image ou une vidéo de référence donnée ; dans Wan3.0, l'audio de référence est un **élément autonome** désigné directement dans le prompt par \"Audio 1\", et le protocole de liaison vocale `model_params.voice_bindings` n'est **pas pris en charge**. Pensez à réécrire vos requêtes lors de la migration depuis Wan2.7.\n\n**Limites de durée :**\n- `1 ~ 15` secondes par séquence, 15 secondes au total au maximum\n- L'audio de référence **n'est pas facturé**\n\n**Limites audio :**\n- Formats : wav, mp3\n- Taille du fichier : jusqu'à `15MB`",
+            "example": [
+              "https://example.com/ref_audio.mp3"
+            ]
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Paramètres d'extension du modèle. `file_url` et `link_url` s'**excluent mutuellement**, il faut choisir l'un ou l'autre",
+            "properties": {
+              "file_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL du fichier de référence, **1 au maximum**. Le modèle comprend automatiquement le contenu du fichier et génère la vidéo à partir de celui-ci (par exemple transformer un deck produit en film promotionnel)\n\n**Exclusif avec `link_url`**, les deux ne peuvent pas être envoyés ensemble\n\n**Limites de fichier :**\n- Formats : docx, doc, xlsx, xls, pptx, ppt, pdf, txt, key, pages, numbers, md\n- Taille du fichier : jusqu'à `100MB`\n- Nombre de pages : 50 pages au maximum",
+                "example": "https://example.com/product-deck.pptx"
+              },
+              "link_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Lien vers une page web de référence, **1 au maximum**. Le modèle récupère et comprend automatiquement le contenu de la page, puis génère la vidéo\n\n**Exclusif avec `file_url`**, les deux ne peuvent pas être envoyés ensemble\n\n**Limitation :** seules les pages publiques **ne nécessitant aucune connexion** peuvent être analysées (actualités, blogs, articles de newsletters, etc.)",
+                "example": "https://example.com/article/12345"
+              }
+            }
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Durée de la vidéo générée (secondes), `5` par défaut\n\n**Valeurs acceptées :**\n- Tout entier compris entre `2` et `30`\n- `-1` : durée intelligente, le modèle détermine la longueur de sortie d'après le prompt et les éléments d'entrée\n\n**Facturation de la durée intelligente :** au moment de l'envoi, la longueur générée est inconnue ; le montant est donc **préautorisé au plafond** de `30` secondes, puis régularisé sur la durée réellement produite après le succès de la tâche, l'excédent gelé étant libéré automatiquement. Si votre solde ne couvre pas la préautorisation au plafond, indiquez plutôt un nombre de secondes explicite.\n\n**Contrainte supplémentaire en présence de vidéos de référence :**\n- Durée totale des vidéos de référence + durée de la vidéo de sortie **ne doit pas dépasser 30 secondes**\n- Exemple : avec 10 secondes de vidéos de référence au total, `duration` ne peut pas dépasser 20",
+            "default": 5,
+            "example": 5
+          },
+          "quality": {
+            "type": "string",
+            "description": "Résolution vidéo, `720p` par défaut\n\n**Options :**\n- `480p` : définition plus basse, prix le plus bas (base de facturation)\n- `720p` : définition standard, valeur par défaut, prix 2.06x celui de `480p`\n- `1080p` : haute définition, prix 4.12x celui de `480p`",
+            "enum": [
+              "480p",
+              "720p",
+              "1080p"
+            ],
+            "default": "720p",
+            "example": "720p"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Rapport d'aspect de la vidéo, `adaptive` par défaut\n\n**Options :**\n- `adaptive` : adaptatif, le modèle recommande un rapport d'aspect adapté selon le ratio des éléments d'entrée et l'intention du prompt, valeur par défaut\n- `16:9` (paysage), `9:16` (portrait), `1:1` (carré), `4:3`, `3:4`",
+            "enum": [
+              "adaptive",
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "default": "adaptive",
+            "example": "16:9"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "description": "Indique si la vidéo de sortie contient une piste audio, `true` par défaut\n\n**Options :**\n- `true` : la vidéo de sortie contient du son (voix, effets sonores, musique de fond), valeur par défaut\n- `false` : vidéo muette en sortie\n\n**Le son activé ou désactivé coûte le même prix**, sans frais supplémentaires.",
+            "default": true,
+            "example": true
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Graine aléatoire, utilisée pour reproduire les résultats, aléatoire par défaut\n\n**Notes :**\n- Plage : `0` ~ `2147483647`\n- Fixer la graine réduit la variation lors de l'itération sur les prompts et améliore la reproductibilité",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "example": 42
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "URL de rappel HTTPS après l'achèvement de la tâche\n\n**Moment du rappel :**\n- Déclenché lorsque la tâche est terminée (completed), échouée (failed) ou annulée (cancelled)\n- Envoyé après la confirmation de la facturation\n\n**Restrictions de sécurité :**\n- Seul le protocole HTTPS est pris en charge\n- Les rappels vers les adresses IP du réseau interne sont interdits (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longueur de l'URL ne doit pas dépasser `2048` caractères\n\n**Mécanisme de rappel :**\n- Délai d'expiration : `10` secondes\n- Maximum de `3` tentatives après échec (les tentatives ont lieu après `1`/`2`/`4` secondes suivant l'échec)\n- Le format du corps de réponse du rappel est cohérent avec le format de réponse de l'API de consultation de tâche\n- Un code de statut 2xx est considéré comme un succès, les autres codes de statut déclenchent une nouvelle tentative",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Horodatage de création de la tâche",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de tâche",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle réellement utilisé",
+            "example": "wan3.0-prime-reference-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Type spécifique de la tâche"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Pourcentage de progression de la tâche (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Statut de la tâche",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Informations détaillées de la tâche vidéo"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Type de sortie de la tâche",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Informations d'utilisation et de facturation"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Si la tâche peut être annulée",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Temps d'achèvement estimé (secondes)",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Durée de la vidéo (secondes)",
+            "example": 8
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Informations d'utilisation et de facturation",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Règle de facturation",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Crédits estimés consommés",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Catégorie de groupe d'utilisateurs",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Identifiant du code d'erreur"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              },
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API :**\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête :**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Génération vidéo",
+      "description": "APIs de génération de vidéos IA"
+    }
+  ]
+}
