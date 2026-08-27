@@ -1,0 +1,1254 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Interfaz de todos los modelos GLM - Referencia completa de Chat Completions",
+    "description": "Referencia completa de la API para llamar a los modelos de texto Zhipu GLM mediante la API Chat Completions compatible con OpenAI.\n\n**Modelos incluidos**: `glm-5.3`, `glm-5.3-flash`, `glm-5.2` (se seleccionan con el parámetro `model`)\n\n**Capacidades comunes**:\n- Ventana de contexto de 1M tokens, hasta **131.072 tokens** (128K) de salida, con un mínimo recomendado de **1.024 tokens**\n- Pensamiento profundo: `thinking` controla la cadena de pensamiento y `reasoning_effort` ajusta la intensidad del razonamiento; el razonamiento se devuelve en `reasoning_content`\n- Llamadas a herramientas: Function Calling y búsqueda web (hasta 128 herramientas)\n- Streaming: respuestas en flujo SSE\n- Salida estructurada: los formatos de respuesta `text` y `json_object`\n- Caché de contexto: caché implícita de prefijo que aciertan automáticamente las solicitudes repetidas con el mismo prefijo, reflejada en `usage.prompt_tokens_details.cached_tokens`\n\n**Las diferencias entre modelos** (control del pensamiento, entrada de imagen) se describen más abajo en los campos `model` y `thinking` / `reasoning_effort`.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Producción (recomendado)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternativa"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Completado de chat GLM (todos los modelos, compatible con OpenAI)",
+        "description": "- Llama a los modelos de la serie GLM mediante el protocolo OpenAI Chat Completions, eligiendo el modelo concreto con el parámetro `model`\n- Procesamiento síncrono que devuelve el contenido de la conversación en tiempo real\n- **Conversación de texto**: conversación contextual de uno o varios turnos; `glm-5.3-flash` admite además entrada de imagen\n- **Indicación del sistema**: personaliza el rol y el comportamiento de la IA mediante un mensaje `role=system`\n- **Pensamiento profundo**: `thinking.type` controla la cadena de pensamiento y `reasoning_effort` ajusta la intensidad del razonamiento; el razonamiento se devuelve en `reasoning_content`\n- **Streaming**: se admiten respuestas en flujo SSE (`stream=true`)\n- **Llamadas a herramientas**: se admiten Function Calling y búsqueda web (`web_search`, hasta 128 herramientas)\n- **Salida estructurada**: activa el modo JSON mediante `response_format`\n\n**Sobre las respuestas en streaming**: con `stream=true`, los resultados llegan por Server-Sent Events, con cada mensaje en el formato `data: {JSON}` y el flujo terminando con `data: [DONE]`. Cada fragmento (`ChatCompletionChunk`) incluye `id`, `created`, `model`, `choices` y, opcionalmente, `usage` y `content_filter`; dentro, `choices[].delta` devuelve de forma incremental `role` / `content` / `reasoning_content` / `tool_calls`, y `choices[].finish_reason` indica el motivo de finalización en el último fragmento.",
+        "operationId": "createChatCompletionGLM",
+        "tags": [
+          "Generación de chat"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "Conversación de texto de un solo turno",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Preséntate, por favor"
+                      }
+                    ]
+                  }
+                },
+                "multi_turn": {
+                  "summary": "Conversación de múltiples turnos (comprensión del contexto)",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "¿Qué es Python?"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Python es un lenguaje de programación de alto nivel..."
+                      },
+                      {
+                        "role": "user",
+                        "content": "¿Cuáles son sus ventajas?"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Uso de indicaciones de sistema",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "Eres un asistente profesional de programación en Python. Responde las preguntas con un lenguaje conciso."
+                      },
+                      {
+                        "role": "user",
+                        "content": "¿Cómo se lee un archivo?"
+                      }
+                    ]
+                  }
+                },
+                "deep_thinking": {
+                  "summary": "Activar el pensamiento profundo y ajustar la intensidad del razonamiento",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Un granjero tiene que cruzar un río con un lobo, una oveja y una col, y solo puede llevar una cosa cada vez. ¿Cómo cruza con seguridad?"
+                      }
+                    ],
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "reasoning_effort": "max"
+                  }
+                },
+                "function_calling": {
+                  "summary": "Llamada a herramientas (Function Calling)",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "¿Qué tiempo hace hoy en Pekín?"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "get_weather",
+                          "description": "Consulta el clima en tiempo real de una ciudad específica",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "city": {
+                                "type": "string",
+                                "description": "Nombre de la ciudad, por ejemplo: Pekín"
+                              }
+                            },
+                            "required": [
+                              "city"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "web_search": {
+                  "summary": "Activar la herramienta de búsqueda web",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Busca las noticias de inteligencia artificial de la última semana"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "web_search",
+                        "web_search": {
+                          "enable": true,
+                          "count": 10,
+                          "search_recency_filter": "oneWeek"
+                        }
+                      }
+                    ]
+                  },
+                  "description": "Cuando el modelo determina que necesita internet, busca automáticamente y los resultados se incorporan al contexto para el razonamiento. Los resultados se facturan como tokens de entrada y el servicio de búsqueda se factura aparte por llamada (consulta la página de precios); si el modelo no activa la búsqueda, no se genera ningún cargo por búsqueda."
+                },
+                "json_mode": {
+                  "summary": "Salida estructurada en JSON",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "Devuelve la salida en formato JSON, con los dos campos name y age."
+                      },
+                      {
+                        "role": "user",
+                        "content": "Juan, 28 años"
+                      }
+                    ],
+                    "response_format": {
+                      "type": "json_object"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "Salida en streaming (SSE)",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Escribe un poema corto sobre la primavera"
+                      }
+                    ],
+                    "stream": true
+                  }
+                },
+                "disable_thinking_glm52_only": {
+                  "summary": "Desactivar el pensamiento profundo (solo glm-5.2)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Resume la teoría de la relatividad en una frase."
+                      }
+                    ],
+                    "thinking": {
+                      "type": "disabled"
+                    }
+                  },
+                  "description": "Solo `glm-5.2` puede desactivar el pensamiento. Enviar `thinking.type: \"disabled\"` a `glm-5.3` o `glm-5.3-flash` devuelve un error — usa `reasoning_effort: \"low\"` en su lugar."
+                },
+                "low_effort": {
+                  "summary": "Reducir el coste de pensamiento (alternativa a desactivar el pensamiento en la serie glm-5.3)",
+                  "description": "La serie `glm-5.3` no puede desactivar el pensamiento; usa `reasoning_effort: \"low\"` para reducir la intensidad de razonamiento al mínimo.",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Explica HTTP en una frase"
+                      }
+                    ],
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "reasoning_effort": "low",
+                    "max_tokens": 1024
+                  }
+                },
+                "vision_flash": {
+                  "summary": "Entrada de imagen (solo glm-5.3-flash)",
+                  "description": "`glm-5.3-flash` admite visión de forma nativa; las imágenes se envían mediante bloques de contenido `image_url`, con una URL pública o una URL de datos Base64.",
+                  "value": {
+                    "model": "glm-5.3-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "¿Qué hay en esta imagen?"
+                          },
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "https://example.com/photo.jpg"
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "max_tokens": 1024
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completado de chat generado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud no válidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado, token inválido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente, se requiere recarga",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso denegado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Recurso no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Specified model not found",
+                    "type": "not_found_error",
+                    "param": "model",
+                    "fallback_suggestion": "glm-5.3"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de frecuencia de solicitudes excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error del servicio upstream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Upstream AI service unavailable",
+                    "type": "upstream_error",
+                    "fallback_suggestion": "try different model"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio temporalmente no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modelo a invocar:\n\n| ID del modelo | Posicionamiento | Control del pensamiento | Entrada de imagen |\n|---|---|---|---|\n| `glm-5.3` | Modelo insignia, con avances generalizados en ingeniería de software compleja y tareas de agente y una mejora notable en programación frente a la generación anterior; contexto de 1M | Piensa siempre y no se puede desactivar; en `reasoning_effort` solo surten efecto `low` / `high` / `max`, los demás niveles se degradan automáticamente | No compatible |\n| `glm-5.3-flash` | Modelo multimodal ligero con arquitectura híbrida de atención dispersa y lineal, coste muy bajo y visión nativa; contexto de 1M | Igual que `glm-5.3` | **Compatible**, consulta el campo `messages` |\n| `glm-5.2` | Insignia de la generación anterior, razonamiento complejo y contexto muy largo; contexto de 1M | Se puede desactivar con `thinking.type: \"disabled\"`; `reasoning_effort` admite los 7 niveles | No compatible |\n",
+            "enum": [
+              "glm-5.3",
+              "glm-5.3-flash",
+              "glm-5.2"
+            ],
+            "default": "glm-5.3",
+            "example": "glm-5.3"
+          },
+          "messages": {
+            "type": "array",
+            "description": "Lista de mensajes de la conversación, contiene la información de contexto completa de la conversación actual\n\nAdmite cuatro roles: `system`, `user`, `assistant`, `tool`. Los mensajes con diferentes roles tienen distintas estructuras de campos; selecciona el rol correspondiente para verlas. Debe contener al menos 1 mensaje y no puede contener únicamente mensajes de sistema o del asistente.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/AssistantRequestMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessage"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "role",
+                "mapping": {
+                  "system": "#/components/schemas/SystemMessage",
+                  "user": "#/components/schemas/UserMessage",
+                  "assistant": "#/components/schemas/AssistantRequestMessage",
+                  "tool": "#/components/schemas/ToolMessage"
+                }
+              }
+            },
+            "minItems": 1
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Si se debe activar el modo de salida en streaming\n\n- `false`: el modelo genera la respuesta completa y la devuelve de una sola vez (predeterminado), adecuado para textos cortos y procesamiento por lotes\n- `true`: devuelve la respuesta en fragmentos en tiempo real mediante Server-Sent Events (SSE), adecuado para chat y textos largos; al finalizar el stream se devuelve `data: [DONE]`",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Controla si se activa la cadena de pensamiento (Chain of Thought)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Interruptor de la cadena de pensamiento\n\n- `enabled`: activar el pensamiento profundo (comportamiento predeterminado de todos los modelos)\n- `disabled`: desactivar el pensamiento profundo, el modelo responde directamente\n\n**Solo `glm-5.2` admite `disabled`.** `glm-5.3` y `glm-5.3-flash` piensan siempre y devuelven un error si se envía `disabled`.\n\nPara reducir el coste de pensamiento en la serie `glm-5.3`, usa `reasoning_effort: \"low\"` en su lugar.\n\n**Migración desde `glm-5.2`**: si tu código fija `thinking.type: \"disabled\"`, debes cambiarlo a `\"enabled\"` antes de pasar a `glm-5.3` (añadiendo `reasoning_effort: \"low\"` si quieres menos coste de pensamiento); de lo contrario, la solicitud falla directamente.\n\nTen en cuenta que ambos campos se tratan de forma **distinta**: un nivel de `reasoning_effort` no admitido por la serie se degrada automáticamente y no da error, mientras que `thinking.type` es un interruptor explícito — `disabled` siempre da error y nunca se reescribe en silencio. Por eso no basta con cambiar `reasoning_effort` de `none` a `low`: también hay que cambiar `thinking.type`.",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "default": "enabled"
+              },
+              "clear_thinking": {
+                "type": "boolean",
+                "description": "Si se debe eliminar el `reasoning_content` de los turnos históricos de la conversación\n\n- `true` (predeterminado): ignora/elimina el `reasoning_content` de los turnos históricos y usa solo el contenido no relacionado con el razonamiento (texto visible para el usuario/asistente, llamadas a herramientas y resultados, etc.) como contexto, lo que reduce la longitud del contexto y el costo\n- `false`: conserva el `reasoning_content` de los turnos históricos y lo proporciona al modelo junto con el contexto (Preserved Thinking); en este caso, debes transferir en `messages` el `reasoning_content` histórico de forma **completa, sin modificar y en el orden original**, ya que la ausencia, el recorte, la reescritura o el reordenamiento degradan los resultados o impiden que tenga efecto\n- Nota: este parámetro solo afecta al pensamiento histórico entre turnos, no cambia si el turno actual produce pensamiento",
+                "default": true,
+                "example": true
+              }
+            }
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "description": "Controla la intensidad de razonamiento del modelo; solo surte efecto con `thinking` activado y su valor predeterminado es `max`\n\n**Los valores admitidos varían según el modelo**:\n\n| Valor | `glm-5.3` / `glm-5.3-flash` | `glm-5.2` |\n|---|---|---|\n| `max` | Razonamiento profundo (predeterminado) | Razonamiento profundo |\n| `high` | Razonamiento reforzado | Razonamiento reforzado |\n| `low` | Razonamiento ligero | Equivale a `high` |\n| `xhigh` | Degradado a `max` | Equivale a `max` |\n| `medium` | Degradado a `high` | Equivale a `high` |\n| `minimal` | Degradado a `low` (sigue pensando) | Renuncia a pensar |\n| `none` | Degradado a `low` (sigue pensando) | Renuncia a pensar |\n\nLa serie `glm-5.3` piensa siempre y solo surten efecto realmente los tres niveles `low` / `high` / `max`; los otros cuatro no dan error, sino que se degradan automáticamente al nivel disponible más cercano (`xhigh` → `max`, `medium` → `high`, `minimal` / `none` → `low`).\n\n**La serie `glm-5.3` no puede desactivar el pensamiento.** Enviar `minimal` o `none` solo lo baja al nivel mínimo `low`: el modelo sigue generando tokens de pensamiento, **facturados a la tarifa de salida**. Si envías estos dos niveles para ahorrar, ten en cuenta que esto difiere de `glm-5.2`: en `glm-5.2` sí se renuncia realmente a pensar.\n\nPara tareas complejas como la programación se recomienda `max`.",
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "minimal",
+              "none"
+            ],
+            "default": "max",
+            "example": "max"
+          },
+          "do_sample": {
+            "type": "boolean",
+            "description": "Si se debe activar la estrategia de muestreo\n\n- `true` (predeterminado): usa `temperature` / `top_p` para el muestreo aleatorio, con una salida más variada\n- `false`: siempre selecciona la palabra de mayor probabilidad (decodificación voraz), con una salida más determinista; en este caso, `temperature` y `top_p` se ignoran\n\nPara tareas que requieren coherencia y reproducibilidad (como la generación de código o la traducción), se recomienda establecerlo en `false`",
+            "default": true,
+            "example": true
+          },
+          "temperature": {
+            "type": "number",
+            "format": "float",
+            "description": "Temperatura de muestreo, controla la aleatoriedad y la creatividad de la salida\n\n**Notas**:\n- Rango: `[0.0, 1.0]`, limitado a dos decimales\n- Valores más altos (p. ej. 0.8): más aleatorio y creativo, adecuado para la escritura creativa\n- Valores más bajos (p. ej. 0.2): más estable y determinista, adecuado para preguntas factuales y generación de código\n- Valor predeterminado: `1.0`\n\n**Recomendación**: no ajustes `temperature` y `top_p` simultáneamente",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1.0,
+            "example": 1.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "float",
+            "description": "Parámetro de muestreo por núcleo (Nucleus Sampling), es una alternativa al muestreo por `temperature`\n\n**Notas**:\n- Rango: `[0.01, 1.0]`, limitado a dos decimales\n- El modelo solo considera los tokens candidatos cuya probabilidad acumulada alcanza `top_p`; por ejemplo, 0.1 significa considerar solo los tokens del primer 10 % de probabilidad\n- Los valores más pequeños producen una salida más enfocada y coherente; los valores más grandes aumentan la diversidad\n- Valor predeterminado: `0.95`\n\n**Recomendación**: no ajustes `temperature` y `top_p` simultáneamente",
+            "minimum": 0.01,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Límite máximo de tokens de salida del modelo\n\n**Nota**:\n- La serie GLM admite hasta **131.072 tokens** (128K) de longitud de salida; se recomienda no bajar de `1024`\n- Con `thinking` activado, los tokens de la cadena de pensamiento también cuentan para este límite\n- Si la generación se trunca por `length`, prueba a subir este valor",
+            "minimum": 1,
+            "maximum": 131072,
+            "example": 1024
+          },
+          "tools": {
+            "type": "array",
+            "description": "Lista de herramientas que el modelo puede invocar\n\n**Nota**:\n- Se admiten la llamada a funciones (`function`) y la búsqueda web (`web_search`)\n- Hasta 128 funciones\n- De ellas, `web_search` se **factura aparte por llamada** cuando la búsqueda ocurre realmente; las demás herramientas no tienen coste adicional",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FunctionTool"
+                },
+                {
+                  "$ref": "#/components/schemas/WebSearchTool"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "function": "#/components/schemas/FunctionTool",
+                  "web_search": "#/components/schemas/WebSearchTool"
+                }
+              }
+            },
+            "maxItems": 128
+          },
+          "tool_choice": {
+            "type": "string",
+            "description": "Controla la forma en que el modelo elige qué función invocar\n\n**Notas**: solo tiene efecto cuando el tipo de herramienta es `function`, y de forma predeterminada solo admite `auto` (el modelo decide automáticamente si invoca una herramienta)",
+            "enum": [
+              "auto"
+            ],
+            "default": "auto",
+            "example": "auto"
+          },
+          "stop": {
+            "type": "array",
+            "description": "Lista de palabras de parada\n\n**Notas**:\n- Cuando el texto generado por el modelo encuentra la cadena especificada, detiene la generación de inmediato (la palabra de parada en sí no se incluye en el texto devuelto)\n- Actualmente solo se admite una única palabra de parada, con el formato `[\"stop_word1\"]`, por ejemplo `[\"Human:\"]`",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "example": [
+              "Human:"
+            ]
+          },
+          "response_format": {
+            "type": "object",
+            "description": "Especifica el formato de salida de la respuesta del modelo, predeterminado `text`\n\n**Notas**:\n- `{ \"type\": \"json_object\" }` activa el modo JSON, y el modelo devuelve datos en formato JSON válido, adecuado para escenarios como la extracción de datos estructurados\n- Al usar el modo JSON, se recomienda solicitar explícitamente la salida en JSON en el mensaje `system` o `user`",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Tipo de formato de salida\n\n- `text`: salida de texto plano (predeterminado)\n- `json_object`: salida en formato JSON",
+                "enum": [
+                  "text",
+                  "json_object"
+                ],
+                "default": "text"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Identificador único de la solicitud\n\n**Notas**:\n- Lo transfiere el cliente, con una longitud de 6 a 64 caracteres; se recomienda usar el formato UUID para garantizar la unicidad\n- Si no se proporciona, la plataforma lo genera automáticamente",
+            "minLength": 6,
+            "maxLength": 64,
+            "example": "req-7f3a2c1e8b9d4f0a"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Identificador único del usuario final\n\n**Notas**: longitud de 6 a 128 caracteres; se recomienda usar un identificador único que no contenga información sensible, lo que ayuda a la plataforma a supervisar y detectar comportamientos abusivos",
+            "minLength": 6,
+            "maxLength": 128,
+            "example": "user-abc123456"
+          }
+        }
+      },
+      "SystemMessage": {
+        "title": "System Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system"
+            ],
+            "description": "Identificador de rol, fijo como `system`"
+          },
+          "content": {
+            "type": "string",
+            "description": "Contenido de la indicación de sistema, usado para definir el rol y el comportamiento de la IA"
+          }
+        }
+      },
+      "UserMessage": {
+        "title": "User Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "Identificador de rol, fijo como `user`"
+          },
+          "content": {
+            "description": "Contenido del mensaje del usuario.\n\n- **Cadena**: texto plano, admitido por todos los modelos\n- **Matriz de bloques de contenido**: texto e imágenes mezclados, **solo compatible con `glm-5.3-flash`**\n\nEnviar bloques de contenido de imagen a `glm-5.3` o `glm-5.2` devuelve un error.",
+            "oneOf": [
+              {
+                "type": "string",
+                "title": "Texto plano",
+                "description": "Contenido del mensaje en texto plano",
+                "example": "Hola, preséntate, por favor"
+              },
+              {
+                "type": "array",
+                "title": "Matriz de bloques de contenido (solo glm-5.3-flash)",
+                "description": "Texto e imágenes mezclados. Las imágenes se envían mediante bloques `image_url`, con una URL pública (recomendada) o una URL de datos Base64; para varias imágenes, usa varios bloques `image_url`.",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AssistantRequestMessage": {
+        "title": "Assistant Message",
+        "type": "object",
+        "description": "Mensaje del asistente, puede contener llamadas a herramientas",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "description": "Identificador de rol, fijo como `assistant`"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Contenido del mensaje del asistente\n\n**Notas**: se usa para pasar respuestas históricas del asistente en conversaciones de múltiples turnos; cuando hay `tool_calls`, normalmente es `null`"
+          },
+          "reasoning_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Contenido de la cadena de pensamiento histórica\n\n**Notas**: solo se necesita cuando `thinking.clear_thinking=false` (Preserved Thinking), y consiste en devolver tal cual el `reasoning_content` de la respuesta del turno anterior; de forma predeterminada (`clear_thinking=true`) no es necesario devolverlo"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Lista de llamadas a herramientas\n\nSe usa para pasar información histórica de llamadas a herramientas en conversaciones de múltiples turnos; cuando se proporciona este campo, `content` normalmente está vacío",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "ID de la llamada a la herramienta"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "function",
+                    "web_search"
+                  ],
+                  "description": "Tipo de herramienta"
+                },
+                "function": {
+                  "type": "object",
+                  "description": "Información de la llamada a la función, no está vacía cuando `type` es `function`",
+                  "required": [
+                    "name",
+                    "arguments"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Nombre de la función"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Argumentos de la función (cadena en formato JSON)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ToolMessage": {
+        "title": "Tool Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "tool"
+            ],
+            "description": "Identificador de rol, fijo como `tool`"
+          },
+          "content": {
+            "type": "string",
+            "description": "Contenido del resultado devuelto por la llamada a la herramienta"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Indica el `ID` de la llamada a la herramienta a la que corresponde este mensaje (corresponde al `id` devuelto en `tool_calls` del mensaje assistant)"
+          }
+        }
+      },
+      "FunctionTool": {
+        "title": "Herramienta Function",
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "default": "function",
+            "description": "Tipo de herramienta, fijo como `function`"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name",
+              "description",
+              "parameters"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Nombre de la función a invocar\n\n**Notas**: debe estar compuesto por caracteres `a-z`, `A-Z`, `0-9`, o incluir guiones bajos y guiones; longitud máxima de 64 caracteres",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "description": {
+                "type": "string",
+                "description": "Descripción de la funcionalidad de la función, para que el modelo decida cuándo y cómo invocarla"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "Parámetros de entrada de la función, descritos como un objeto JSON Schema"
+              }
+            }
+          }
+        }
+      },
+      "WebSearchTool": {
+        "title": "Herramienta Web Search (búsqueda web)",
+        "type": "object",
+        "required": [
+          "type",
+          "web_search"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search"
+            ],
+            "default": "web_search",
+            "description": "Tipo de herramienta, fijo como `web_search`"
+          },
+          "web_search": {
+            "type": "object",
+            "required": [
+              "enable"
+            ],
+            "properties": {
+              "enable": {
+                "type": "boolean",
+                "description": "Si se debe activar la función de búsqueda; al activarla, establécela en `true`",
+                "default": false
+              },
+              "search_query": {
+                "type": "string",
+                "description": "Palabras clave personalizadas que fuerzan la activación de la búsqueda"
+              },
+              "search_intent": {
+                "type": "boolean",
+                "description": "Si se debe realizar el reconocimiento de la intención de búsqueda, se ejecuta de forma predeterminada\n\n- `true`: ejecuta el reconocimiento de la intención de búsqueda y, si hay intención de búsqueda, realiza la búsqueda\n- `false`: omite el reconocimiento de intención y ejecuta la búsqueda directamente"
+              },
+              "count": {
+                "type": "integer",
+                "description": "Número de resultados devueltos, en el rango `1-50`, con `10` por defecto.\n\nLa cantidad influye directamente en el coste: los resultados se incorporan a `prompt_tokens` y se facturan a la tarifa de entrada, y un valor de `50` puede llevar una sola solicitud a decenas de miles de tokens de entrada. A menos que necesites realmente una cobertura más amplia, mantén el valor predeterminado.",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 10
+              },
+              "search_domain_filter": {
+                "type": "string",
+                "description": "Lista blanca de dominios que limita los resultados de búsqueda (p. ej. `www.example.com`)"
+              },
+              "search_recency_filter": {
+                "type": "string",
+                "description": "Limita el rango temporal de los resultados de búsqueda, predeterminado `noLimit`",
+                "enum": [
+                  "oneDay",
+                  "oneWeek",
+                  "oneMonth",
+                  "oneYear",
+                  "noLimit"
+                ],
+                "default": "noLimit"
+              },
+              "content_size": {
+                "type": "string",
+                "description": "Controla la cantidad de palabras del resumen de la página web, predeterminado `medium`\n\n- `medium`: devuelve información de resumen, suficiente para las necesidades básicas de razonamiento\n- `high`: maximiza el contexto, con información más detallada",
+                "enum": [
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              },
+              "result_sequence": {
+                "type": "string",
+                "description": "Posición en la que se devuelven los resultados de búsqueda (antes o después de la respuesta del modelo), predeterminado `after`",
+                "enum": [
+                  "before",
+                  "after"
+                ],
+                "default": "after"
+              },
+              "search_result": {
+                "type": "boolean",
+                "description": "Indica si se devuelven los detalles de las fuentes de búsqueda en la respuesta; el valor predeterminado es `false`.\n\nCon `true`, la respuesta incluye en el nivel superior una matriz `web_search` con las fuentes recuperadas en esta solicitud (título, enlace, fuente del medio, fecha de publicación, resumen, etc.); con el valor predeterminado, ese campo no aparece en la respuesta.\n\nEste parámetro solo afecta al contenido de la respuesta: no influye ni en si se ejecuta la búsqueda ni en la facturación.",
+                "default": false,
+                "example": true
+              },
+              "require_search": {
+                "type": "boolean",
+                "description": "Si se debe forzar que la respuesta se base en los resultados de búsqueda, predeterminado `false`",
+                "default": false
+              },
+              "search_prompt": {
+                "type": "string",
+                "description": "`Prompt` para personalizar el procesamiento de los resultados de búsqueda; si no se transfiere, se usa la plantilla predeterminada"
+              }
+            }
+          }
+        },
+        "description": "Herramienta de búsqueda web. Una vez activada, el modelo puede buscar en internet cuando lo necesite e incorporar los resultados al contexto.\n\n**Facturación**: la parte de los resultados incorporada al contexto cuenta como `prompt_tokens` a la tarifa de entrada; el servicio de búsqueda se **factura aparte por llamada** y se liquida al margen del consumo de tokens — consulta la página de precios. El modelo decide si activa la búsqueda según la intención detectada, y si no se activa ninguna búsqueda no se genera este cargo."
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`ID` de la tarea",
+            "example": "chatcmpl-a6613b56-c61c-94ba-9a9f-43d4cdc7d77a"
+          },
+          "object": {
+            "type": "string",
+            "description": "Tipo de respuesta",
+            "enum": [
+              "chat.completion"
+            ],
+            "example": "chat.completion"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "`ID` de la solicitud (se devuelve cuando se proporciona `request_id` en la solicitud)",
+            "example": "req-7f3a2c1e8b9d4f0a"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Hora de creación de la solicitud, marca de tiempo `Unix` (segundos)",
+            "example": 1777021417
+          },
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo",
+            "example": "glm-5.3"
+          },
+          "choices": {
+            "type": "array",
+            "description": "Lista de respuestas del modelo",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "web_search": {
+            "type": "array",
+            "description": "Información relacionada con la búsqueda web, se devuelve al usar la herramienta `web_search` y obtener resultados de búsqueda",
+            "items": {
+              "$ref": "#/components/schemas/WebSearchResult"
+            }
+          },
+          "content_filter": {
+            "type": "array",
+            "description": "Información relacionada con la seguridad del contenido",
+            "items": {
+              "$ref": "#/components/schemas/ContentFilter"
+            }
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Índice del resultado",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "Motivo de finalización del razonamiento\n\n- `stop`: finalización natural o activación de una palabra de parada\n- `tool_calls`: el modelo invocó una función (llamada a herramienta)\n- `length`: se alcanzó el límite de longitud de tokens\n- `sensitive`: el contenido fue bloqueado por la auditoría de seguridad (evalúa y decide si retirar el contenido público)\n- `network_error`: anomalía en el razonamiento del modelo\n- `model_context_window_exceeded`: se superó la ventana de contexto del modelo",
+            "enum": [
+              "stop",
+              "tool_calls",
+              "length",
+              "sensitive",
+              "network_error",
+              "model_context_window_exceeded"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Rol de la conversación actual, predeterminado `assistant`",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Contenido de texto de la conversación\n\n**Notas**: puede ser `null` al invocar herramientas (`tool_calls`); de lo contrario, devuelve el contenido de la respuesta del modelo",
+            "example": "¡Hola! Soy GLM-5.3 y puedo ayudarte con conversación, razonamiento, redacción, código y muchas otras tareas."
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "Contenido de la cadena de pensamiento\n\n**Notas**: se devuelve cuando `thinking` está activado, y registra el proceso de razonamiento del modelo",
+            "example": "Primero déjame analizar este problema..."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Información de las llamadas a herramientas generadas (se devuelve cuando el modelo decide invocar una herramienta)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Identificador único de la llamada a la herramienta"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Tipo de llamada a la herramienta",
+                  "enum": [
+                    "function"
+                  ]
+                },
+                "function": {
+                  "type": "object",
+                  "description": "Información de la llamada a la función (incluye el nombre de la función generado y los argumentos en formato JSON)",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Nombre de la función generado"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Cadena en formato JSON de los argumentos de la llamada a la función; valida los argumentos antes de invocar la función"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Estadísticas de uso de tokens devueltas al finalizar la llamada",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de la entrada del usuario",
+            "example": 24
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de la salida (incluida la parte de la cadena de pensamiento `reasoning_tokens`)",
+            "example": 346
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Número total de tokens = prompt_tokens + completion_tokens",
+            "example": 370
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Desglose detallado de los tokens de entrada",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Número de tokens de entrada servidos desde la caché de contexto.\n\nLa serie GLM usa una **caché implícita de prefijo**: las solicitudes repetidas con el mismo prefijo la aciertan automáticamente, sin parámetros adicionales; la parte acertada se factura a la tarifa de caché, bastante inferior a la tarifa de entrada sin acierto. La primera solicitud devuelve 0 y, a partir de ahí, las solicitudes con el mismo prefijo aciertan.",
+                "example": 0
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "description": "Desglose detallado de los tokens de salida",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Número de tokens producidos por la cadena de pensamiento (pensamiento profundo), contabilizados en `completion_tokens`",
+                "example": 321
+              }
+            }
+          }
+        }
+      },
+      "WebSearchResult": {
+        "type": "object",
+        "description": "Resultado individual de la búsqueda web",
+        "properties": {
+          "icon": {
+            "type": "string",
+            "description": "Icono del sitio web de origen"
+          },
+          "title": {
+            "type": "string",
+            "description": "Título del resultado de búsqueda"
+          },
+          "link": {
+            "type": "string",
+            "description": "Enlace de la página web del resultado de búsqueda"
+          },
+          "media": {
+            "type": "string",
+            "description": "Nombre de la fuente del medio de la página web del resultado de búsqueda"
+          },
+          "publish_date": {
+            "type": "string",
+            "description": "Fecha de publicación del sitio web"
+          },
+          "content": {
+            "type": "string",
+            "description": "Contenido de texto citado de la página web del resultado de búsqueda"
+          },
+          "refer": {
+            "type": "string",
+            "description": "Número del superíndice"
+          }
+        }
+      },
+      "ContentFilter": {
+        "type": "object",
+        "description": "Información de seguridad del contenido",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Etapa en la que se aplica la seguridad\n\n- `assistant`: razonamiento del modelo\n- `user`: entrada del usuario\n- `history`: contexto histórico",
+            "enum": [
+              "assistant",
+              "user",
+              "history"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "description": "Grado de gravedad `0-3`, `0` indica el más grave y `3` indica leve",
+            "minimum": 0,
+            "maximum": 3
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "Código de error de estado HTTP"
+              },
+              "message": {
+                "type": "string",
+                "description": "Descripción del error"
+              },
+              "type": {
+                "type": "string",
+                "description": "Tipo de error"
+              },
+              "param": {
+                "type": "string",
+                "description": "Nombre del parámetro relacionado"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Sugerencia cuando ocurre un error"
+              }
+            }
+          }
+        }
+      },
+      "ContentPart": {
+        "title": "Content Part",
+        "type": "object",
+        "description": "Bloque de contenido multimodal. **Solo `glm-5.3-flash` admite bloques de imagen.**",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url"
+            ],
+            "description": "Tipo de bloque de contenido\n\n- `text`: texto\n- `image_url`: imagen (solo `glm-5.3-flash`)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenido de texto, obligatorio cuando `type=text`",
+            "example": "¿Qué hay en esta imagen?"
+          },
+          "image_url": {
+            "type": "object",
+            "description": "Contenido de la imagen, obligatorio cuando `type=image_url`",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "Dirección de la imagen. Se admite una URL HTTPS pública (recomendada) o una URL de datos Base64 (`data:image/png;base64,...`)",
+                "example": "https://example.com/photo.jpg"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las API requieren autenticación con Bearer Token##\n\n**Obtener la API Key:**\n\nVisita la [página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Añadir al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Generación de chat",
+      "description": "Endpoints relacionados con la generación de chat de IA"
+    }
+  ]
+}

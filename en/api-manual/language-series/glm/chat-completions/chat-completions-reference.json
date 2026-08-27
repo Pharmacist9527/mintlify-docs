@@ -1,0 +1,1254 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GLM All-Model API - Chat Completions Reference",
+    "description": "Full API reference for calling Zhipu GLM text models through the OpenAI-compatible Chat Completions API.\n\n**Models covered**: `glm-5.3`, `glm-5.3-flash`, `glm-5.2` (selected with the `model` parameter)\n\n**Shared capabilities**:\n- 1M token context window, up to **131,072 tokens** (128K) of output, and at least **1,024 tokens** recommended\n- Deep thinking: `thinking` controls the chain of thought and `reasoning_effort` adjusts the reasoning depth; the reasoning is returned in `reasoning_content`\n- Tool calling: function calling and web search (up to 128 tools)\n- Streaming: SSE streaming responses\n- Structured output: the `text` and `json_object` response formats\n- Context cache: an implicit prefix cache that repeated requests with the same prefix hit automatically, reported in `usage.prompt_tokens_details.cached_tokens`\n\n**Differences between models** (thinking control, image input) are described in the `model`, `thinking` and `reasoning_effort` fields below.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Production (recommended)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "GLM Chat Completions (All Models, OpenAI-Compatible)",
+        "description": "- Call GLM series models through the OpenAI Chat Completions protocol, choosing the specific model with the `model` parameter\n- Synchronous processing that returns the conversation content in real time\n- **Text conversation**: single-turn or multi-turn contextual conversation; `glm-5.3-flash` additionally supports image input\n- **System prompt**: customise the AI's role and behaviour through a `role=system` message\n- **Deep thinking**: `thinking.type` controls the chain of thought and `reasoning_effort` adjusts the reasoning depth; the reasoning is returned in `reasoning_content`\n- **Streaming**: SSE streaming responses are supported (`stream=true`)\n- **Tool calling**: function calling and web search are supported (`web_search`, up to 128 tools)\n- **Structured output**: JSON mode is enabled through `response_format`\n\n**About streaming responses**: when `stream=true`, results come back over Server-Sent Events, each message formatted as `data: {JSON}` and the stream ending with `data: [DONE]`. Each chunk (`ChatCompletionChunk`) carries `id`, `created`, `model`, `choices` and optionally `usage` and `content_filter`; inside it, `choices[].delta` returns incremental `role` / `content` / `reasoning_content` / `tool_calls`, and `choices[].finish_reason` gives the termination reason in the final chunk.",
+        "operationId": "createChatCompletionGLM",
+        "tags": [
+          "Chat Completion"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "Single-turn text conversation",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Please introduce yourself"
+                      }
+                    ]
+                  }
+                },
+                "multi_turn": {
+                  "summary": "Multi-turn conversation (context understanding)",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "What is Python?"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Python is a high-level programming language..."
+                      },
+                      {
+                        "role": "user",
+                        "content": "What are its advantages?"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Using system prompts",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "You are a professional Python programming assistant. Answer questions concisely."
+                      },
+                      {
+                        "role": "user",
+                        "content": "How do I read a file?"
+                      }
+                    ]
+                  }
+                },
+                "deep_thinking": {
+                  "summary": "Enable deep thinking and adjust reasoning intensity",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "A farmer needs to take a wolf, a sheep, and a cabbage across a river, but can only carry one at a time. How can he get them across safely?"
+                      }
+                    ],
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "reasoning_effort": "max"
+                  }
+                },
+                "function_calling": {
+                  "summary": "Tool calling (Function Calling)",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "What's the weather like in Beijing today?"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "get_weather",
+                          "description": "Query the real-time weather of a specified city",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "city": {
+                                "type": "string",
+                                "description": "City name, for example: Beijing"
+                              }
+                            },
+                            "required": [
+                              "city"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "web_search": {
+                  "summary": "Enable the web search tool",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Help me find the latest artificial intelligence news from the past week"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "web_search",
+                        "web_search": {
+                          "enable": true,
+                          "count": 10,
+                          "search_recency_filter": "oneWeek"
+                        }
+                      }
+                    ]
+                  },
+                  "description": "When the model decides it needs the web, it searches automatically and the results are merged into the context for reasoning. The retrieved results are billed as input tokens, and the search service itself is billed per call (see the pricing page); no search charge applies when the model does not trigger a search."
+                },
+                "json_mode": {
+                  "summary": "JSON structured output",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "Please output in JSON format, including the two fields name and age."
+                      },
+                      {
+                        "role": "user",
+                        "content": "John, 28 years old this year"
+                      }
+                    ],
+                    "response_format": {
+                      "type": "json_object"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "Streaming output (SSE)",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Write a short poem about spring"
+                      }
+                    ],
+                    "stream": true
+                  }
+                },
+                "disable_thinking_glm52_only": {
+                  "summary": "Disable deep thinking (glm-5.2 only)",
+                  "value": {
+                    "model": "glm-5.2",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Summarize the theory of relativity in one sentence."
+                      }
+                    ],
+                    "thinking": {
+                      "type": "disabled"
+                    }
+                  },
+                  "description": "Only `glm-5.2` can turn thinking off. Sending `thinking.type: \"disabled\"` to `glm-5.3` or `glm-5.3-flash` returns an error — use `reasoning_effort: \"low\"` instead."
+                },
+                "low_effort": {
+                  "summary": "Reduce thinking overhead (the alternative to disabling thinking on the glm-5.3 series)",
+                  "description": "The `glm-5.3` series cannot turn thinking off; use `reasoning_effort: \"low\"` to bring the reasoning depth down to its minimum.",
+                  "value": {
+                    "model": "glm-5.3",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Explain HTTP in one sentence"
+                      }
+                    ],
+                    "thinking": {
+                      "type": "enabled"
+                    },
+                    "reasoning_effort": "low",
+                    "max_tokens": 1024
+                  }
+                },
+                "vision_flash": {
+                  "summary": "Image input (glm-5.3-flash only)",
+                  "description": "`glm-5.3-flash` supports vision natively; images are passed in through `image_url` content blocks, using either a public URL or a Base64 data URL.",
+                  "value": {
+                    "model": "glm-5.3-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "What is in this image?"
+                          },
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "https://example.com/photo.jpg"
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "max_tokens": 1024
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat completion generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized, invalid or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota, recharge required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error",
+                    "fallback_suggestion": "https://evolink.ai/dashboard/billing"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Specified model not found",
+                    "type": "not_found_error",
+                    "param": "model",
+                    "fallback_suggestion": "glm-5.3"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error",
+                    "fallback_suggestion": "retry after 60 seconds"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error",
+                    "fallback_suggestion": "try again later"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream service error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Upstream AI service unavailable",
+                    "type": "upstream_error",
+                    "fallback_suggestion": "try different model"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error",
+                    "fallback_suggestion": "retry after 30 seconds"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model to call:\n\n| Model ID | Positioning | Thinking control | Image input |\n|---|---|---|---|\n| `glm-5.3` | Flagship model, with across-the-board gains on complex software engineering and agent tasks and a large step up in coding; 1M context | Always thinks, cannot be turned off; only `low` / `high` / `max` take effect for `reasoning_effort`, other levels are downgraded automatically | Not supported |\n| `glm-5.3-flash` | Lightweight multimodal model with a hybrid sparse and linear attention architecture, extremely low cost and native vision; 1M context | Same as `glm-5.3` | **Supported**, see the `messages` field |\n| `glm-5.2` | Previous-generation flagship, complex reasoning and very long context; 1M context | Can be turned off with `thinking.type: \"disabled\"`; `reasoning_effort` supports all 7 levels | Not supported |\n",
+            "enum": [
+              "glm-5.3",
+              "glm-5.3-flash",
+              "glm-5.2"
+            ],
+            "default": "glm-5.3",
+            "example": "glm-5.3"
+          },
+          "messages": {
+            "type": "array",
+            "description": "The list of conversation messages, containing the full context of the current conversation\n\nSupports four roles: `system`, `user`, `assistant`, `tool`. Messages of different roles have different field structures; please select the corresponding role to view details. Must contain at least 1 message, and cannot consist solely of system or assistant messages.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/AssistantRequestMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessage"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "role",
+                "mapping": {
+                  "system": "#/components/schemas/SystemMessage",
+                  "user": "#/components/schemas/UserMessage",
+                  "assistant": "#/components/schemas/AssistantRequestMessage",
+                  "tool": "#/components/schemas/ToolMessage"
+                }
+              }
+            },
+            "minItems": 1
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Whether to enable streaming output mode\n\n- `false`: The model generates the complete response and returns it all at once (default), suitable for short text and batch processing\n- `true`: Returns chunks in real time via Server-Sent Events (SSE), suitable for chat and long text; returns `data: [DONE]` when the stream ends",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Controls whether to enable the chain of thought (Chain of Thought)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Chain-of-thought switch\n\n- `enabled`: turn on deep thinking (the default behaviour for every model)\n- `disabled`: turn off deep thinking, the model answers directly\n\n**Only `glm-5.2` supports `disabled`.** `glm-5.3` and `glm-5.3-flash` always think, and sending `disabled` returns an error.\n\nTo lower thinking overhead on the `glm-5.3` series, use `reasoning_effort: \"low\"` instead.\n\n**Migrating from `glm-5.2`**: if your code hard-codes `thinking.type: \"disabled\"`, you must change it to `\"enabled\"` before switching to `glm-5.3` (adding `reasoning_effort: \"low\"` if you want lower thinking overhead), otherwise the request fails outright.\n\nNote that the two fields behave **differently**: an unsupported `reasoning_effort` level is downgraded automatically without an error, whereas `thinking.type` is an explicit switch — `disabled` always errors and is never silently rewritten. So changing `reasoning_effort` from `none` to `low` on its own is not enough; `thinking.type` has to be changed as well.",
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ],
+                "default": "enabled"
+              },
+              "clear_thinking": {
+                "type": "boolean",
+                "description": "Whether to clear the `reasoning_content` from previous conversation turns\n\n- `true` (default): Ignores/removes `reasoning_content` from previous turns, using only non-reasoning content (user/assistant-visible text, tool calls and results, etc.) as context, which can reduce context length and cost\n- `false`: Retains `reasoning_content` from previous turns and provides it to the model along with the context (Preserved Thinking); in this case, the historical `reasoning_content` must be passed through in `messages` **completely, unmodified, and in the original order**—missing, truncating, rewriting, or reordering it will degrade results or prevent it from taking effect\n- Note: This parameter only affects historical thinking across turns; it does not change whether thinking is produced in the current turn",
+                "default": true,
+                "example": true
+              }
+            }
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "description": "Controls how much the model reasons; takes effect only when `thinking` is on, defaulting to `max`\n\n**Supported values differ by model**:\n\n| Value | `glm-5.3` / `glm-5.3-flash` | `glm-5.2` |\n|---|---|---|\n| `max` | Deep reasoning (default) | Deep reasoning |\n| `high` | Enhanced reasoning | Enhanced reasoning |\n| `low` | Light reasoning | Same as `high` |\n| `xhigh` | Downgraded to `max` | Same as `max` |\n| `medium` | Downgraded to `high` | Same as `high` |\n| `minimal` | Downgraded to `low` (still thinks) | Skips thinking |\n| `none` | Downgraded to `low` (still thinks) | Skips thinking |\n\nThe `glm-5.3` series always thinks, and only the three levels `low` / `high` / `max` genuinely take effect; the other four do not error but are downgraded automatically to the nearest available level (`xhigh` → `max`, `medium` → `high`, `minimal` / `none` → `low`).\n\n**The `glm-5.3` series cannot turn thinking off.** Sending `minimal` or `none` only drops it to the lowest level `low`; the model still produces thinking tokens, **billed at the output rate**. If you send these two levels to save money, note that this differs from `glm-5.2` — on `glm-5.2` they genuinely skip thinking.\n\nFor complex tasks such as programming, `max` is recommended.",
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "minimal",
+              "none"
+            ],
+            "default": "max",
+            "example": "max"
+          },
+          "do_sample": {
+            "type": "boolean",
+            "description": "Whether to enable the sampling strategy\n\n- `true` (default): Uses `temperature` / `top_p` for random sampling, producing more varied output\n- `false`: Always selects the highest-probability token (greedy decoding), producing more deterministic output; in this case `temperature` and `top_p` are ignored\n\nFor tasks requiring consistency and reproducibility (such as code generation and translation), setting this to `false` is recommended",
+            "default": true,
+            "example": true
+          },
+          "temperature": {
+            "type": "number",
+            "format": "float",
+            "description": "Sampling temperature, controlling the randomness and creativity of the output\n\n**Notes**:\n- Value range: `[0.0, 1.0]`, limited to two decimal places\n- Higher values (e.g. 0.8): more random and creative, suitable for creative writing\n- Lower values (e.g. 0.2): more stable and deterministic, suitable for factual Q&A and code generation\n- Default value: `1.0`\n\n**Recommendation**: Do not adjust both `temperature` and `top_p` at the same time",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1.0,
+            "example": 1.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "float",
+            "description": "Nucleus Sampling parameter, an alternative to `temperature` sampling\n\n**Notes**:\n- Value range: `[0.01, 1.0]`, limited to two decimal places\n- The model only considers candidate tokens whose cumulative probability reaches `top_p`; for example, 0.1 means only the top 10% probability tokens are considered\n- Smaller values produce more focused and consistent output; larger values increase diversity\n- Default value: `0.95`\n\n**Recommendation**: Do not adjust both `temperature` and `top_p` at the same time",
+            "minimum": 0.01,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Upper limit on the number of output tokens\n\n**Note**:\n- The GLM series supports up to **131,072 tokens** (128K) of output; setting at least `1024` is recommended\n- When `thinking` is on, chain-of-thought tokens also count towards this limit\n- If generation is cut off with `length`, try raising this value",
+            "minimum": 1,
+            "maximum": 131072,
+            "example": 1024
+          },
+          "tools": {
+            "type": "array",
+            "description": "The list of tools the model may call\n\n**Note**:\n- Function calling (`function`) and web search (`web_search`) are supported\n- Up to 128 functions\n- Of these, `web_search` is **billed separately per call** when a search actually happens; the other tools carry no extra charge",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FunctionTool"
+                },
+                {
+                  "$ref": "#/components/schemas/WebSearchTool"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "function": "#/components/schemas/FunctionTool",
+                  "web_search": "#/components/schemas/WebSearchTool"
+                }
+              }
+            },
+            "maxItems": 128
+          },
+          "tool_choice": {
+            "type": "string",
+            "description": "Controls how the model selects which function to call\n\n**Notes**: Only takes effect when the tool type is `function`; defaults to and only supports `auto` (the model automatically decides whether to call a tool)",
+            "enum": [
+              "auto"
+            ],
+            "default": "auto",
+            "example": "auto"
+          },
+          "stop": {
+            "type": "array",
+            "description": "The list of stop words\n\n**Notes**:\n- When the generated text encounters a specified string, generation stops immediately (the stop word itself is not included in the returned text)\n- Currently only a single stop word is supported, in the format `[\"stop_word1\"]`, for example `[\"Human:\"]`",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "example": [
+              "Human:"
+            ]
+          },
+          "response_format": {
+            "type": "object",
+            "description": "Specifies the model's response output format; defaults to `text`\n\n**Notes**:\n- `{ \"type\": \"json_object\" }` enables JSON mode, and the model returns valid JSON-formatted data, suitable for scenarios such as structured data extraction\n- When using JSON mode, it is recommended to explicitly request JSON output in the `system` or `user` message",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Output format type\n\n- `text`: Plain text output (default)\n- `json_object`: JSON-formatted output",
+                "enum": [
+                  "text",
+                  "json_object"
+                ],
+                "default": "text"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Unique request identifier\n\n**Notes**:\n- Passed by the client, 6-64 characters long; using UUID format is recommended to ensure uniqueness\n- If not provided, the platform will generate one automatically",
+            "minLength": 6,
+            "maxLength": 64,
+            "example": "req-7f3a2c1e8b9d4f0a"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Unique identifier of the end user\n\n**Notes**: 6-128 characters long; using a unique identifier that does not contain sensitive information is recommended, which can help the platform monitor and detect abusive behavior",
+            "minLength": 6,
+            "maxLength": 128,
+            "example": "user-abc123456"
+          }
+        }
+      },
+      "SystemMessage": {
+        "title": "System Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system"
+            ],
+            "description": "Role identifier, fixed as `system`"
+          },
+          "content": {
+            "type": "string",
+            "description": "System prompt content, used to set the AI's role and behavior"
+          }
+        }
+      },
+      "UserMessage": {
+        "title": "User Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "Role identifier, fixed as `user`"
+          },
+          "content": {
+            "description": "User message content.\n\n- **String**: plain text, supported by every model\n- **Content block array**: text and images mixed, **supported only by `glm-5.3-flash`**\n\nSending image content blocks to `glm-5.3` or `glm-5.2` returns an error.",
+            "oneOf": [
+              {
+                "type": "string",
+                "title": "Plain text",
+                "description": "Plain-text message content",
+                "example": "Hello, please introduce yourself"
+              },
+              {
+                "type": "array",
+                "title": "Content block array (glm-5.3-flash only)",
+                "description": "Text and images mixed together. Images are passed in through `image_url` blocks, using a public URL (recommended) or a Base64 data URL; use one `image_url` block per image.",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AssistantRequestMessage": {
+        "title": "Assistant Message",
+        "type": "object",
+        "description": "Assistant message, may contain tool calls",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "description": "Role identifier, fixed as `assistant`"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Assistant message content\n\n**Notes**: Used to pass historical assistant replies in multi-turn conversations; typically `null` when `tool_calls` is present"
+          },
+          "reasoning_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Historical chain-of-thought content\n\n**Notes**: Required only when `thinking.clear_thinking=false` (Preserved Thinking); pass back the `reasoning_content` from the previous response as-is; by default (`clear_thinking=true`) no passback is needed"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "The list of tool calls\n\nUsed to pass historical tool call information in multi-turn conversations; when this field is provided, `content` is typically empty",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Tool call ID"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "function",
+                    "web_search"
+                  ],
+                  "description": "Tool type"
+                },
+                "function": {
+                  "type": "object",
+                  "description": "Function call information, not empty when `type` is `function`",
+                  "required": [
+                    "name",
+                    "arguments"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Function name"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Function arguments (JSON-formatted string)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ToolMessage": {
+        "title": "Tool Message",
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "tool"
+            ],
+            "description": "Role identifier, fixed as `tool`"
+          },
+          "content": {
+            "type": "string",
+            "description": "The content of the tool call's returned result"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Indicates the tool call `ID` this message corresponds to (matching the `id` returned in the assistant message's `tool_calls`)"
+          }
+        }
+      },
+      "FunctionTool": {
+        "title": "Function Tool",
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "default": "function",
+            "description": "Tool type, fixed as `function`"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name",
+              "description",
+              "parameters"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The name of the function to call\n\n**Notes**: Must consist of the characters `a-z`, `A-Z`, `0-9`, or contain underscores and dashes; maximum length 64 characters",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "description": {
+                "type": "string",
+                "description": "A description of the function's capability, for the model to choose when and how to call the function"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "The function's input parameters, described as a JSON Schema object"
+              }
+            }
+          }
+        }
+      },
+      "WebSearchTool": {
+        "title": "Web Search Tool (Web Search)",
+        "type": "object",
+        "required": [
+          "type",
+          "web_search"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search"
+            ],
+            "default": "web_search",
+            "description": "Tool type, fixed as `web_search`"
+          },
+          "web_search": {
+            "type": "object",
+            "required": [
+              "enable"
+            ],
+            "properties": {
+              "enable": {
+                "type": "boolean",
+                "description": "Whether to enable the search feature; set to `true` to enable",
+                "default": false
+              },
+              "search_query": {
+                "type": "string",
+                "description": "Custom keyword that forcibly triggers a search"
+              },
+              "search_intent": {
+                "type": "boolean",
+                "description": "Whether to perform search intent recognition; performed by default\n\n- `true`: Perform search intent recognition, and run the search once a search intent is detected\n- `false`: Skip intent recognition and run the search directly"
+              },
+              "count": {
+                "type": "integer",
+                "description": "Number of results to return, in the range `1-50`, defaulting to `10`.\n\nThe count has a direct impact on cost: the retrieved results are merged into `prompt_tokens` and billed at the input rate, and a value of `50` can push a single request into the tens of thousands of input tokens. Unless you genuinely need broader recall, keep the default.",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 10
+              },
+              "search_domain_filter": {
+                "type": "string",
+                "description": "Domain allowlist that limits the search results (e.g. `www.example.com`)"
+              },
+              "search_recency_filter": {
+                "type": "string",
+                "description": "Limits the time range of the search results, defaults to `noLimit`",
+                "enum": [
+                  "oneDay",
+                  "oneWeek",
+                  "oneMonth",
+                  "oneYear",
+                  "noLimit"
+                ],
+                "default": "noLimit"
+              },
+              "content_size": {
+                "type": "string",
+                "description": "Controls the word count of web page summaries, defaults to `medium`\n\n- `medium`: Returns summary information, meeting basic reasoning needs\n- `high`: Maximizes context with more detailed information",
+                "enum": [
+                  "medium",
+                  "high"
+                ],
+                "default": "medium"
+              },
+              "result_sequence": {
+                "type": "string",
+                "description": "The position where search results are returned (before or after the model's reply), defaults to `after`",
+                "enum": [
+                  "before",
+                  "after"
+                ],
+                "default": "after"
+              },
+              "search_result": {
+                "type": "boolean",
+                "description": "Whether to return details of the search sources in the response, defaulting to `false`.\n\nWhen set to `true`, the response carries a top-level `web_search` array listing the sources retrieved for this request (title, link, media source, publication date, summary, and so on); left at the default, the field is absent from the response.\n\nThis parameter only affects the response content — it changes neither whether a search runs nor how it is billed.",
+                "default": false,
+                "example": true
+              },
+              "require_search": {
+                "type": "boolean",
+                "description": "Whether to require that the answer be returned based on search results, defaults to `false`",
+                "default": false
+              },
+              "search_prompt": {
+                "type": "string",
+                "description": "The `Prompt` used to customize the processing of search results; the default template is used when not provided"
+              }
+            }
+          }
+        },
+        "description": "Web search tool. Once enabled, the model can search the web when needed and merge the results into the context.\n\n**Billing**: the portion of the search results merged into the context counts towards `prompt_tokens` at the input rate; the search service itself is **billed separately per call**, settled apart from token usage — see the pricing page. Whether a search fires is decided by the model based on search intent, and no such charge applies when no search is triggered."
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Task `ID`",
+            "example": "chatcmpl-a6613b56-c61c-94ba-9a9f-43d4cdc7d77a"
+          },
+          "object": {
+            "type": "string",
+            "description": "Response type",
+            "enum": [
+              "chat.completion"
+            ],
+            "example": "chat.completion"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Request `ID` (returned when `request_id` is provided in the request)",
+            "example": "req-7f3a2c1e8b9d4f0a"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Request creation time, `Unix` timestamp (seconds)",
+            "example": 1777021417
+          },
+          "model": {
+            "type": "string",
+            "description": "Model name",
+            "example": "glm-5.3"
+          },
+          "choices": {
+            "type": "array",
+            "description": "The list of model responses",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "web_search": {
+            "type": "array",
+            "description": "Web search-related information, returned when the `web_search` tool is used and a search is triggered",
+            "items": {
+              "$ref": "#/components/schemas/WebSearchResult"
+            }
+          },
+          "content_filter": {
+            "type": "array",
+            "description": "Content safety-related information",
+            "items": {
+              "$ref": "#/components/schemas/ContentFilter"
+            }
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Result index",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "The reason inference terminated\n\n- `stop`: Natural completion or a stop word was triggered\n- `tool_calls`: The model triggered a function (tool call)\n- `length`: Reached the token length limit\n- `sensitive`: Content was blocked by safety review (please assess and decide whether to retract public content)\n- `network_error`: Model inference error\n- `model_context_window_exceeded`: Exceeded the model's context window",
+            "enum": [
+              "stop",
+              "tool_calls",
+              "length",
+              "sensitive",
+              "network_error",
+              "model_context_window_exceeded"
+            ],
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The current conversation role, defaults to `assistant`",
+            "enum": [
+              "assistant"
+            ],
+            "example": "assistant"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Conversation text content\n\n**Notes**: May be `null` when calling tools (`tool_calls`); otherwise returns the model's reply content",
+            "example": "Hello! I'm GLM-5.3, and I can help you with a variety of tasks such as conversation, reasoning, writing, and code."
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "Chain-of-thought content\n\n**Notes**: Returned when `thinking` is enabled, recording the model's reasoning process",
+            "example": "Let me first analyze this problem..."
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Generated tool call information (returned when the model decides to call a tool)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Unique identifier of the tool call"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Tool call type",
+                  "enum": [
+                    "function"
+                  ]
+                },
+                "function": {
+                  "type": "object",
+                  "description": "Function call information (containing the generated function name and JSON-formatted arguments)",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "The generated function name"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "The JSON-formatted string of function call arguments; please validate the arguments before calling the function"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token usage statistics returned when the call ends",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "The number of tokens in the user input",
+            "example": 24
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "The number of output tokens (including the chain-of-thought `reasoning_tokens` portion)",
+            "example": 346
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total token count = prompt_tokens + completion_tokens",
+            "example": 370
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "description": "Detailed breakdown of input tokens",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Number of input tokens served from the context cache.\n\nThe GLM series uses an **implicit prefix cache**: repeated requests with the same prefix hit it automatically, with no extra parameters; the cached portion is billed at the cache rate, markedly lower than the uncached input rate. The first request returns 0, and subsequent requests with the same prefix will hit.",
+                "example": 0
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "description": "Detailed breakdown of output tokens",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "The number of tokens produced by the chain of thought (deep thinking), counted toward `completion_tokens`",
+                "example": 321
+              }
+            }
+          }
+        }
+      },
+      "WebSearchResult": {
+        "type": "object",
+        "description": "A single web search result",
+        "properties": {
+          "icon": {
+            "type": "string",
+            "description": "The icon of the source website"
+          },
+          "title": {
+            "type": "string",
+            "description": "The title of the search result"
+          },
+          "link": {
+            "type": "string",
+            "description": "The web page link of the search result"
+          },
+          "media": {
+            "type": "string",
+            "description": "The media source name of the search result web page"
+          },
+          "publish_date": {
+            "type": "string",
+            "description": "The website's publish time"
+          },
+          "content": {
+            "type": "string",
+            "description": "The cited text content of the search result web page"
+          },
+          "refer": {
+            "type": "string",
+            "description": "Superscript number"
+          }
+        }
+      },
+      "ContentFilter": {
+        "type": "object",
+        "description": "Content safety information",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The stage where safety takes effect\n\n- `assistant`: Model inference\n- `user`: User input\n- `history`: Historical context",
+            "enum": [
+              "assistant",
+              "user",
+              "history"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "description": "Severity level `0-3`, where `0` indicates the most severe and `3` indicates minor",
+            "minimum": 0,
+            "maximum": 3
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP status error code"
+              },
+              "message": {
+                "type": "string",
+                "description": "Error description"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type"
+              },
+              "param": {
+                "type": "string",
+                "description": "Related parameter name"
+              },
+              "fallback_suggestion": {
+                "type": "string",
+                "description": "Suggestion when error occurs"
+              }
+            }
+          }
+        }
+      },
+      "ContentPart": {
+        "title": "Content Part",
+        "type": "object",
+        "description": "Multimodal content block. **Only `glm-5.3-flash` supports image blocks.**",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url"
+            ],
+            "description": "Content block type\n\n- `text`: text\n- `image_url`: image (`glm-5.3-flash` only)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Text content, required when `type=text`",
+            "example": "What is in this image?"
+          },
+          "image_url": {
+            "type": "object",
+            "description": "Image content, required when `type=image_url`",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "Image address. A public HTTPS URL (recommended) or a Base64 data URL (`data:image/png;base64,...`) is supported",
+                "example": "https://example.com/photo.jpg"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All APIs require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit [API Key Management Page](https://evolink.ai/dashboard/keys) to get your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completion",
+      "description": "AI chat completion related endpoints"
+    }
+  ]
+}
