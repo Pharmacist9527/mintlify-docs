@@ -47,30 +47,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TaskDetailResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数错误、格式错误",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "example": {
-                  "error": {
-                    "code": "invalid_task_id",
-                    "message": "Invalid task ID format, must start with 'task-unified-'",
-                    "type": "invalid_request_error",
-                    "param": "task_id"
+                  "created": 1788436500,
+                  "duration": 30,
+                  "id": "task-unified-1788436500-yscib7uw",
+                  "model": "gemini-3-pro-image-preview",
+                  "object": "image.generation.task",
+                  "progress": 100,
+                  "result_data": [
+                    {
+                      "url": "http://example.com/image.jpg"
+                    }
+                  ],
+                  "results": [
+                    "http://example.com/image.jpg"
+                  ],
+                  "status": "completed",
+                  "task_info": {
+                    "can_cancel": false
+                  },
+                  "type": "image",
+                  "usage": {
+                    "cost": {
+                      "credits": 10,
+                      "usd": 0.148,
+                      "cny": 1
+                    },
+                    "credits_used": 10
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "未认证、Token无效或过期",
+            "description": "未认证：API Key 缺失、无效、过期或已禁用",
             "content": {
               "application/json": {
                 "schema": {
@@ -79,32 +90,16 @@
                 "example": {
                   "error": {
                     "code": "unauthorized",
-                    "message": "Authentication required",
+                    "message": "Invalid API key (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "authentication_error"
                   }
                 }
               }
             }
           },
-          "402": {
-            "description": "配额不足、需要充值",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "quota_exceeded",
-                    "message": "Insufficient quota. Please top up your account.",
-                    "type": "insufficient_quota"
-                  }
-                }
-              }
-            }
-          },
           "403": {
-            "description": "无权限访问",
+            "description": "账号已被禁用",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,8 +107,9 @@
                 },
                 "example": {
                   "error": {
-                    "code": "permission_denied",
-                    "message": "You don't have permission to access this task",
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "invalid_request_error"
                   }
                 }
@@ -121,7 +117,7 @@
             }
           },
           "404": {
-            "description": "资源不存在",
+            "description": "任务不存在或不属于当前 API Key（任务 ID 格式错误也返回此状态）",
             "content": {
               "application/json": {
                 "schema": {
@@ -129,16 +125,17 @@
                 },
                 "example": {
                   "error": {
-                    "code": "task_not_found",
-                    "message": "The requested task could not be found",
-                    "type": "invalid_request_error"
+                    "message": "Task not found",
+                    "type": "invalid_request_error",
+                    "param": "",
+                    "code": "task_not_found"
                   }
                 }
               }
             }
           },
           "429": {
-            "description": "请求频率超限",
+            "description": "请求频率超限（同时返回 Retry-After 响应头）",
             "content": {
               "application/json": {
                 "schema": {
@@ -147,8 +144,11 @@
                 "example": {
                   "error": {
                     "code": "rate_limit_exceeded",
-                    "message": "Rate limit exceeded",
-                    "type": "evo_api_error"
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
                   }
                 }
               }
@@ -163,9 +163,10 @@
                 },
                 "example": {
                   "error": {
-                    "code": "internal_error",
-                    "message": "Failed to retrieve task status",
-                    "type": "api_error"
+                    "message": "Failed to get task status",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
                   }
                 }
               }
@@ -193,7 +194,7 @@
           "model": {
             "type": "string",
             "description": "使用的模型",
-            "example": "gemini-3.1-flash-image-preview"
+            "example": "gemini-3-pro-image-preview"
           },
           "object": {
             "type": "string",
@@ -212,20 +213,9 @@
             "description": "任务进度百分比",
             "example": 100
           },
-          "results": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "任务结果列表（完成时提供）",
-            "example": [
-              "http://example.com/image.jpg"
-            ]
-          },
           "status": {
             "type": "string",
-            "description": "任务状态",
+            "description": "任务状态。注意：任务在上游仍为排队中时，查询接口已返回 \"processing\"，因此客户端通常只会看到 processing / completed / failed。",
             "enum": [
               "pending",
               "processing",
@@ -233,6 +223,110 @@
               "failed"
             ],
             "example": "completed"
+          },
+          "type": {
+            "type": "string",
+            "description": "任务类型",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "text"
+            ],
+            "example": "image"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "任务耗时（秒）。仅当 status 为 \"completed\" 或 \"failed\" 时返回。",
+            "example": 30
+          },
+          "video_duration": {
+            "type": "number",
+            "description": "实际生成的视频时长（秒）。仅部分视频模型（如 Kling）在终态时返回。",
+            "example": 5.0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "结果 URL 列表。仅当 status 为 \"completed\" 且模型产出 URL 结果时返回，其他情况下该字段不存在。",
+            "example": [
+              "http://example.com/image.jpg"
+            ]
+          },
+          "result_data": {
+            "description": "模型专属的完整结果对象。图像模型为对象数组，如 [{\"url\": ...}]（与 results 中的 URL 相同）；部分模型返回更丰富的对象（如 Suno 返回歌曲对象）。无结构化结果的模型不返回该字段。",
+            "example": [
+              {
+                "url": "http://example.com/image.jpg"
+              }
+            ]
+          },
+          "usage": {
+            "type": "object",
+            "description": "用量与计费信息。仅当 status 为 \"completed\" 时返回。固定包含 credits_used 和 cost；token 字段仅按 token 计费的模型（如 gpt-image-2）返回，部分模型还会附加各自的计费明细字段。",
+            "properties": {
+              "credits_used": {
+                "type": "number",
+                "description": "本任务实际扣除的 Credits。仅在计费尚未结算时省略。",
+                "example": 10
+              },
+              "cost": {
+                "type": "object",
+                "description": "本任务费用的三种货币表示，由 credits_used 换算得到（向上取整）。",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "扣除的 Credits（与 credits_used 相同）",
+                    "example": 10
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "折合美元",
+                    "example": 0.148
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "折合人民币",
+                    "example": 1
+                  }
+                }
+              },
+              "image_input_tokens": {
+                "type": "integer",
+                "description": "图片输入 token（仅按 token 计费的图像模型，如 gpt-image-2）",
+                "example": 1032
+              },
+              "image_cached_input_tokens": {
+                "type": "integer",
+                "description": "缓存的图片输入 token（仅按 token 计费的图像模型）"
+              },
+              "image_output_tokens": {
+                "type": "integer",
+                "description": "图片输出 token（仅按 token 计费的图像模型）",
+                "example": 987
+              },
+              "text_input_tokens": {
+                "type": "integer",
+                "description": "文本输入 token（仅按 token 计费的模型）",
+                "example": 13
+              },
+              "text_cached_input_tokens": {
+                "type": "integer",
+                "description": "缓存的文本输入 token（仅按 token 计费的图像模型）"
+              },
+              "text_output_tokens": {
+                "type": "integer",
+                "description": "文本输出 token（仅大于 0 时返回）"
+              },
+              "total_tokens": {
+                "type": "integer",
+                "description": "总 token 数（仅按 token 计费的模型）",
+                "example": 2032
+              }
+            }
           },
           "error": {
             "type": "object",
@@ -247,12 +341,15 @@
               "message": {
                 "type": "string",
                 "description": "用户友好的错误说明与排错建议",
-                "example": "Content policy violation.\nYour request was blocked by safety filters."
+                "example": "Content policy violation.\nYour request was blocked by safety filters. Please adjust your prompt or input images and try again."
               },
-              "type": {
+              "details": {
                 "type": "string",
-                "description": "错误类型标识，固定为 task_error",
-                "example": "task_error"
+                "description": "补充错误详情，仅在有值时返回"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "建议操作，仅部分 beta/别名模型返回"
               }
             }
           },
@@ -266,17 +363,6 @@
                 "example": false
               }
             }
-          },
-          "type": {
-            "type": "string",
-            "description": "任务类型",
-            "enum": [
-              "image",
-              "video",
-              "audio",
-              "text"
-            ],
-            "example": "image"
           }
         }
       },
@@ -289,12 +375,12 @@
               "code": {
                 "type": "string",
                 "description": "错误码（字符串类型）",
-                "example": "invalid_task_id"
+                "example": "task_not_found"
               },
               "message": {
                 "type": "string",
-                "description": "错误描述信息",
-                "example": "Invalid task ID format"
+                "description": "错误描述信息。由中间件产生的错误（401、429）末尾会附带 \" (request id: ...)\"",
+                "example": "Task not found"
               },
               "type": {
                 "type": "string",
@@ -303,8 +389,18 @@
               },
               "param": {
                 "type": "string",
-                "description": "相关参数名称",
-                "example": "task_id"
+                "nullable": true,
+                "description": "相关参数名称；本接口为 null 或空字符串"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "建议重试前等待的秒数（仅 429）",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "请求是否可重试（仅 429）",
+                "example": true
               }
             }
           }
