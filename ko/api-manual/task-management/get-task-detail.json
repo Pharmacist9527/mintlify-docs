@@ -47,30 +47,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TaskDetailResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "요청 매개변수 오류, 형식 오류",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "example": {
-                  "error": {
-                    "code": "invalid_task_id",
-                    "message": "Invalid task ID format, must start with 'task-unified-'",
-                    "type": "invalid_request_error",
-                    "param": "task_id"
+                  "created": 1788436500,
+                  "duration": 30,
+                  "id": "task-unified-1788436500-yscib7uw",
+                  "model": "gemini-3-pro-image-preview",
+                  "object": "image.generation.task",
+                  "progress": 100,
+                  "result_data": [
+                    {
+                      "url": "http://example.com/image.jpg"
+                    }
+                  ],
+                  "results": [
+                    "http://example.com/image.jpg"
+                  ],
+                  "status": "completed",
+                  "task_info": {
+                    "can_cancel": false
+                  },
+                  "type": "image",
+                  "usage": {
+                    "cost": {
+                      "credits": 10,
+                      "usd": 0.148,
+                      "cny": 1
+                    },
+                    "credits_used": 10
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "인증되지 않음, 토큰이 유효하지 않거나 만료됨",
+            "description": "인증되지 않음: API 키가 없거나 유효하지 않거나 만료되었거나 비활성화됨",
             "content": {
               "application/json": {
                 "schema": {
@@ -79,32 +90,16 @@
                 "example": {
                   "error": {
                     "code": "unauthorized",
-                    "message": "Authentication required",
+                    "message": "Invalid API key (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "authentication_error"
                   }
                 }
               }
             }
           },
-          "402": {
-            "description": "할당량 부족, 충전 필요",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "quota_exceeded",
-                    "message": "Insufficient quota. Please top up your account.",
-                    "type": "insufficient_quota"
-                  }
-                }
-              }
-            }
-          },
           "403": {
-            "description": "접근 권한 없음",
+            "description": "계정이 비활성화됨",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,8 +107,9 @@
                 },
                 "example": {
                   "error": {
-                    "code": "permission_denied",
-                    "message": "You don't have permission to access this task",
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "invalid_request_error"
                   }
                 }
@@ -121,7 +117,7 @@
             }
           },
           "404": {
-            "description": "리소스가 존재하지 않습니다",
+            "description": "작업이 존재하지 않거나 현재 API 키에 속하지 않음 (작업 ID 형식이 잘못된 경우에도 반환)",
             "content": {
               "application/json": {
                 "schema": {
@@ -129,16 +125,17 @@
                 },
                 "example": {
                   "error": {
-                    "code": "task_not_found",
-                    "message": "The requested task could not be found",
-                    "type": "invalid_request_error"
+                    "message": "Task not found",
+                    "type": "invalid_request_error",
+                    "param": "",
+                    "code": "task_not_found"
                   }
                 }
               }
             }
           },
           "429": {
-            "description": "요청 속도 제한 초과",
+            "description": "요청 속도 제한 초과 (Retry-After 헤더도 함께 반환)",
             "content": {
               "application/json": {
                 "schema": {
@@ -147,8 +144,11 @@
                 "example": {
                   "error": {
                     "code": "rate_limit_exceeded",
-                    "message": "Rate limit exceeded",
-                    "type": "evo_api_error"
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
                   }
                 }
               }
@@ -163,9 +163,10 @@
                 },
                 "example": {
                   "error": {
-                    "code": "internal_error",
-                    "message": "Failed to retrieve task status",
-                    "type": "api_error"
+                    "message": "Failed to get task status",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
                   }
                 }
               }
@@ -193,7 +194,7 @@
           "model": {
             "type": "string",
             "description": "사용된 모델",
-            "example": "gemini-3.1-flash-image-preview"
+            "example": "gemini-3-pro-image-preview"
           },
           "object": {
             "type": "string",
@@ -212,20 +213,9 @@
             "description": "작업 진행률 백분율",
             "example": 100
           },
-          "results": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "작업 결과 목록 (완료 시 제공)",
-            "example": [
-              "http://example.com/image.jpg"
-            ]
-          },
           "status": {
             "type": "string",
-            "description": "작업 상태",
+            "description": "작업 상태. 참고: 작업이 업스트림에서 아직 대기 중이어도 조회 API는 이미 \"processing\"을 반환하므로, 클라이언트는 보통 processing / completed / failed만 보게 됩니다.",
             "enum": [
               "pending",
               "processing",
@@ -234,10 +224,114 @@
             ],
             "example": "completed"
           },
+          "type": {
+            "type": "string",
+            "description": "작업 유형",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "text"
+            ],
+            "example": "image"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "작업 소요 시간(초). status가 \"completed\" 또는 \"failed\"일 때만 반환됩니다.",
+            "example": 30
+          },
+          "video_duration": {
+            "type": "number",
+            "description": "실제 생성된 영상 길이(초). 일부 영상 모델(예: Kling)의 최종 상태에서만 반환됩니다.",
+            "example": 5.0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "결과 URL 목록. status가 \"completed\"이고 모델이 URL 결과를 생성하는 경우에만 반환되며, 그 외에는 필드 자체가 없습니다.",
+            "example": [
+              "http://example.com/image.jpg"
+            ]
+          },
+          "result_data": {
+            "description": "모델별 전체 결과 객체. 이미지 모델은 [{\"url\": ...}] 형태의 객체 배열(results와 동일한 URL)이며, 일부 모델은 더 풍부한 객체를 반환합니다(예: Suno는 곡 객체). 구조화된 결과가 없는 모델에서는 반환되지 않습니다.",
+            "example": [
+              {
+                "url": "http://example.com/image.jpg"
+              }
+            ]
+          },
+          "usage": {
+            "type": "object",
+            "description": "사용량 및 과금 정보. status가 \"completed\"일 때만 반환됩니다. credits_used와 cost는 항상 포함되며, 토큰 필드는 토큰 과금 모델(예: gpt-image-2)에서만 반환됩니다. 일부 모델은 모델별 과금 필드를 추가로 반환합니다.",
+            "properties": {
+              "credits_used": {
+                "type": "number",
+                "description": "이 작업에서 실제로 차감된 Credits. 과금이 아직 정산되지 않은 경우에만 생략됩니다.",
+                "example": 10
+              },
+              "cost": {
+                "type": "object",
+                "description": "이 작업의 비용을 세 가지 통화로 표시. credits_used에서 환산(올림).",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "차감된 Credits (credits_used와 동일)",
+                    "example": 10
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "미국 달러 환산 금액",
+                    "example": 0.148
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "위안화 환산 금액",
+                    "example": 1
+                  }
+                }
+              },
+              "image_input_tokens": {
+                "type": "integer",
+                "description": "이미지 입력 토큰 (토큰 과금 이미지 모델만, 예: gpt-image-2)",
+                "example": 1032
+              },
+              "image_cached_input_tokens": {
+                "type": "integer",
+                "description": "캐시된 이미지 입력 토큰 (토큰 과금 이미지 모델만)"
+              },
+              "image_output_tokens": {
+                "type": "integer",
+                "description": "이미지 출력 토큰 (토큰 과금 이미지 모델만)",
+                "example": 987
+              },
+              "text_input_tokens": {
+                "type": "integer",
+                "description": "텍스트 입력 토큰 (토큰 과금 모델만)",
+                "example": 13
+              },
+              "text_cached_input_tokens": {
+                "type": "integer",
+                "description": "캐시된 텍스트 입력 토큰 (토큰 과금 이미지 모델만)"
+              },
+              "text_output_tokens": {
+                "type": "integer",
+                "description": "텍스트 출력 토큰 (0보다 클 때만 반환)"
+              },
+              "total_tokens": {
+                "type": "integer",
+                "description": "총 토큰 수 (토큰 과금 모델만)",
+                "example": 2032
+              }
+            }
+          },
           "error": {
             "type": "object",
             "nullable": true,
-            "description": "작업 실패 시 오류 정보 (status가 failed인 경우에만 표시). 참고: 여기서 error.code는 문자열 유형의 비즈니스 오류 코드이며 HTTP 상태 코드와 다릅니다. 전체 오류 코드 목록은 오류 코드 참조 문서를 확인하세요.",
+            "description": "작업 실패 시 오류 정보 (status가 failed일 때만 표시). 참고: 여기의 error.code는 문자열 유형의 비즈니스 오류 코드로 HTTP 상태 코드와 다릅니다. 전체 목록은 오류 코드 참조 문서를 확인하세요.",
             "properties": {
               "code": {
                 "type": "string",
@@ -247,12 +341,15 @@
               "message": {
                 "type": "string",
                 "description": "사용자 친화적인 오류 설명 및 문제 해결 팁",
-                "example": "Content policy violation.\nYour request was blocked by safety filters."
+                "example": "Content policy violation.\nYour request was blocked by safety filters. Please adjust your prompt or input images and try again."
               },
-              "type": {
+              "details": {
                 "type": "string",
-                "description": "오류 유형 식별자, 항상 \"task_error\"",
-                "example": "task_error"
+                "description": "추가 오류 세부 정보, 값이 있을 때만 반환"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "권장 조치, 일부 beta/별칭 모델에서만 반환"
               }
             }
           },
@@ -266,17 +363,6 @@
                 "example": false
               }
             }
-          },
-          "type": {
-            "type": "string",
-            "description": "작업 유형",
-            "enum": [
-              "image",
-              "video",
-              "audio",
-              "text"
-            ],
-            "example": "image"
           }
         }
       },
@@ -289,12 +375,12 @@
               "code": {
                 "type": "string",
                 "description": "오류 코드 (문자열 유형)",
-                "example": "invalid_task_id"
+                "example": "task_not_found"
               },
               "message": {
                 "type": "string",
-                "description": "오류 설명 메시지",
-                "example": "Invalid task ID format"
+                "description": "오류 설명 메시지. 미들웨어에서 발생한 오류(401, 429)는 끝에 \" (request id: ...)\"가 붙습니다",
+                "example": "Task not found"
               },
               "type": {
                 "type": "string",
@@ -303,8 +389,18 @@
               },
               "param": {
                 "type": "string",
-                "description": "관련 매개변수 이름",
-                "example": "task_id"
+                "nullable": true,
+                "description": "관련 매개변수 이름. 이 엔드포인트에서는 null 또는 빈 문자열"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "재시도 전 대기 시간(초) (429만)",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "요청 재시도 가능 여부 (429만)",
+                "example": true
               }
             }
           }

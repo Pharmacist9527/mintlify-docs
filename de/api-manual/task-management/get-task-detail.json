@@ -47,30 +47,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TaskDetailResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Anfrageparameter-Fehler, Formatfehler",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "example": {
-                  "error": {
-                    "code": "invalid_task_id",
-                    "message": "Invalid task ID format, must start with 'task-unified-'",
-                    "type": "invalid_request_error",
-                    "param": "task_id"
+                  "created": 1788436500,
+                  "duration": 30,
+                  "id": "task-unified-1788436500-yscib7uw",
+                  "model": "gemini-3-pro-image-preview",
+                  "object": "image.generation.task",
+                  "progress": 100,
+                  "result_data": [
+                    {
+                      "url": "http://example.com/image.jpg"
+                    }
+                  ],
+                  "results": [
+                    "http://example.com/image.jpg"
+                  ],
+                  "status": "completed",
+                  "task_info": {
+                    "can_cancel": false
+                  },
+                  "type": "image",
+                  "usage": {
+                    "cost": {
+                      "credits": 10,
+                      "usd": 0.148,
+                      "cny": 1
+                    },
+                    "credits_used": 10
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "Nicht authentifiziert, Token ungültig oder abgelaufen",
+            "description": "Nicht authentifiziert: API-Schlüssel fehlt, ist ungültig, abgelaufen oder deaktiviert",
             "content": {
               "application/json": {
                 "schema": {
@@ -79,32 +90,16 @@
                 "example": {
                   "error": {
                     "code": "unauthorized",
-                    "message": "Authentication required",
+                    "message": "Invalid API key (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "authentication_error"
                   }
                 }
               }
             }
           },
-          "402": {
-            "description": "Unzureichendes Kontingent, Aufladung erforderlich",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "quota_exceeded",
-                    "message": "Insufficient quota. Please top up your account.",
-                    "type": "insufficient_quota"
-                  }
-                }
-              }
-            }
-          },
           "403": {
-            "description": "Kein Zugriff erlaubt",
+            "description": "Konto deaktiviert",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,8 +107,9 @@
                 },
                 "example": {
                   "error": {
-                    "code": "permission_denied",
-                    "message": "You don't have permission to access this task",
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "invalid_request_error"
                   }
                 }
@@ -121,7 +117,7 @@
             }
           },
           "404": {
-            "description": "Ressource existiert nicht",
+            "description": "Aufgabe existiert nicht oder gehört nicht zum aktuellen API-Schlüssel (auch bei fehlerhaft formatierter Aufgaben-ID)",
             "content": {
               "application/json": {
                 "schema": {
@@ -129,16 +125,17 @@
                 },
                 "example": {
                   "error": {
-                    "code": "task_not_found",
-                    "message": "The requested task could not be found",
-                    "type": "invalid_request_error"
+                    "message": "Task not found",
+                    "type": "invalid_request_error",
+                    "param": "",
+                    "code": "task_not_found"
                   }
                 }
               }
             }
           },
           "429": {
-            "description": "Anfrage-Ratenlimit überschritten",
+            "description": "Anfrage-Ratenlimit überschritten (Retry-After-Header wird ebenfalls gesetzt)",
             "content": {
               "application/json": {
                 "schema": {
@@ -147,8 +144,11 @@
                 "example": {
                   "error": {
                     "code": "rate_limit_exceeded",
-                    "message": "Rate limit exceeded",
-                    "type": "evo_api_error"
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
                   }
                 }
               }
@@ -163,9 +163,10 @@
                 },
                 "example": {
                   "error": {
-                    "code": "internal_error",
-                    "message": "Failed to retrieve task status",
-                    "type": "api_error"
+                    "message": "Failed to get task status",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
                   }
                 }
               }
@@ -193,7 +194,7 @@
           "model": {
             "type": "string",
             "description": "Verwendetes Modell",
-            "example": "gemini-3.1-flash-image-preview"
+            "example": "gemini-3-pro-image-preview"
           },
           "object": {
             "type": "string",
@@ -212,20 +213,9 @@
             "description": "Aufgabenfortschritt in Prozent",
             "example": 100
           },
-          "results": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "Aufgabenergebnisliste (wird bei Abschluss bereitgestellt)",
-            "example": [
-              "http://example.com/image.jpg"
-            ]
-          },
           "status": {
             "type": "string",
-            "description": "Aufgabenstatus",
+            "description": "Aufgabenstatus. Hinweis: Solange die Aufgabe upstream noch wartet, meldet die Abfrage-API bereits \"processing\"; Clients sehen daher normalerweise nur processing / completed / failed.",
             "enum": [
               "pending",
               "processing",
@@ -234,25 +224,132 @@
             ],
             "example": "completed"
           },
+          "type": {
+            "type": "string",
+            "description": "Aufgabentyp",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "text"
+            ],
+            "example": "image"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Aufgabendauer in Sekunden. Nur vorhanden, wenn status \"completed\" oder \"failed\" ist.",
+            "example": 30
+          },
+          "video_duration": {
+            "type": "number",
+            "description": "Tatsächliche Länge des generierten Videos in Sekunden. Nur bei einigen Videomodellen (z. B. Kling) im Endzustand vorhanden.",
+            "example": 5.0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "Liste der Ergebnis-URLs. Nur vorhanden, wenn status \"completed\" ist und das Modell URL-Ergebnisse liefert; andernfalls fehlt das Feld.",
+            "example": [
+              "http://example.com/image.jpg"
+            ]
+          },
+          "result_data": {
+            "description": "Modellspezifisches vollständiges Ergebnisobjekt. Bei Bildmodellen ein Array von Objekten wie [{\"url\": ...}] (dieselben URLs wie in results); einige Modelle liefern umfangreichere Objekte (z. B. Song-Objekte bei Suno). Fehlt, wenn das Modell kein strukturiertes Ergebnis hat.",
+            "example": [
+              {
+                "url": "http://example.com/image.jpg"
+              }
+            ]
+          },
+          "usage": {
+            "type": "object",
+            "description": "Nutzungs- und Abrechnungsinformationen. Nur vorhanden, wenn status \"completed\" ist. Enthält immer credits_used und cost; Token-Felder erscheinen nur bei tokenbasiert abgerechneten Modellen (z. B. gpt-image-2). Einige Modelle liefern weitere modellspezifische Felder.",
+            "properties": {
+              "credits_used": {
+                "type": "number",
+                "description": "Für diese Aufgabe tatsächlich abgerechnete Credits. Fehlt nur, wenn die Abrechnung noch nicht abgeschlossen werden konnte.",
+                "example": 10
+              },
+              "cost": {
+                "type": "object",
+                "description": "Kosten dieser Aufgabe in drei Währungen, umgerechnet aus credits_used (aufgerundet).",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "Abgerechnete Credits (identisch mit credits_used)",
+                    "example": 10
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "Gegenwert in USD",
+                    "example": 0.148
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "Gegenwert in CNY",
+                    "example": 1
+                  }
+                }
+              },
+              "image_input_tokens": {
+                "type": "integer",
+                "description": "Bild-Eingabetokens (nur tokenbasiert abgerechnete Bildmodelle, z. B. gpt-image-2)",
+                "example": 1032
+              },
+              "image_cached_input_tokens": {
+                "type": "integer",
+                "description": "Zwischengespeicherte Bild-Eingabetokens (nur tokenbasiert abgerechnete Bildmodelle)"
+              },
+              "image_output_tokens": {
+                "type": "integer",
+                "description": "Bild-Ausgabetokens (nur tokenbasiert abgerechnete Bildmodelle)",
+                "example": 987
+              },
+              "text_input_tokens": {
+                "type": "integer",
+                "description": "Text-Eingabetokens (nur tokenbasiert abgerechnete Modelle)",
+                "example": 13
+              },
+              "text_cached_input_tokens": {
+                "type": "integer",
+                "description": "Zwischengespeicherte Text-Eingabetokens (nur tokenbasiert abgerechnete Bildmodelle)"
+              },
+              "text_output_tokens": {
+                "type": "integer",
+                "description": "Text-Ausgabetokens (nur vorhanden, wenn größer als 0)"
+              },
+              "total_tokens": {
+                "type": "integer",
+                "description": "Gesamtzahl der Tokens (nur tokenbasiert abgerechnete Modelle)",
+                "example": 2032
+              }
+            }
+          },
           "error": {
             "type": "object",
             "nullable": true,
-            "description": "Fehlerinformationen bei Aufgabenfehlschlag (nur wenn status \"failed\" ist). Hinweis: error.code ist hier ein String-Typ Business-Fehlercode, der sich von HTTP-Statuscodes unterscheidet. Die vollständige Fehlercode-Liste finden Sie in der Fehlercode-Referenz.",
+            "description": "Fehlerinformationen bei fehlgeschlagener Aufgabe (nur vorhanden, wenn status \"failed\" ist). Hinweis: error.code ist hier ein Geschäftsfehlercode vom Typ String und unterscheidet sich von HTTP-Statuscodes. Die vollständige Liste finden Sie in der Fehlercode-Referenz.",
             "properties": {
               "code": {
                 "type": "string",
-                "description": "Business-Fehlercode (String-Typ)",
+                "description": "Geschäftsfehlercode (String-Typ)",
                 "example": "content_policy_violation"
               },
               "message": {
                 "type": "string",
                 "description": "Benutzerfreundliche Fehlerbeschreibung mit Fehlerbehebungstipps",
-                "example": "Content policy violation.\nYour request was blocked by safety filters."
+                "example": "Content policy violation.\nYour request was blocked by safety filters. Please adjust your prompt or input images and try again."
               },
-              "type": {
+              "details": {
                 "type": "string",
-                "description": "Fehlertyp-Kennung, immer \"task_error\"",
-                "example": "task_error"
+                "description": "Zusätzliche Fehlerdetails, nur vorhanden, wenn verfügbar"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "Empfohlene Maßnahme, nur bei einigen Beta-/Alias-Modellen vorhanden"
               }
             }
           },
@@ -266,17 +363,6 @@
                 "example": false
               }
             }
-          },
-          "type": {
-            "type": "string",
-            "description": "Aufgabentyp",
-            "enum": [
-              "image",
-              "video",
-              "audio",
-              "text"
-            ],
-            "example": "image"
           }
         }
       },
@@ -289,12 +375,12 @@
               "code": {
                 "type": "string",
                 "description": "Fehlercode (String-Typ)",
-                "example": "invalid_task_id"
+                "example": "task_not_found"
               },
               "message": {
                 "type": "string",
-                "description": "Fehlerbeschreibungsnachricht",
-                "example": "Invalid task ID format"
+                "description": "Fehlerbeschreibungsnachricht. Von der Middleware erzeugte Fehler (401, 429) enden mit \" (request id: ...)\"",
+                "example": "Task not found"
               },
               "type": {
                 "type": "string",
@@ -303,8 +389,18 @@
               },
               "param": {
                 "type": "string",
-                "description": "Zugehöriger Parametername",
-                "example": "task_id"
+                "nullable": true,
+                "description": "Zugehöriger Parametername; bei diesem Endpunkt null oder leer"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "Wartezeit in Sekunden vor einem erneuten Versuch (nur 429)",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "Ob die Anfrage wiederholt werden kann (nur 429)",
+                "example": true
               }
             }
           }

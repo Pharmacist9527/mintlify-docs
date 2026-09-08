@@ -47,30 +47,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TaskDetailResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "リクエストパラメータエラー、フォーマットエラー",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "example": {
-                  "error": {
-                    "code": "invalid_task_id",
-                    "message": "Invalid task ID format, must start with 'task-unified-'",
-                    "type": "invalid_request_error",
-                    "param": "task_id"
+                  "created": 1788436500,
+                  "duration": 30,
+                  "id": "task-unified-1788436500-yscib7uw",
+                  "model": "gemini-3-pro-image-preview",
+                  "object": "image.generation.task",
+                  "progress": 100,
+                  "result_data": [
+                    {
+                      "url": "http://example.com/image.jpg"
+                    }
+                  ],
+                  "results": [
+                    "http://example.com/image.jpg"
+                  ],
+                  "status": "completed",
+                  "task_info": {
+                    "can_cancel": false
+                  },
+                  "type": "image",
+                  "usage": {
+                    "cost": {
+                      "credits": 10,
+                      "usd": 0.148,
+                      "cny": 1
+                    },
+                    "credits_used": 10
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "未認証、トークンが無効または期限切れ",
+            "description": "未認証：API キーが未指定、無効、期限切れ、または無効化されています",
             "content": {
               "application/json": {
                 "schema": {
@@ -79,32 +90,16 @@
                 "example": {
                   "error": {
                     "code": "unauthorized",
-                    "message": "Authentication required",
+                    "message": "Invalid API key (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "authentication_error"
                   }
                 }
               }
             }
           },
-          "402": {
-            "description": "クォータ不足、チャージが必要です",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": {
-                    "code": "quota_exceeded",
-                    "message": "Insufficient quota. Please top up your account.",
-                    "type": "insufficient_quota"
-                  }
-                }
-              }
-            }
-          },
           "403": {
-            "description": "アクセス権限がありません",
+            "description": "アカウントが無効化されています",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,8 +107,9 @@
                 },
                 "example": {
                   "error": {
-                    "code": "permission_denied",
-                    "message": "You don't have permission to access this task",
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
                     "type": "invalid_request_error"
                   }
                 }
@@ -121,7 +117,7 @@
             }
           },
           "404": {
-            "description": "リソースが存在しません",
+            "description": "タスクが存在しないか、現在の API キーに属していません（タスク ID の形式が不正な場合も同様）",
             "content": {
               "application/json": {
                 "schema": {
@@ -129,16 +125,17 @@
                 },
                 "example": {
                   "error": {
-                    "code": "task_not_found",
-                    "message": "The requested task could not be found",
-                    "type": "invalid_request_error"
+                    "message": "Task not found",
+                    "type": "invalid_request_error",
+                    "param": "",
+                    "code": "task_not_found"
                   }
                 }
               }
             }
           },
           "429": {
-            "description": "リクエストレート制限を超過しました",
+            "description": "リクエストレート制限を超過しました（Retry-After ヘッダーも返されます）",
             "content": {
               "application/json": {
                 "schema": {
@@ -147,8 +144,11 @@
                 "example": {
                   "error": {
                     "code": "rate_limit_exceeded",
-                    "message": "Rate limit exceeded",
-                    "type": "evo_api_error"
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
                   }
                 }
               }
@@ -163,9 +163,10 @@
                 },
                 "example": {
                   "error": {
-                    "code": "internal_error",
-                    "message": "Failed to retrieve task status",
-                    "type": "api_error"
+                    "message": "Failed to get task status",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
                   }
                 }
               }
@@ -193,7 +194,7 @@
           "model": {
             "type": "string",
             "description": "使用されたモデル",
-            "example": "gemini-3.1-flash-image-preview"
+            "example": "gemini-3-pro-image-preview"
           },
           "object": {
             "type": "string",
@@ -212,20 +213,9 @@
             "description": "タスク進捗率",
             "example": 100
           },
-          "results": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "タスク結果リスト（完了時に提供）",
-            "example": [
-              "http://example.com/image.jpg"
-            ]
-          },
           "status": {
             "type": "string",
-            "description": "タスクステータス",
+            "description": "タスクステータス。注意：上流でまだ待機中でも、照会 API は \"processing\" を返すため、クライアントは通常 processing / completed / failed のみを目にします。",
             "enum": [
               "pending",
               "processing",
@@ -234,10 +224,114 @@
             ],
             "example": "completed"
           },
+          "type": {
+            "type": "string",
+            "description": "タスクタイプ",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "text"
+            ],
+            "example": "image"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "タスクの所要時間（秒）。status が \"completed\" または \"failed\" のときのみ返されます。",
+            "example": 30
+          },
+          "video_duration": {
+            "type": "number",
+            "description": "実際に生成された動画の長さ（秒）。一部の動画モデル（例：Kling）の終了状態でのみ返されます。",
+            "example": 5.0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "結果 URL のリスト。status が \"completed\" でモデルが URL 結果を生成する場合のみ返され、それ以外ではフィールド自体が存在しません。",
+            "example": [
+              "http://example.com/image.jpg"
+            ]
+          },
+          "result_data": {
+            "description": "モデル固有の完全な結果オブジェクト。画像モデルでは [{\"url\": ...}] のようなオブジェクト配列（results と同じ URL）。一部のモデルはより詳細なオブジェクトを返します（例：Suno は楽曲オブジェクト）。構造化結果のないモデルでは返されません。",
+            "example": [
+              {
+                "url": "http://example.com/image.jpg"
+              }
+            ]
+          },
+          "usage": {
+            "type": "object",
+            "description": "使用量と課金情報。status が \"completed\" のときのみ返されます。credits_used と cost は常に含まれ、トークン系フィールドはトークン課金モデル（例：gpt-image-2）でのみ返されます。一部のモデルではモデル固有の課金フィールドが追加されます。",
+            "properties": {
+              "credits_used": {
+                "type": "number",
+                "description": "このタスクで実際に消費された Credits。課金が未確定の場合のみ省略されます。",
+                "example": 10
+              },
+              "cost": {
+                "type": "object",
+                "description": "このタスクの費用を 3 通貨で表したもの。credits_used から換算（切り上げ）。",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "消費された Credits（credits_used と同じ）",
+                    "example": 10
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "米ドル換算額",
+                    "example": 0.148
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "人民元換算額",
+                    "example": 1
+                  }
+                }
+              },
+              "image_input_tokens": {
+                "type": "integer",
+                "description": "画像入力トークン（トークン課金の画像モデルのみ、例：gpt-image-2）",
+                "example": 1032
+              },
+              "image_cached_input_tokens": {
+                "type": "integer",
+                "description": "キャッシュされた画像入力トークン（トークン課金の画像モデルのみ）"
+              },
+              "image_output_tokens": {
+                "type": "integer",
+                "description": "画像出力トークン（トークン課金の画像モデルのみ）",
+                "example": 987
+              },
+              "text_input_tokens": {
+                "type": "integer",
+                "description": "テキスト入力トークン（トークン課金モデルのみ）",
+                "example": 13
+              },
+              "text_cached_input_tokens": {
+                "type": "integer",
+                "description": "キャッシュされたテキスト入力トークン（トークン課金の画像モデルのみ）"
+              },
+              "text_output_tokens": {
+                "type": "integer",
+                "description": "テキスト出力トークン（0 より大きい場合のみ返されます）"
+              },
+              "total_tokens": {
+                "type": "integer",
+                "description": "合計トークン数（トークン課金モデルのみ）",
+                "example": 2032
+              }
+            }
+          },
           "error": {
             "type": "object",
             "nullable": true,
-            "description": "タスク失敗時のエラー情報（status が failed の場合のみ表示）。注意：ここでの error.code は文字列型のビジネスエラーコードであり、HTTP ステータスコードとは異なります。完全なエラーコード一覧はエラーコードリファレンスをご参照ください。",
+            "description": "タスク失敗時のエラー情報（status が failed の場合のみ）。注意：ここでの error.code は文字列型のビジネスエラーコードで、HTTP ステータスコードとは異なります。完全なリストはエラーコードリファレンスを参照してください。",
             "properties": {
               "code": {
                 "type": "string",
@@ -247,12 +341,15 @@
               "message": {
                 "type": "string",
                 "description": "ユーザーフレンドリーなエラー説明とトラブルシューティングのヒント",
-                "example": "Content policy violation.\nYour request was blocked by safety filters."
+                "example": "Content policy violation.\nYour request was blocked by safety filters. Please adjust your prompt or input images and try again."
               },
-              "type": {
+              "details": {
                 "type": "string",
-                "description": "エラータイプ識別子、常に \"task_error\"",
-                "example": "task_error"
+                "description": "追加のエラー詳細。値がある場合のみ返されます"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "推奨アクション。一部の beta/エイリアスモデルでのみ返されます"
               }
             }
           },
@@ -266,17 +363,6 @@
                 "example": false
               }
             }
-          },
-          "type": {
-            "type": "string",
-            "description": "タスクタイプ",
-            "enum": [
-              "image",
-              "video",
-              "audio",
-              "text"
-            ],
-            "example": "image"
           }
         }
       },
@@ -289,12 +375,12 @@
               "code": {
                 "type": "string",
                 "description": "エラーコード（文字列型）",
-                "example": "invalid_task_id"
+                "example": "task_not_found"
               },
               "message": {
                 "type": "string",
-                "description": "エラー説明メッセージ",
-                "example": "Invalid task ID format"
+                "description": "エラー説明メッセージ。ミドルウェアが生成するエラー（401、429）には末尾に \" (request id: ...)\" が付きます",
+                "example": "Task not found"
               },
               "type": {
                 "type": "string",
@@ -303,8 +389,18 @@
               },
               "param": {
                 "type": "string",
-                "description": "関連パラメータ名",
-                "example": "task_id"
+                "nullable": true,
+                "description": "関連パラメータ名。このエンドポイントでは null または空文字列"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "再試行までの待機秒数（429 のみ）",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "リクエストを再試行できるかどうか（429 のみ）",
+                "example": true
               }
             }
           }
