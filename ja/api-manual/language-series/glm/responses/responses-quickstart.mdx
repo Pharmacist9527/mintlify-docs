@@ -1,0 +1,52 @@
+---
+title: "GLM 全モデルインターフェース - Responses クイックスタート"
+openapi: '/ja/api-manual/language-series/glm/responses/responses-quickstart.json POST /v1/responses'
+---
+
+<Note>
+**BaseURL**：デフォルトの BaseURL は `https://direct.evolink.ai` で、テキストモデルへの対応が優れており、長時間接続をサポートします。`https://api.evolink.ai` はマルチモーダルサービスの主力エンドポイントで、テキストモデルに対しては代替アドレスとして使用されます。
+</Note>
+
+POST /v1/responses を使用し、model でモデルを選択します。必須フィールドは model と input です。例では使い始めやすいように、出力上限と推論強度も指定しています。
+
+<Warning>
+Responses はトップレベルの `reasoning_effort` や `thinking` ではなく、ネストした `reasoning.effort` を使用します。思考の使用量は `output_tokens` に含まれます。簡単なタスクで `reasoning_tokens=0` が返っても、思考の無効化に対応することを意味しません。
+
+推論強度。`low` を推奨します。
+
+**`glm-5.3` / `glm-5.3-flash` / `glm-5.3-flashx` の互換ルール**
+
+| 指定値 | 実際の思考レベル |
+| --- | --- |
+| `low` / `high` / `max` | 同じレベルを維持 |
+| `xhigh` | `max` |
+| `medium` | `high` |
+| `minimal` / `none` | `low`。思考は有効なまま |
+
+**`minimal` と `none` は 5.3 シリーズの思考を無効にしません。** 思考トークンは出力として課金されます。認識されない値は互換変換せず、そのまま扱われます。表の値を使用してください。これらの互換ルールは `glm-5.2` には適用されません。
+
+このエンドポイントでは `glm-5.2` に `none` を指定しても思考トークンが生成される場合があり、思考の無効化は保証されません。
+</Warning>
+
+## 本文を読み取る
+
+順序付き出力項目。`type=message` の content 内にある `type=output_text` の text が本文です。reasoning が本文より前に来る場合や、`function_call` のターンに本文がない場合があります。常に output[0] を読む実装は避けてください。
+
+応答 JSON を response に解析した後、次のように本文を抽出できます。
+
+```python
+text = "".join(
+    part["text"]
+    for item in response.get("output", [])
+    if item.get("type") == "message"
+    for part in item.get("content", [])
+    if part.get("type") == "output_text"
+)
+print(text)
+```
+
+<Note>
+今回の生成の出力トークン上限。思考トークンも含みます。1024 を目安にタスクに応じて調整してください。少なすぎると思考中に上限に達し、reasoning 項目のみで本文が返らない場合があります。status と `incomplete_details` を確認してください。パラメータ名は `max_tokens` ではなく `max_output_tokens` です。
+</Note>
+
+ツール呼び出し、画像入力、SSE 処理、複数ターンの会話は[完全なパラメータ](./responses-reference)を参照してください。

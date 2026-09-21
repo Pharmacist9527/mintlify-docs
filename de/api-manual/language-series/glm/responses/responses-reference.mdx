@@ -1,0 +1,145 @@
+---
+title: "GLM Schnittstelle für alle Modelle - Responses vollständige Parameter"
+openapi: '/de/api-manual/language-series/glm/responses/responses-reference.json POST /v1/responses'
+---
+
+<Note>
+**BaseURL**: Die Standard-BaseURL ist `https://direct.evolink.ai`, die Textmodelle und langlebige Verbindungen besser unterstützt. `https://api.evolink.ai` ist der primäre Endpunkt für multimodale Dienste und dient als Ausweichadresse für Textmodelle.
+</Note>
+
+Rufen Sie GLM im Responses-Format für Textgespräche, Streaming und Funktionsaufrufe auf. Bildverständnis und Websuche stehen je nach Modell zur Verfügung. Parameter und Modellunterschiede sind unten beschrieben.
+
+## Modelle und Parameterunterschiede
+
+Wählen Sie ein GLM-Modell. Alle vier unterstützen Text an diesem Endpunkt. Optionale Funktionen sind modellabhängig.
+
+| Modell-ID | Eingabe | Hinweise zum Denken |
+| --- | --- | --- |
+| `glm-5.3` | Text | Effektive Stufen: `low` / `high` / `max`; kompatible Werte unter reasoning. Denken ist nicht deaktivierbar. |
+| `glm-5.3-flash` | Text, Bilder | Wie `glm-5.3`; Bilder mit `input_image` übergeben. |
+| `glm-5.3-flashx` | Text, Bilder | Wie `glm-5.3`; Bilder mit `input_image` übergeben. |
+| `glm-5.2` | Text | `none` kann weiterhin Denk-Tokens erzeugen und garantiert keine Deaktivierung des Denkens. |
+
+Responses verwendet `reasoning.effort` als verschachteltes Feld statt `reasoning_effort` oder `thinking` auf oberster Ebene. Denk-Tokens sind in `output_tokens` enthalten. Einfache Aufgaben können `reasoning_tokens=0` zurückgeben; daraus folgt nicht, dass Denken deaktivierbar ist.
+
+Denkintensität; `low` wird empfohlen.
+
+**Kompatibilitätsregeln für `glm-5.3` / `glm-5.3-flash` / `glm-5.3-flashx`**
+
+| Übergebener Wert | Effektive Denkstufe |
+| --- | --- |
+| `low` / `high` / `max` | Unverändert |
+| `xhigh` | `max` |
+| `medium` | `high` |
+| `minimal` / `none` | `low`; Denken bleibt aktiv |
+
+**`minimal` und `none` deaktivieren das Denken der 5.3-Serie nicht.** Denk-Tokens werden als Ausgabe berechnet. Unbekannte Werte bleiben ohne Kompatibilitätszuordnung unverändert; verwenden Sie die aufgeführten Werte. Diese Zuordnungen gelten nicht für glm-5.2.
+
+Bei diesem Endpunkt kann `glm-5.2` auch mit `none` Denk-Tokens erzeugen. Der Wert garantiert keine Deaktivierung des Denkens.
+
+## System-Prompts und mehrere Gesprächsrunden
+
+`instructions`: Systemanweisungen. `glm-5.3-flash` unterstützt dieses Feld bei input als String. Bei einem Nachrichtenarray gehört der System-Prompt in die erste Nachricht mit role=system.
+
+```json
+{
+  "model": "glm-5.3-flash",
+  "input": [
+    {
+      "role": "system",
+      "content": "Antworte kurz auf Deutsch."
+    },
+    {
+      "role": "user",
+      "content": "Merke dir das Kennwort RED-583"
+    },
+    {
+      "role": "assistant",
+      "content": "Gemerkt"
+    },
+    {
+      "role": "user",
+      "content": "Wie lautet das Kennwort? Antworte nur mit dem Kennwort."
+    }
+  ],
+  "reasoning": {
+    "effort": "low"
+  },
+  "max_output_tokens": 1024
+}
+```
+
+Speichert die Antwort zur späteren Referenz. `glm-5.3-flash` und `glm-5.3-flashx` unterstützen mehrere Runden mit `store=true` und previous_response_id. `glm-5.2` unterstützt keine Fortsetzung per Antwort-ID; `store=true` aktiviert diese Funktion nicht. Senden Sie stattdessen den vollständigen Verlauf in input.
+
+id der vorherigen Antwort auf oberster Ebene. `glm-5.3-flash` und `glm-5.3-flashx` unterstützen dies mit `store=true` und demselben Modell. Übergeben Sie die Antwort-ID unverändert, keine Element-ID aus output. `glm-5.2` gibt für dieses Feld 400 zurück. Für modellübergreifende Gespräche das Feld weglassen und den vollständigen Verlauf in input senden.
+
+## Streaming-Antworten
+
+Aktiviert SSE-Streaming. Lesen Sie den Antworttext aus delta in response.output_text.delta. Der erfolgreiche Abschluss ist response.completed. Beenden und behandeln Sie die Runde auch bei `response.incomplete`, `response.failed` oder error. Warten Sie nicht ausschließlich auf [DONE] oder das Schließen der Verbindung.
+
+| Ereignis | Verarbeitung |
+| --- | --- |
+| `response.created` / `response.in_progress` | Die Gesprächsrunde beginnt. |
+| `response.output_text.delta` | delta an den Antworttext anhängen. |
+| `response.reasoning_text.delta` / `response.reasoning_summary_text.delta` | Denktext vom Antworttext trennen; beide Ereignisformen unterstützen. |
+| `response.output_item.done` | Vollständiges Ausgabeelement sammeln, etwa function_call. |
+| `response.completed` | Generierung beendet; `response.output` und `response.usage` lesen. |
+| `response.incomplete` / `response.failed` / `error` | Kürzungen oder Fehler behandeln und die Runde beenden. |
+
+Beenden Sie das Lesen nach einem Abschlussereignis. HTTP 200 bedeutet nur, dass der Stream aufgebaut wurde; prüfen Sie den endgültigen Ereignisstatus. Eine Werkzeugrunde kann mit `response.completed` enden, obwohl Ihre Anwendung noch eine Funktion ausführen und eine weitere Anfrage senden muss.
+
+## Funktionsaufrufe
+
+Wählen Sie das Funktionsbeispiel im Anfragemenü. Responses verwendet flache Funktionsdefinitionen:
+
+```json
+{
+  "type": "function",
+  "name": "get_temperature",
+  "description": "Liefert die Temperatur der angegebenen Stadt",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "city"
+    ],
+    "additionalProperties": false
+  }
+}
+```
+
+1. `response.output` durchlaufen und alle Elemente mit `type=function_call` sammeln.
+2. Den JSON-String arguments parsen und validieren, danach die Funktionen in Ihrer Anwendung ausführen.
+3. Das gesamte vorherige output an den Verlauf anhängen. Für jeden Aufruf ein `function_call_output` mit ursprünglicher `call_id` und output als String ergänzen.
+4. Den aktualisierten Verlauf als input der nächsten Anfrage senden. Das Beispiel zur Ergebnisrückgabe zeigt diese Struktur.
+
+<Note>
+`parallel_tool_calls`: Erlaubt mehrere Werkzeugaufrufe pro Runde. false garantiert nicht genau einen Funktionsaufruf. Clients sollten alle function_call-Elemente durchlaufen und verarbeiten.
+</Note>
+
+## Bilder, Suche und JSON-Ausgabe
+
+Bei `glm-5.3-flash` und `glm-5.3-flashx` können `input_text` und `input_image` im content-Array einer Benutzernachricht gemischt werden. `image_url` enthält eine öffentliche Bild-URL oder Base64 Data URL. Für `glm-5.3` und `glm-5.2` nur Text verwenden.
+
+Deklarieren Sie `tools: [{"type":"web_search"}]`. Die Suche läuft auf dem Server und liefert web_search_call-Elemente sowie Antworttext. Die Ausgabeelemente zeigen, ob gesucht wurde. Zusätzlich zu Tokenkosten können Gebühren pro Suche anfallen; es gelten die Modellpreise.
+
+Um das Gespräch nach einer Suche fortzusetzen, hängen Sie das gesamte vorherige `output` einschließlich `web_search_call` und `message` an `input` an und fügen anschließend Ihre neue Frage hinzu. Behalten Sie die ursprünglichen Felder wie `id`, `status` und `action` bei. Die Suche wurde bereits vom Server ausgeführt; erstellen Sie daher für `web_search_call` kein `function_call_output`. Siehe das Anfragebeispiel `web_search_history`.
+
+`text.format.type`: Ausgabeformat: text für Klartext, `json_object` für ein JSON-Objekt. Fordern Sie bei `json_object` im Prompt ausdrücklich gültiges JSON an und parsen und validieren Sie es im Client. Strikte JSON-Schema-Vorgaben werden nicht angeboten; `json_schema` oder `strict=true` garantieren keine vorgegebene Struktur.
+
+## Antworten und Nutzung
+
+Geordnete Ausgabeelemente. Lesen Sie text aus content-Einträgen mit `type=output_text` innerhalb von Elementen mit type=message. reasoning kann vor dem Antworttext stehen; function_call-Runden können ohne Antworttext enden. Lesen Sie nicht immer output[0].
+
+`output_text`: Optional zusammengefasster Antworttext; das Feld kann fehlen. Allgemeine Clients sollten output durchlaufen.
+
+`output_text` in message-Elementen; gegebenenfalls `reasoning_text` in reasoning-Elementen. Denktext kann auch als `summary_text` zurückkommen. Nicht jedes reasoning-Element besitzt content.
+
+- `usage.input_tokens`: Gesamte Eingabe-Tokens einschließlich Cache-Treffern. `usage.input_tokens_details.cached_tokens`: Im Cache gefundener Teil der Eingabe-Tokens; nicht nochmals zu `input_tokens` addieren. Präfix-Caching erfolgt automatisch und benötigt kein explizites cache_control. Maßgeblich ist der zurückgegebene Trefferwert.
+- `usage.output_tokens`: Gesamte Ausgabe-Tokens einschließlich Denk-Tokens. `usage.output_tokens_details.reasoning_tokens`: Für das Denken verwendeter Teil der Ausgabe-Tokens; nicht nochmals zu `output_tokens` zählen. Diese Angabe kann fehlen oder 0 sein.
+
+`status=incomplete` mit `incomplete_details.reason=max_output_tokens` bedeutet, dass das Budget aufgebraucht ist. Es kann Denktext ohne Antwort geben; erhöhen Sie das Ausgabelimit.

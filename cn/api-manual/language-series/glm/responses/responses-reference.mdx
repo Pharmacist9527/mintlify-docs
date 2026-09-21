@@ -1,0 +1,121 @@
+---
+title: "GLM 全模型接口 - Responses 完整参数"
+openapi: '/cn/api-manual/language-series/glm/responses/responses-reference.json POST /v1/responses'
+---
+
+<Note>
+**BaseURL 说明**：默认 BaseURL 为 `https://direct.evolink.ai`，对文本模型支持更好，支持长连接；`https://api.evolink.ai` 为备用地址。
+</Note>
+
+通过 Responses 接口调用 GLM 系列模型，支持文本对话、流式输出、函数调用，以及按型号提供的图像理解和联网搜索能力。
+
+## 模型与参数差异
+
+| 模型 | 输入能力 | 思考档位 |
+|---|---|---|
+| `glm-5.3` | 文本 | `low` / `high` / `max`，兼容规则见下表 |
+| `glm-5.3-flash` | 文本、图像 | 同 `glm-5.3` |
+| `glm-5.3-flashx` | 文本、图像 | 同 `glm-5.3` |
+| `glm-5.2` | 文本 | 不适用 5.3 系列的兼容规则 |
+
+四个型号均可通过在 `input` 中携带历史消息实现多轮对话。
+
+通过 `reasoning.effort` 设置推理强度，不要用顶层 `reasoning_effort` 或 `thinking` 替代。`glm-5.3`、`glm-5.3-flash` 与 `glm-5.3-flashx` 按以下规则处理：
+
+| 传入值 | 实际思考档位 |
+|---|---|
+| `low` / `high` / `max` | 保持对应档位 |
+| `xhigh` | `max` |
+| `medium` | `high` |
+| `minimal` / `none` | `low`，仍会思考 |
+
+未识别的值保持原值，不提供兼容映射；请使用表中列出的值。
+
+<Warning>
+**5.3 系列无法关闭思考。** `minimal` 与 `none` 按 `low` 处理，仍会产生思考 token，并按输出计费。
+
+`glm-5.2` 传入 `none` 仍可能产生推理 token，不能通过该值确保关闭思考。所有型号的推理 token 都包含在输出用量中。
+</Warning>
+
+## 系统提示词与多轮对话
+
+系统提示词推荐放在 `input` 数组的 `role="system"` 消息中。`glm-5.3-flash` 的顶层 `instructions` 可用于字符串输入；使用消息数组时，请改用系统消息。
+
+```json
+{
+  "model": "glm-5.3-flash",
+  "input": [
+    {"role": "system", "content": "请用简洁的中文回答。"},
+    {"role": "user", "content": "记住暗号是 RED-583。"},
+    {"role": "assistant", "content": "已记住。"},
+    {"role": "user", "content": "暗号是什么？只回复暗号。"}
+  ],
+  "reasoning": {"effort": "low"},
+  "max_output_tokens": 1024
+}
+```
+
+`glm-5.3-flash` 与 `glm-5.3-flashx` 支持通过响应 ID 续聊：首轮传 `store=true`，次轮把返回的顶层 `id` 原样填入 `previous_response_id`，保持相同模型并传入新问题。它不是 `output` 中某一项的 ID。
+
+<Warning>
+**`glm-5.2` 不支持通过响应 ID 续聊。** 传入 `previous_response_id` 会返回 `400`，设置 `store=true` 不会开启此能力。需要跨型号使用时，省略 `previous_response_id`，每轮携带完整历史。
+</Warning>
+
+## 流式响应
+
+设置 `stream=true` 后，按 SSE 事件逐条处理：
+
+| 事件 | 处理方式 |
+|---|---|
+| `response.created` / `response.in_progress` | 本轮开始 |
+| `response.output_text.delta` | 将 `delta` 追加到正文 |
+| `response.reasoning_text.delta` / `response.reasoning_summary_text.delta` | 推理相关内容，和正文分开处理；客户端应兼容这两种事件形式 |
+| `response.output_item.done` | 收集完整输出项，例如 `function_call` |
+| `response.completed` | 本轮生成完成；读取 `response.output` 与 `response.usage` |
+| `response.incomplete` / `response.failed` / `error` | 处理截断或错误，结束本轮 |
+
+收到终态事件后即可结束读取，不要只等连接关闭或 Chat Completions 风格的 `[DONE]`。HTTP `200` 只表示流已建立，还要检查事件中的最终状态。工具调用轮次可能以 `response.completed` 结束，但仍需客户端执行函数并发起下一轮。
+
+## 函数调用
+
+在请求示例中选择“客户端函数调用”查看完整请求。Responses 的函数定义是平铺结构：
+
+```json
+{
+  "type": "function",
+  "name": "get_temperature",
+  "description": "返回指定城市温度",
+  "parameters": {
+    "type": "object",
+    "properties": {"city": {"type": "string"}},
+    "required": ["city"],
+    "additionalProperties": false
+  }
+}
+```
+
+1. 遍历 `response.output`，找出所有 `type="function_call"` 项。
+2. 解析并校验 `arguments` JSON 字符串，再由你的程序执行对应函数。
+3. 将上一轮完整 `output` 追加到历史，再为每个调用追加 `function_call_output`，使用原始 `call_id` 与字符串形式的 `output`。
+4. 把更新后的历史作为下一轮 `input`，继续请求。请求示例中的“回传函数执行结果”展示了这一结构。
+
+<Note>
+**`parallel_tool_calls=false` 不能确保每轮只调用一个函数。** 客户端应处理本轮返回的全部函数调用，并在执行前校验参数。
+</Note>
+
+## 图像、搜索与 JSON 输出
+
+- **图像理解**：仅 `glm-5.3-flash` 与 `glm-5.3-flashx` 支持。在用户消息的 `content` 中混排 `input_text` 与 `input_image`，通过 `image_url` 传入图片公网 URL 或 Base64 Data URL。`glm-5.3` 和 `glm-5.2` 不支持图像输入，请使用纯文本。
+- **联网搜索**：声明 `tools: [{"type":"web_search"}]`。搜索由服务端执行，结果通过 `web_search_call` 和正文返回；是否调用搜索以实际输出项为准。实际搜索除 token 外可能产生按次费用，以模型定价为准。
+- **JSON 输出**：使用 `text.format.type="json_object"`，在提示词中明确要求合法 JSON，并在客户端解析、校验。本接口暂不提供严格 JSON Schema 约束，不能依赖 `json_schema` 或 `strict=true` 确保输出符合指定结构。
+
+搜索后续聊时，将上一轮完整 `output`（包括 `web_search_call` 和 `message`）追加到 `input`，再加入新问题。保留输出项的原始 `id`、`status`、`action` 等字段。搜索已由服务端执行，无需为 `web_search_call` 构造 `function_call_output`。请求示例 `web_search_history` 展示了这一结构。
+
+## 响应与用量
+
+正文位于 `output` 中 `type="message"` 项的 `content[type="output_text"].text`。响应可能包含顶层 `output_text`；为兼容该字段缺失的情况，仍应遍历 `output`。推理可能位于 `reasoning.content` 或 `reasoning.summary`，不要把它拼入正文。
+
+- `usage.input_tokens` 包含缓存命中的输入；`input_tokens_details.cached_tokens` 是其中的子集。
+- `usage.output_tokens` 包含推理 token；`output_tokens_details.reasoning_tokens` 是其中的子集，可能为 `0` 或缺失。
+- 前缀缓存自动生效，无需额外 `cache_control`，命中量以本次返回的 `cached_tokens` 为准。
+- `status="incomplete"` 且 `incomplete_details.reason="max_output_tokens"` 表示预算耗尽，可能只有推理、没有正文；请提高输出上限。

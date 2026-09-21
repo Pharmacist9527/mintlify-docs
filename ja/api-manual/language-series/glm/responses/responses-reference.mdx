@@ -1,0 +1,145 @@
+---
+title: "GLM 全モデルインターフェース - Responses 完全なパラメータ"
+openapi: '/ja/api-manual/language-series/glm/responses/responses-reference.json POST /v1/responses'
+---
+
+<Note>
+**BaseURL**：デフォルトの BaseURL は `https://direct.evolink.ai` で、テキストモデルへの対応が優れており、長時間接続をサポートします。`https://api.evolink.ai` はマルチモーダルサービスの主力エンドポイントで、テキストモデルに対しては代替アドレスとして使用されます。
+</Note>
+
+Responses 形式で GLM を呼び出し、テキスト会話、ストリーミング、関数呼び出しを利用できます。画像理解と Web 検索はモデルに応じて利用可能です。パラメータとモデルの違いは以下を参照してください。
+
+## モデルとパラメータの違い
+
+GLM モデルを選択します。4 モデルともこのエンドポイントのテキスト入力に対応します。オプション機能はモデルによって異なります。
+
+| モデル ID | 入力 | 推論に関する注意 |
+| --- | --- | --- |
+| `glm-5.3` | テキスト | 実際のレベルは `low` / `high` / `max`。互換値は reasoning を参照。思考は無効化できません。 |
+| `glm-5.3-flash` | テキスト、画像 | `glm-5.3` と同じ。画像には `input_image` を使用します。 |
+| `glm-5.3-flashx` | テキスト、画像 | `glm-5.3` と同じ。画像には `input_image` を使用します。 |
+| `glm-5.2` | テキスト | `none` でも思考トークンが生成される場合があり、思考の無効化は保証されません。 |
+
+Responses はトップレベルの `reasoning_effort` や `thinking` ではなく、ネストした `reasoning.effort` を使用します。思考の使用量は `output_tokens` に含まれます。簡単なタスクで `reasoning_tokens=0` が返っても、思考の無効化に対応することを意味しません。
+
+推論強度。`low` を推奨します。
+
+**`glm-5.3` / `glm-5.3-flash` / `glm-5.3-flashx` の互換ルール**
+
+| 指定値 | 実際の思考レベル |
+| --- | --- |
+| `low` / `high` / `max` | 同じレベルを維持 |
+| `xhigh` | `max` |
+| `medium` | `high` |
+| `minimal` / `none` | `low`。思考は有効なまま |
+
+**`minimal` と `none` は 5.3 シリーズの思考を無効にしません。** 思考トークンは出力として課金されます。認識されない値は互換変換せず、そのまま扱われます。表の値を使用してください。これらの互換ルールは `glm-5.2` には適用されません。
+
+このエンドポイントでは `glm-5.2` に `none` を指定しても思考トークンが生成される場合があり、思考の無効化は保証されません。
+
+## システムプロンプトと複数ターンの会話
+
+`instructions`: システム指示。`glm-5.3-flash` は input が文字列の場合にこのフィールドを使用できます。メッセージ配列の場合、システムプロンプトは先頭の `role=system` メッセージに置いてください。
+
+```json
+{
+  "model": "glm-5.3-flash",
+  "input": [
+    {
+      "role": "system",
+      "content": "簡潔な日本語で回答してください。"
+    },
+    {
+      "role": "user",
+      "content": "合言葉 RED-583 を覚えてください"
+    },
+    {
+      "role": "assistant",
+      "content": "覚えました"
+    },
+    {
+      "role": "user",
+      "content": "合言葉は何ですか？合言葉だけを返してください。"
+    }
+  ],
+  "reasoning": {
+    "effort": "low"
+  },
+  "max_output_tokens": 1024
+}
+```
+
+後で参照できるように応答を保存します。`glm-5.3-flash` と `glm-5.3-flashx` は `store=true` と `previous_response_id` による会話継続に対応します。`glm-5.2` は応答 ID による継続に非対応で、`store=true` でも有効になりません。input に全履歴を含めてください。
+
+前の応答のトップレベルの id。`glm-5.3-flash` と `glm-5.3-flashx` は `store=true` と同一モデルで使用できます。output 内の項目 ID ではなく、応答 ID をそのまま指定してください。`glm-5.2` では 400 を返します。モデルを切り替える場合はこのフィールドを省略し、input に全履歴を含めてください。
+
+## ストリーミング応答
+
+SSE ストリーミングを有効にします。本文は `response.output_text.delta` の delta から読み取ります。成功時の終了イベントは `response.completed` です。`response.incomplete`、`response.failed`、error でもそのターンを終了して処理してください。[DONE] や接続終了だけを待たないでください。
+
+| イベント | 処理 |
+| --- | --- |
+| `response.created` / `response.in_progress` | ターンの開始。 |
+| `response.output_text.delta` | delta を本文に追加します。 |
+| `response.reasoning_text.delta` / `response.reasoning_summary_text.delta` | 思考内容を本文から分離し、両方のイベント形式に対応します。 |
+| `response.output_item.done` | `function_call` などの完全な出力項目を収集します。 |
+| `response.completed` | 生成終了。`response.output` と `response.usage` を読み取ります。 |
+| `response.incomplete` / `response.failed` / `error` | 打ち切りやエラーを処理し、ターンを終了します。 |
+
+終了イベントを受信したら読み取りを終了してください。HTTP 200 はストリームの確立のみを示すため、イベントの最終状態も確認します。ツール呼び出しのターンが `response.completed` で終了しても、アプリケーションによる関数実行と次のリクエストが必要な場合があります。
+
+## 関数呼び出し
+
+リクエストメニューから関数呼び出しの例を選択してください。Responses の関数定義はフラットな構造です。
+
+```json
+{
+  "type": "function",
+  "name": "get_temperature",
+  "description": "指定した都市の気温を返す",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "city"
+    ],
+    "additionalProperties": false
+  }
+}
+```
+
+1. `response.output` を走査し、`type=function_call` の全項目を取得します。
+2. arguments の JSON 文字列を解析・検証し、アプリケーションで各関数を実行します。
+3. 前の output 全体を履歴に追加します。呼び出しごとに `function_call_output` を追加し、元の `call_id` と文字列の output を指定します。
+4. 更新した履歴を次のリクエストの input として送信します。関数結果の返送例がこの構造を示しています。
+
+<Note>
+`parallel_tool_calls`: 1 ターンで複数のツール呼び出しを許可するかどうか。false でも関数呼び出しが 1 件だけになる保証はありません。すべての `function_call` を走査して処理してください。
+</Note>
+
+## 画像・検索・JSON 出力
+
+`glm-5.3-flash` と `glm-5.3-flashx` では、ユーザーメッセージの content 配列に `input_text` と `input_image` を混在できます。`image_url` に公開画像 URL または Base64 Data URL を指定してください。`glm-5.3` と `glm-5.2` にはテキストのみを使用します。
+
+`tools: [{"type":"web_search"}]` を宣言します。検索はサーバー側で実行され、`web_search_call` と本文で結果が返ります。検索が実行されたかは出力項目で確認してください。トークン料金に加えて検索単位の料金がかかる場合があります。モデル料金を参照してください。
+
+検索後に会話を続ける場合は、`web_search_call` と `message` を含む前のレスポンスの `output` 全体を `input` に追加し、その後に新しい質問を追加してください。元の `id`、`status`、`action` などのフィールドはそのまま保持します。検索はサーバー側ですでに実行されているため、`web_search_call` に対する `function_call_output` を作成する必要はありません。リクエスト例 `web_search_history` を参照してください。
+
+`text.format.type`: 出力形式。text は通常のテキスト、`json_object` は JSON オブジェクトです。`json_object` では有効な JSON をプロンプトで明示的に要求し、クライアントで解析・検証してください。厳密な JSON Schema 制約は提供されないため、`json_schema` や `strict=true` で構造が保証されるとは限りません。
+
+## 応答と使用量
+
+順序付き出力項目。`type=message` の content 内にある `type=output_text` の text が本文です。reasoning が本文より前に来る場合や、`function_call` のターンに本文がない場合があります。常に output[0] を読む実装は避けてください。
+
+`output_text`: 本文を集約したオプションフィールド。存在しない場合があります。汎用クライアントでは output を走査してください。
+
+message 内は `output_text`、reasoning 内は `reasoning_text` の場合があります。 思考内容は `summary_text` で返る場合もあります。すべての reasoning 項目に content があるとは限りません。
+
+- `usage.input_tokens`: 入力トークン総数。キャッシュにヒットした分を含みます。 `usage.input_tokens_details.cached_tokens`: 入力のうちキャッシュにヒットしたトークン数。`input_tokens` に再加算しないでください。プレフィックスキャッシュは自動で、明示的な `cache_control` は不要です。ヒット数は返された値で確認してください。
+- `usage.output_tokens`: 出力トークン総数。思考トークンを含みます。 `usage.output_tokens_details.reasoning_tokens`: 出力のうち思考に使われたトークン数。`output_tokens` に二重計上しないでください。この詳細は省略される場合や 0 の場合があります。
+
+`status=incomplete` かつ `incomplete_details.reason=max_output_tokens` は出力上限の消費を示します。思考のみで本文がない場合があるため、上限を増やしてください。

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GLM All-Model API - Messages Reference",
-    "description": "Full API reference for calling Zhipu GLM text models through the Anthropic Messages protocol.\n\n**Models covered**: `glm-5.3`, `glm-5.3-flash`, `glm-5.2` (selected with the `model` parameter)\n\n**Compatibility notes**:\n- Path: `/v1/messages` (the standard Anthropic path)\n- The request and response structures match the Anthropic Messages API\n- Supported fields: `model` `messages` (required) `system` `max_tokens` `temperature` `top_p` `top_k` `stop_sequences` `stream` `thinking` `tools` `tool_choice` `metadata`\n\n**Shared capabilities**:\n- 1M token context window, up to 131,072 tokens of output\n- Thinking mode: **thinking is on by default** across the series; it is returned in `content[type=thinking]` blocks and counts towards output tokens\n- Prompt caching: an implicit prefix cache that repeated requests with the same prefix hit automatically (reported in `cache_read_input_tokens`), with no need to set `cache_control`; `cache_creation_input_tokens` is always 0\n\n**Differences between models** (whether thinking can be turned off, whether images can be read) are described in the `model`, `thinking` and `messages` fields below.",
+    "description": "Full API reference for calling Zhipu GLM text models through the Anthropic Messages protocol.\n\n**Models covered**: `glm-5.3`, `glm-5.3-flash`, `glm-5.3-flashx`, `glm-5.2` (selected with the `model` parameter)\n\n**Compatibility notes**:\n- Path: `/v1/messages` (the standard Anthropic path)\n- The request and response structures match the Anthropic Messages API\n- Supported fields: `model` `messages` (required) `system` `max_tokens` `temperature` `top_p` `top_k` `stop_sequences` `stream` `thinking` `reasoning_effort` `tools` `tool_choice` `metadata`\n\n**Shared capabilities**:\n- 1M token context window, up to 131,072 tokens of output\n- Thinking mode: **thinking is on by default** across the series; it is returned in `content[type=thinking]` blocks and counts towards output tokens\n- Prompt caching: an implicit prefix cache that repeated requests with the same prefix hit automatically (reported in `cache_read_input_tokens`), with no need to set `cache_control`; `cache_creation_input_tokens` is always 0\n\n**Differences between models** (whether thinking can be turned off, whether images can be read) are described in the `model`, `thinking` and `messages` fields below.",
     "license": {
       "name": "MIT"
     },
@@ -27,7 +27,7 @@
     "/v1/messages": {
       "post": {
         "summary": "GLM Messages (All Models, Anthropic-Compatible)",
-        "description": "- Call GLM series models through the Anthropic Messages protocol, choosing the specific model with the `model` parameter\n- The request and response structures match the Anthropic API\n- **System prompt**: passed through the top-level `system` field\n- **Thinking mode**: thinking is on by default across the series and is returned in `content[type=thinking]` blocks; only `glm-5.2` can turn it off with `thinking.type=disabled`\n- **Streaming**: SSE event stream\n- **Tool calling**: compatible with the Anthropic `tool_use` / `tool_result` flow\n- **Image input**: genuinely supported only by `glm-5.3-flash`; see the `messages` field for details",
+        "description": "- Call GLM series models through the Anthropic Messages protocol, choosing the specific model with the `model` parameter\n- The request and response structures match the Anthropic API\n- **System prompt**: passed through the top-level `system` field\n- **Thinking mode**: thinking is on by default across the series and is returned in `content[type=thinking]` blocks; only `glm-5.2` can turn it off with `thinking.type=disabled`\n- **Streaming**: SSE event stream\n- **Tool calling**: compatible with the Anthropic `tool_use` / `tool_result` flow\n- **Image input**: supported only by `glm-5.3-flash` and `glm-5.3-flashx`; see the `messages` field for details",
         "operationId": "createMessageGLM",
         "tags": [
           "Messages"
@@ -149,13 +149,52 @@
                       }
                     ]
                   },
-                  "description": "Only `glm-5.2` can turn thinking off. Sending `thinking.type=disabled` to `glm-5.3` or `glm-5.3-flash` returns an error."
+                  "description": "Only glm-5.2 can disable thinking. glm-5.3, glm-5.3-flash and glm-5.3-flashx retain the default thinking mode when thinking.type=disabled is sent. Thinking tokens are billed as output."
                 },
                 "vision_flash": {
-                  "summary": "Image input (glm-5.3-flash only)",
-                  "description": "`glm-5.3-flash` supports vision natively. Images are passed in through `image` content blocks, and `source` accepts both `base64` and `url`.",
+                  "summary": "Image input (glm-5.3-flash / glm-5.3-flashx only)",
+                  "description": "`glm-5.3-flash` and `glm-5.3-flashx` support vision natively. Images are passed in through `image` content blocks, and `source` accepts both `base64` and `url`.",
                   "value": {
                     "model": "glm-5.3-flash",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "What is in this image?"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/png",
+                              "data": "<BASE64_ENCODED_IMAGE>"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "flashx": {
+                  "summary": "Call GLM-5.3-FlashX",
+                  "value": {
+                    "model": "glm-5.3-flashx",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Introduce yourself in one sentence."
+                      }
+                    ]
+                  }
+                },
+                "vision_flashx": {
+                  "summary": "GLM-5.3-FlashX image input",
+                  "value": {
+                    "model": "glm-5.3-flashx",
                     "max_tokens": 1024,
                     "messages": [
                       {
@@ -368,7 +407,7 @@
             }
           },
           "502": {
-            "description": "Upstream service error",
+            "description": "Service temporarily unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -402,10 +441,11 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Model to call:\n\n| Model ID | Positioning | Thinking can be turned off | Image input |\n|---|---|---|---|\n| `glm-5.3` | Flagship model, with across-the-board gains on complex software engineering and agent tasks; 1M context | Cannot be turned off | Not supported |\n| `glm-5.3-flash` | Lightweight multimodal model, extremely low cost with native vision; 1M context | Cannot be turned off | Supported |\n| `glm-5.2` | Previous-generation flagship, complex reasoning and very long context; 1M context | Can be turned off (`thinking.type=disabled`) | Not supported |\n",
+            "description": "Model to call:\n\n| Model ID | Positioning | Thinking can be turned off | Image input |\n|---|---|---|---|\n| `glm-5.3` | Flagship model, with across-the-board gains on complex software engineering and agent tasks; 1M context | Cannot be turned off | Not supported |\n| `glm-5.3-flash` | Lightweight multimodal model, extremely low cost with native vision; 1M context | Cannot be turned off | Supported |\n| `glm-5.3-flashx` | Multimodal model with image input; 1M context | Cannot be turned off | Supported |\n| `glm-5.2` | Previous-generation flagship, complex reasoning and very long context; 1M context | Can be turned off (`thinking.type=disabled`) | Not supported |",
             "enum": [
               "glm-5.3",
               "glm-5.3-flash",
+              "glm-5.3-flashx",
               "glm-5.2"
             ],
             "example": "glm-5.3",
@@ -420,7 +460,7 @@
           },
           "messages": {
             "type": "array",
-            "description": "The list of conversation messages, alternating between user and assistant turns\n\n**Note**:\n- At least one message is required\n- The last message is normally `role=user`\n- Multi-turn context is supported and the model draws on the history\n\n**Image input**: only `glm-5.3-flash` supports it, through a `{\"type\":\"image\",\"source\":{...}}` block inside the `content` array.\n\nSending image content blocks to `glm-5.3` or `glm-5.2` **does not return an error, but the model cannot read the image**. The request returns 200 as usual, and the model answers from the text alone, producing a plausible-looking reply that has nothing to do with the image — and the result is not consistent across requests.\n\nThis kind of silent failure is hard to track down in production, so choose `glm-5.3-flash` when you need image understanding.",
+            "description": "Conversation messages, alternating between user and assistant. Include at least one message; the last message is usually from the user. Include earlier messages for multi-turn context.\n\n**Image input**: only glm-5.3-flash and glm-5.3-flashx support image blocks in the content array. Use text only with glm-5.3 and glm-5.2. An HTTP 200 response does not mean that an unsupported model read the image.",
             "items": {
               "$ref": "#/components/schemas/InputMessage"
             },
@@ -498,7 +538,7 @@
           },
           "thinking": {
             "type": "object",
-            "description": "Controls deep thinking\n\n**Note**:\n- Every model in the GLM series is a reasoning model, and **thinking is on by default when this field is omitted**\n- When it is on, the response `content` array contains a `type=\"thinking\"` reasoning block (billed as output tokens; `signature` may be an empty string)\n- **Only the binary `type` switch takes effect**: thinking budget or level parameters such as `budget_tokens` and `effort` have no effect (they are ignored)\n\n**Whether it can be turned off depends on the model**:\n- `glm-5.2`: sending `{\"type\":\"disabled\"}` turns thinking off and cuts output tokens noticeably\n- `glm-5.3` / `glm-5.3-flash`: **always think, cannot be turned off**. Sending `disabled` returns an error\n\n**The consequence: the `glm-5.3` series cannot reduce thinking overhead on this endpoint.** It cannot be turned off (`disabled` errors),\nand it cannot be turned down either (`budget_tokens` and `effort` both have no effect, and the top-level `reasoning_effort` is an OpenAI-protocol field that this endpoint ignores).\nThinking content is billed as output tokens, so on this endpoint that cost is unavoidable.\n\n**To control thinking cost, switch to the [Chat Completions API](../chat-completions/chat-completions-reference)** —\nthere, `reasoning_effort` has three levels that genuinely take effect: `low` / `high` / `max`. `glm-5.2` is not subject to this limit; it can turn thinking off directly on this endpoint.\n\n**Migrating from `glm-5.2`**: if your code hard-codes `thinking.type=disabled`, you must remove that field before switching to `glm-5.3`, otherwise the request fails outright.\nAnd if you relied on turning thinking off to control cost, this endpoint offers no equivalent — plan to move to the Chat Completions API as part of the switch.",
+            "description": "Thinking settings. Thinking is enabled by default for all models. Response thinking blocks are billed as output tokens; signature may be an empty string.\n\n- glm-5.2: thinking.type=disabled turns thinking off.\n- glm-5.3 / glm-5.3-flash / glm-5.3-flashx: thinking is always enabled. Passing disabled retains the default thinking mode and its output-token charges.\n\nthinking.budget_tokens and thinking.effort do not set GLM thinking levels. See the top-level reasoning_effort field for compatible values. A setting that disables thinking on glm-5.2 does not disable it after switching to the 5.3 series.",
             "required": [
               "type"
             ],
@@ -509,9 +549,22 @@
                   "enabled",
                   "disabled"
                 ],
-                "description": "- Not passing the thinking field: thinking is enabled by default\n- `disabled`: turn off thinking and answer directly\n- `enabled`: the Anthropic-standard explicit enable value"
+                "description": "Thinking is enabled when thinking is omitted. enabled enables thinking. disabled turns it off only on glm-5.2; the 5.3 series retains its default thinking mode."
               }
             }
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "minimal",
+              "none"
+            ],
+            "description": "GLM reasoning-level compatibility field at the request top level, outside thinking. The endpoint accepts this field but does not guarantee that it controls actual thinking effort.\n\n**Compatibility rules for glm-5.3 / glm-5.3-flash / glm-5.3-flashx**\n\n| Supplied value | Compatible value |\n| --- | --- |\n| `low` / `high` / `max` | Unchanged |\n| `xhigh` | `max` |\n| `medium` | `high` |\n| `minimal` / `none` | low; thinking remains enabled |\n\n**minimal and none do not disable thinking on the 5.3 series.** Thinking tokens are billed as output. Unrecognized values are unchanged and have no compatibility mapping; use the listed values. These mappings do not apply to glm-5.2.\n\nTo control thinking effort, use reasoning_effort in [Chat Completions](../chat-completions/chat-completions-reference) or reasoning.effort in [Responses](../responses/responses-reference)."
           },
           "tools": {
             "type": "array",
@@ -565,7 +618,7 @@
             "description": "The role of the message sender, alternating between user / assistant\n\n- `user`: user message (also used to pass back `tool_result` blocks)\n- `assistant`: the assistant's historical replies (may contain `text` / `thinking` / `tool_use` blocks)\n\n**`system` is not accepted**: pass system prompts via the top-level `system` field."
           },
           "content": {
-            "description": "Message content\n\n**Note**:\n- For plain text, pass a string directly\n- For structured content, pass an array of content blocks (`text` / `image` / `tool_use` / `tool_result` / `thinking`)\n- `image` content blocks are **supported only by `glm-5.3-flash`**; sending them to any other model does not return an error, but the model cannot read the image",
+            "description": "Message content\n\n**Note**:\n- For plain text, pass a string directly\n- For structured content, pass an array of content blocks (`text` / `image` / `tool_use` / `tool_result` / `thinking`)\n- `image` content blocks are **supported only by `glm-5.3-flash` and `glm-5.3-flashx`**; sending them to any other model does not return an error, but the model cannot read the image",
             "oneOf": [
               {
                 "type": "string"
@@ -582,7 +635,7 @@
       },
       "ContentBlock": {
         "type": "object",
-        "description": "Message content block\n\n**Supported types**:\n- `text`: text content\n- `image`: image (**`glm-5.3-flash` only**; other models do not return an error but cannot read the image)\n- `tool_use`: replay of the previous assistant tool call\n- `tool_result`: tool execution result\n- `thinking`: replay of the previous assistant thinking content",
+        "description": "Message content block\n\n**Supported types**:\n- `text`: text content\n- `image`: image (**`glm-5.3-flash` and `glm-5.3-flashx` only**; other models do not return an error but cannot read the image)\n- `tool_use`: replay of the previous assistant tool call\n- `tool_result`: tool execution result\n- `thinking`: replay of the previous assistant thinking content",
         "required": [
           "type"
         ],
@@ -603,7 +656,7 @@
           },
           "source": {
             "type": "object",
-            "description": "Image source (required when type=`image`, **supported only by `glm-5.3-flash`**)\n\nBoth inline `base64` and `url` are supported.",
+            "description": "Image source (required when type=`image`, **supported only by `glm-5.3-flash` and `glm-5.3-flashx`**)\n\nBoth inline `base64` and `url` are supported.",
             "required": [
               "type"
             ],
@@ -614,7 +667,7 @@
                   "base64",
                   "url"
                 ],
-                "description": "How the image is supplied\n\n- `base64`: inline image data\n- `url`: a public image URL, downloaded by the upstream service itself"
+                "description": "Image source format:\n\n- base64: inline image data.\n- url: a publicly accessible image URL."
               },
               "media_type": {
                 "type": "string",

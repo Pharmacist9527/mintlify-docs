@@ -1,0 +1,145 @@
+---
+title: "Interfaz de todos los modelos GLM - Referencia completa de Responses"
+openapi: '/es/api-manual/language-series/glm/responses/responses-reference.json POST /v1/responses'
+---
+
+<Note>
+**BaseURL**: La BaseURL predeterminada es `https://direct.evolink.ai`, que ofrece mejor compatibilidad con los modelos de texto y las conexiones de larga duración. `https://api.evolink.ai` es el endpoint principal para los servicios multimodales y sirve como dirección de respaldo para los modelos de texto.
+</Note>
+
+Invoca GLM en formato Responses para conversaciones de texto, streaming y llamadas a funciones. La comprensión de imágenes y la búsqueda web dependen del modelo. Los parámetros y las diferencias se explican a continuación.
+
+## Modelos y diferencias de parámetros
+
+Elige un modelo GLM. Los cuatro admiten texto en este endpoint. Las funciones opcionales varían según el modelo.
+
+| ID del modelo | Entrada | Notas de razonamiento |
+| --- | --- | --- |
+| `glm-5.3` | Texto | Niveles efectivos: `low` / `high` / `max`; valores compatibles en reasoning. No se puede desactivar el razonamiento. |
+| `glm-5.3-flash` | Texto, imágenes | Igual que `glm-5.3`; usa `input_image` para las imágenes. |
+| `glm-5.3-flashx` | Texto, imágenes | Igual que `glm-5.3`; usa `input_image` para las imágenes. |
+| `glm-5.2` | Texto | `none` puede seguir produciendo tokens de razonamiento y no garantiza su desactivación. |
+
+Responses usa `reasoning.effort` anidado, en lugar de `reasoning_effort` o `thinking` en el nivel superior. Los tokens de razonamiento están incluidos en output_tokens. Las tareas simples pueden devolver `reasoning_tokens=0`; eso no significa que se pueda desactivar el razonamiento.
+
+Intensidad de razonamiento; se recomienda low.
+
+**Reglas de compatibilidad de `glm-5.3` / `glm-5.3-flash` / `glm-5.3-flashx`**
+
+| Valor enviado | Nivel efectivo de razonamiento |
+| --- | --- |
+| `low` / `high` / `max` | Sin cambios |
+| `xhigh` | `max` |
+| `medium` | `high` |
+| `minimal` / `none` | `low`; el razonamiento sigue activo |
+
+**`minimal` y `none` no desactivan el razonamiento de la serie 5.3.** Sus tokens se facturan como salida. Los valores desconocidos se mantienen sin conversión de compatibilidad; usa los valores indicados. Estas reglas no se aplican a glm-5.2.
+
+En este endpoint, `glm-5.2` puede seguir produciendo tokens de razonamiento con none. Este valor no garantiza su desactivación.
+
+## Prompts del sistema y conversaciones de varios turnos
+
+`instructions`: Instrucciones del sistema. `glm-5.3-flash` admite este campo cuando input es una cadena. Si es un array de mensajes, coloca el prompt del sistema en el primer mensaje role=system.
+
+```json
+{
+  "model": "glm-5.3-flash",
+  "input": [
+    {
+      "role": "system",
+      "content": "Responde de forma concisa en español."
+    },
+    {
+      "role": "user",
+      "content": "Recuerda la contraseña RED-583"
+    },
+    {
+      "role": "assistant",
+      "content": "Recordado"
+    },
+    {
+      "role": "user",
+      "content": "¿Cuál es la contraseña? Responde solo con la contraseña."
+    }
+  ],
+  "reasoning": {
+    "effort": "low"
+  },
+  "max_output_tokens": 1024
+}
+```
+
+Guarda la respuesta para referenciarla después. `glm-5.3-flash` y `glm-5.3-flashx` permiten continuar con `store=true` y previous_response_id. `glm-5.2` no admite la continuación mediante ID; `store=true` no la activa. Incluye el historial completo en input.
+
+id de nivel superior de la respuesta anterior. `glm-5.3-flash` y `glm-5.3-flashx` lo admiten con `store=true` y el mismo modelo. Pasa el id de respuesta sin cambios, no el id de un elemento output. `glm-5.2` devuelve 400 para este campo. Si cambias de modelo, omítelo e incluye todo el historial en input.
+
+## Respuestas en streaming
+
+Activa el streaming SSE. Lee el texto en delta de response.output_text.delta. El evento final de éxito es response.completed. Finaliza el turno y gestiona también `response.incomplete`, `response.failed` o error. No esperes únicamente [DONE] o el cierre de la conexión.
+
+| Evento | Tratamiento |
+| --- | --- |
+| `response.created` / `response.in_progress` | Comienza el turno. |
+| `response.output_text.delta` | Añade delta al texto de respuesta. |
+| `response.reasoning_text.delta` / `response.reasoning_summary_text.delta` | Separa el razonamiento del texto y admite ambas formas de evento. |
+| `response.output_item.done` | Recoge el elemento de salida completo, como function_call. |
+| `response.completed` | Ha terminado la generación; lee `response.output` y response.usage. |
+| `response.incomplete` / `response.failed` / `error` | Gestiona el truncamiento o el error y termina el turno. |
+
+Deja de leer tras un evento final. HTTP 200 solo significa que se ha establecido el stream; comprueba el estado final del evento. Un turno con herramientas puede terminar con `response.completed` y seguir requiriendo que tu aplicación ejecute la función y envíe otra solicitud.
+
+## Llamadas a funciones
+
+Elige el ejemplo de función en el menú de solicitudes. Responses usa definiciones de función sin anidamiento:
+
+```json
+{
+  "type": "function",
+  "name": "get_temperature",
+  "description": "Devuelve la temperatura de la ciudad indicada",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "city"
+    ],
+    "additionalProperties": false
+  }
+}
+```
+
+1. Recorre `response.output` y recoge todos los elementos type=function_call.
+2. Analiza y valida la cadena JSON arguments y ejecuta cada función en tu aplicación.
+3. Añade todo el output anterior al historial. Agrega un `function_call_output` por llamada, con el `call_id` original y un output de tipo cadena.
+4. Envía el historial actualizado como input de la siguiente solicitud. El ejemplo de devolución de resultados muestra esta estructura.
+
+<Note>
+`parallel_tool_calls`: Permite varias llamadas a herramientas por turno. false no garantiza una sola llamada a función. El cliente debe recorrer y procesar todos los function_call.
+</Note>
+
+## Imágenes, búsqueda y salida JSON
+
+Con `glm-5.3-flash` y `glm-5.3-flashx`, combina `input_text` e `input_image` en el array content del mensaje de usuario. Pasa una URL pública o Data URL Base64 en image_url. Usa solo texto con `glm-5.3` y glm-5.2.
+
+Declara `tools: [{"type":"web_search"}]`. La búsqueda se ejecuta en el servidor y devuelve elementos `web_search_call` y texto. Comprueba los elementos de salida para saber si se utilizó. Puede haber cargos por búsqueda además de los tokens; consulta el precio del modelo.
+
+Para continuar después de una búsqueda, añade todo el `output` anterior, incluidos `web_search_call` y `message`, a `input` y después agrega tu nueva pregunta. Conserva los campos originales como `id`, `status` y `action`. El servidor ya ha ejecutado la búsqueda, por lo que no debes crear un `function_call_output` para `web_search_call`. Consulta el ejemplo de solicitud `web_search_history`.
+
+`text.format.type`: Formato de salida: text para texto y `json_object` para un objeto JSON. Con `json_object`, pide JSON válido explícitamente en el prompt y analízalo y valídalo en el cliente. No se ofrecen restricciones estrictas de JSON Schema; `json_schema` o `strict=true` no garantizan una estructura concreta.
+
+## Respuestas y uso
+
+Elementos de salida ordenados. Extrae text de las entradas content con `type=output_text` dentro de los elementos type=message. reasoning puede preceder a la respuesta y los turnos `function_call` pueden no tener texto. No leas siempre output[0].
+
+`output_text`: Texto de respuesta agregado opcional; puede faltar. Los clientes genéricos deben recorrer output.
+
+`output_text` en elementos message; puede ser `reasoning_text` en elementos reasoning. El razonamiento también puede devolverse mediante summary_text. No supongas que todos los elementos reasoning tienen content.
+
+- `usage.input_tokens`: Total de tokens de entrada, incluidos los que coinciden con la caché. `usage.input_tokens_details.cached_tokens`: Subconjunto de tokens de entrada encontrado en caché; no lo sumes de nuevo a input_tokens. La caché de prefijos es automática y no requiere `cache_control` explícito. Usa el valor devuelto para conocer los aciertos.
+- `usage.output_tokens`: Total de tokens de salida, incluido el razonamiento. `usage.output_tokens_details.reasoning_tokens`: Subconjunto de tokens de salida usado para razonar; no lo cuentes de nuevo en output_tokens. Este detalle puede faltar o valer 0.
+
+`status=incomplete` con `incomplete_details.reason=max_output_tokens` indica que se agotó el presupuesto. Puede haber razonamiento sin respuesta; aumenta el límite de salida.

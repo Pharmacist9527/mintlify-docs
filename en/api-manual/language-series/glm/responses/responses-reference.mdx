@@ -1,0 +1,145 @@
+---
+title: "GLM All-Model API - Responses Reference"
+openapi: '/en/api-manual/language-series/glm/responses/responses-reference.json POST /v1/responses'
+---
+
+<Note>
+**BaseURL**: The default BaseURL is `https://direct.evolink.ai`, which has better support for text models and long-lived connections. `https://api.evolink.ai` is the primary endpoint for multimodal services and serves as a fallback address for text models.
+</Note>
+
+Call GLM in Responses format for text conversations, streaming and function calling, with image understanding and web search available according to the model. See the parameters and model differences below.
+
+## Models and parameter differences
+
+Choose a GLM model. All four support text on this endpoint. Optional capabilities vary by model.
+
+| Model ID | Input | Reasoning notes |
+| --- | --- | --- |
+| `glm-5.3` | Text | Effective levels: `low` / `high` / `max`; compatible values are listed under reasoning. Thinking cannot be disabled. |
+| `glm-5.3-flash` | Text, images | Same as `glm-5.3`; use `input_image` for images. |
+| `glm-5.3-flashx` | Text, images | Same as `glm-5.3`; use `input_image` for images. |
+| `glm-5.2` | Text | `none` may still produce reasoning tokens and does not guarantee that thinking is disabled. |
+
+Responses uses nested `reasoning.effort`, rather than top-level `reasoning_effort` or thinking. Reasoning usage is included in output_tokens. Simple tasks may return `reasoning_tokens=0`; this does not imply that thinking can be disabled.
+
+Reasoning effort; `low` is recommended.
+
+**Compatibility rules for `glm-5.3` / `glm-5.3-flash` / `glm-5.3-flashx`**
+
+| Supplied value | Effective thinking level |
+| --- | --- |
+| `low` / `high` / `max` | Unchanged |
+| `xhigh` | `max` |
+| `medium` | `high` |
+| `minimal` / `none` | `low`; thinking remains enabled |
+
+**`minimal` and `none` do not disable thinking on the 5.3 series.** Thinking tokens are billed as output. Unrecognized values are unchanged and have no compatibility mapping; use the listed values. These mappings do not apply to glm-5.2.
+
+On this endpoint, `glm-5.2` may still produce reasoning tokens with none. This value does not guarantee that thinking is disabled.
+
+## System prompts and multi-turn conversations
+
+`instructions`: System instructions. `glm-5.3-flash` supports this field when input is a string. When input is a message array, put the system prompt in the first `role=system` message.
+
+```json
+{
+  "model": "glm-5.3-flash",
+  "input": [
+    {
+      "role": "system",
+      "content": "Answer concisely in English."
+    },
+    {
+      "role": "user",
+      "content": "Remember the passphrase RED-583"
+    },
+    {
+      "role": "assistant",
+      "content": "Remembered"
+    },
+    {
+      "role": "user",
+      "content": "What is the passphrase? Reply with only the passphrase."
+    }
+  ],
+  "reasoning": {
+    "effort": "low"
+  },
+  "max_output_tokens": 1024
+}
+```
+
+Store the response for later reference. `glm-5.3-flash` and `glm-5.3-flashx` support multi-turn conversations using `store=true` with previous_response_id. `glm-5.2` does not support response-ID continuation; `store=true` does not enable it. Include the full history in input instead.
+
+The top-level id of the previous response. `glm-5.3-flash` and `glm-5.3-flashx` support this with `store=true` and the same model. Pass the response id unchanged, not an item id from output. `glm-5.2` returns 400 for this field. For conversations across models, omit it and include the full history in input.
+
+## Streaming responses
+
+Enable SSE streaming. Read answer text from delta in response.output_text.delta. The successful terminal event is response.completed. Also end the turn and handle `response.incomplete`, `response.failed` or error. Do not wait only for [DONE] or connection closure.
+
+| Event | Handling |
+| --- | --- |
+| `response.created` / `response.in_progress` | The turn starts. |
+| `response.output_text.delta` | Append delta to the answer text. |
+| `response.reasoning_text.delta` / `response.reasoning_summary_text.delta` | Reasoning content; keep it separate from the answer and support both event forms. |
+| `response.output_item.done` | Collect the complete output item, such as function_call. |
+| `response.completed` | Generation has ended; read `response.output` and response.usage. |
+| `response.incomplete` / `response.failed` / `error` | Handle truncation or errors and end the turn. |
+
+Stop reading after a terminal event. HTTP 200 only means that the stream was established; check the final event status. A tool-call turn may end with `response.completed` and still require your application to execute the function and send another request.
+
+## Function calling
+
+Choose the function example in the request menu. Responses function definitions use a flat structure:
+
+```json
+{
+  "type": "function",
+  "name": "get_temperature",
+  "description": "Return the temperature for the specified city",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "city"
+    ],
+    "additionalProperties": false
+  }
+}
+```
+
+1. Traverse `response.output` and collect all items with type=function_call.
+2. Parse and validate the arguments JSON string, then execute each function in your application.
+3. Append the entire previous output to the history. Add a `function_call_output` for each call, using the original `call_id` and a string output.
+4. Send the updated history as input in the next request. The function-result example shows this structure.
+
+<Note>
+`parallel_tool_calls`: Whether multiple tools may be called in a turn. false does not guarantee a single function call. Clients should traverse and handle every function_call.
+</Note>
+
+## Images, search and JSON output
+
+For `glm-5.3-flash` and `glm-5.3-flashx`, mix `input_text` and `input_image` in the user message content array. Pass a public image URL or Base64 Data URL in image_url. Use text only for `glm-5.3` and glm-5.2.
+
+Declare `tools: [{"type":"web_search"}]`. Search runs on the server and returns `web_search_call` items and answer text. Check the output items to see whether search was used. Searches may incur per-call fees in addition to token charges; see model pricing.
+
+To continue after a search, append the entire previous `output`, including `web_search_call` and `message`, to `input`, then add your new question. Preserve original fields such as `id`, `status`, and `action`. The server has already executed the search, so do not create a `function_call_output` for `web_search_call`. See the `web_search_history` request example.
+
+`text.format.type`: Output format: text for plain text or `json_object` for a JSON object. With `json_object`, explicitly request valid JSON in the prompt and parse and validate it in your client. Strict JSON Schema constraints are not provided; do not rely on `json_schema` or `strict=true` to enforce a structure.
+
+## Responses and usage
+
+Ordered output items. Extract text from content entries with `type=output_text` inside `type=message` items. Reasoning may precede the answer, and `function_call` turns may contain no answer text. Do not always read output[0].
+
+`output_text`: Optional aggregated answer text; it may be absent. General-purpose clients should traverse output.
+
+`output_text` in message items; possibly `reasoning_text` in reasoning items. Reasoning may also be returned as summary_text. Do not assume every reasoning item has content.
+
+- `usage.input_tokens`: Total input tokens, including cached tokens. `usage.input_tokens_details.cached_tokens`: Cached subset of input tokens; do not add it to `input_tokens` again. Prefix caching is automatic and requires no explicit cache_control. Use the returned value for the number of cache hits.
+- `usage.output_tokens`: Total output tokens, including reasoning tokens. `usage.output_tokens_details.reasoning_tokens`: Subset of output tokens used for reasoning; do not count it again in output_tokens. This detail may be absent or zero.
+
+`status=incomplete` with `incomplete_details.reason=max_output_tokens` means the budget was exhausted. There may be reasoning without an answer; increase the output limit.
