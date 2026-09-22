@@ -1,0 +1,489 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Seedance 2.5 Draft-to-Video API",
+    "description": "完成した Seedance 2.5 プレビュー動画を、同じ内容の 1080p 正式動画に変換します",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Seedance 2.5 Draft-to-Video プレビューから正式動画へ",
+        "description": "- 完成した Seedance 2.5 プレビュー動画（作成時に `draft: true` を指定したタスク）を、同じ内容の 1080p 正式動画に変換します\n- 指定できるフィールドは `model`、`source_task_id`、`output_format`、`callback_url` の 4 つのみです。プロンプト、素材、長さ、アスペクト比、乱数シード、音声設定はすべてプレビュー動画から引き継がれます。再指定は不要であり、指定することもできません。それ以外のフィールドを渡すと 400 パラメータエラーが返されます\n- プレビュー動画の `draft_expires_at` より前に変換リクエストを送信してください。デフォルトの有効期限はプレビュー動画の完成から 24 時間です。実際の期限は、タスク照会で返される `draft_expires_at` を基準にしてください\n- システムはリクエスト受け付け時と生成処理への送信前に有効期限を確認します。待機中に期限が切れた場合、変換タスクは失敗し、その変換料金が返金されます。待機時間を考慮し、余裕を持って送信してください\n- 有効期限内であれば、同じプレビュー動画を複数回変換できます。変換ごとに個別に課金されます\n- 非同期処理モードです。返却されたタスク ID で[照会してください](/ja/api-manual/task-management/get-task-detail)。照会結果には `source_task_id` が含まれます\n- 生成された動画リンクの有効期限は 24 時間です。お早めに保存してください\n\n**課金ルール：**\n- プレビュー動画とは別に課金され、解像度は固定で `1080p` として計算されます\n- 出力時間には、元のプレビュー動画に記録された実際の出力時間を使用します。実際の値がない場合は、元のタスクに記録された有効な出力時間を使用します\n- プレビュー動画に動画入力がない場合、課金対象の長さは出力時間です。動画入力がある場合（Reference-to-Video、Video Edit、Video Extend を含む）、課金対象の長さは `出力時間 + max(入力動画の時間, 出力時間)` となり、0.1 秒単位で切り上げます\n- プレビュー動画でコンテンツフィルターを無効にした場合（`content_filter: false`）、正式動画にも +10%（`1.1x`）の料金が適用されます\n- 変換に失敗した場合、その変換料金は返金されます。プレビュー動画の料金は返金されません",
+        "operationId": "createSeedance25DraftToVideo",
+        "tags": [
+          "動画生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "1080p 正式動画に変換（MP4）",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
+                  }
+                },
+                "mov": {
+                  "summary": "1080p 正式動画に変換（MOV）",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "正式動画への変換タスクの作成に成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正、または元のタスクが変換可能なプレビュー動画ではありません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "許可されていないフィールドが指定されています",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "元のタスクがプレビュー動画ではありません",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、Tokenが無効または期限切れ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アクセス権限なし",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "元のタスクが存在しないか、現在のアカウントに属していません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "元のタスクが見つかりません",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "プレビュー動画が未完成、または変換に必要な情報が不足しています",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "プレビュー動画がまだ完成していません",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "変換に必要な情報が不足しています",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "プレビュー動画の有効期限が切れています",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "draft_expires_at を過ぎています",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエスト頻度が上限を超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "元のサービスまたはタスク情報が一時的に利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_channel_unavailable": {
+                    "summary": "元のサービスが利用できません",
+                    "value": {
+                      "error": {
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "元のタスク情報を一時的に読み取れません",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "source_task_id"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "動画生成モデル名",
+            "enum": [
+              "seedance-2.5-draft-to-video"
+            ],
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "source_task_id": {
+            "type": "string",
+            "description": "完成した Seedance 2.5 プレビュー動画タスクの Task ID\n\n**取得方法：** プレビュー動画の作成リクエスト（`draft: true`）で返された `id` フィールド\n\n**条件：**\n1. タスクが現在のアカウントに属していること\n2. タスクのモデルが Seedance 2.5 の 5 つの生成モデルのいずれかであること\n3. タスク作成時に `draft: true` を指定していること\n4. タスクのステータスが `completed` であること\n5. 現在時刻がタスク照会結果の `draft_expires_at` より前であること",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "output_format": {
+            "type": "string",
+            "description": "出力コンテナ形式、デフォルトは `mp4`\n\n**選択可能な値：**\n- `mp4`：H.264 エンコード、互換性が最も高く標準的な色精度（デフォルト）\n- `mov`：H.264 + yuv444p クロマサンプリング + PCM 音声。色再現性が高く、カラーグレーディングやキーイング、合成などのポストプロダクション向け。ブラウザ内での再生に対応しない場合があるため、ダウンロードして VLC / mpv / ffplay で再生してください。追加料金なし\n\nプレビュー動画の出力形式は引き継がれません。`mov` が必要な場合はここで指定してください",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "タスク完了後の HTTPS コールバックアドレス\n\n**コールバックタイミング：**\n- タスク完了（completed）、失敗（failed）、またはキャンセル（cancelled）時にトリガー\n- 課金確認完了後に送信\n\n**セキュリティ制限：**\n- HTTPS プロトコルのみ対応\n- プライベートIPアドレスへのコールバックは禁止（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x など）\n- URL の長さは `2048` 文字以内\n\n**コールバックメカニズム：**\n- タイムアウト：`10` 秒\n- 失敗後最大 `3` 回リトライ（失敗後 `1`/`2`/`4` 秒でそれぞれリトライ）\n- コールバックレスポンスボディのフォーマットはタスク照会APIの返却フォーマットと同一\n- 2xx ステータスコードを成功とみなし、その他のステータスコードでリトライをトリガー",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "タスクID",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "タスクの具体的なタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗パーセンテージ (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクステータス",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "動画タスクの詳細情報"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "タスクの出力タイプ",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクがキャンセル可能かどうか",
+            "example": true
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "推定完了時間（秒）",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "動画の再生時間（秒）",
+            "example": 8
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "使用量と課金情報",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "課金ルール",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "推定消費クレジット数",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "ユーザーグループカテゴリ",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラー説明情報"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIはBearer Tokenによる認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys) にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに以下を追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "動画生成",
+      "description": "AI動画生成関連API"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Seedance 2.5 Text-to-Video 接口",
-    "description": "Seedance 2.5 文生视频接口，支持纯文本提示词生成视频，支持联网搜索增强时效性",
+    "title": "Seedance 2.5 Draft-to-Video 接口",
+    "description": "把已完成的 Seedance 2.5 样片转为同一内容的 1080p 正式视频",
     "license": {
       "name": "MIT"
     },
@@ -22,9 +22,9 @@
   "paths": {
     "/v1/videos/generations": {
       "post": {
-        "summary": "Seedance 2.5 Text-to-Video 文生视频",
-        "description": "- 纯文本提示词生成视频，支持联网搜索增强时效性\n- **现已支持 AIGC 类真人素材**\n- 支持**样片模式**：传 `draft: true` 先出 480p 样片，满意后用 [Draft-to-Video](/cn/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) 转为 1080p 正式视频，两次分开计费\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
-        "operationId": "createSeedance25TextToVideo",
+        "summary": "Seedance 2.5 Draft-to-Video 样片转正式",
+        "description": "- 把已完成的 Seedance 2.5 样片（创建时传了 `draft: true` 的任务）转为同一内容的 1080p 正式视频\n- 只接受 `model`、`source_task_id`、`output_format`、`callback_url` 四个字段。提示词、素材、时长、宽高比、随机种子、音频设置全部沿用样片，不需要也不能重复传入，传入任何其它字段都会返回 400 参数错误\n- 请在样片的 `draft_expires_at` 之前提交转换请求。默认有效期为样片完成后 24 小时，实际截止时间以任务查询返回的 `draft_expires_at` 为准\n- 系统会在受理和提交生成前检查有效期；排队期间过期会导致转换任务失败并退回本次费用，请预留排队时间\n- 同一个样片在有效期内可以多次转换，每次单独计费\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)，查询结果会带上 `source_task_id`\n- 生成的视频链接，有效期为24小时，请尽快保存\n\n**计费规则：**\n- 与样片分开计费，固定按 `1080p` 计费\n- 输出时长取源样片记录的实际产出时长，缺少实际值时使用源任务记录的有效输出时长\n- 样片没有视频输入时，计费时长为输出时长；有视频输入时（含 Reference-to-Video、Video Edit、Video Extend），计费时长为 `输出时长 + max(输入视频时长, 输出时长)`，向上取整到 0.1 秒\n- 样片关闭了内容过滤（`content_filter: false`）时，正式视频同样按 +10%（`1.1x`）计费\n- 转换失败会退回本次费用，样片的费用不退",
+        "operationId": "createSeedance25DraftToVideo",
         "tags": [
           "视频生成"
         ],
@@ -37,41 +37,18 @@
               },
               "examples": {
                 "basic": {
-                  "summary": "基础文生视频",
+                  "summary": "转为 1080p 正式视频（MP4）",
                   "value": {
-                    "model": "seedance-2.5-text-to-video",
-                    "prompt": "微距镜头对准叶片上翠绿的玻璃蛙。焦点逐渐从它光滑的皮肤，转移到它完全透明的腹部，一颗鲜红的心脏正在有力地、规律地收缩扩张。",
-                    "duration": 8,
-                    "quality": "720p",
-                    "aspect_ratio": "16:9",
-                    "generate_audio": true,
-                    "content_filter": true
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
                   }
                 },
-                "web_search": {
-                  "summary": "联网搜索文生视频",
+                "mov": {
+                  "summary": "转为 1080p 正式视频（MOV）",
                   "value": {
-                    "model": "seedance-2.5-text-to-video",
-                    "prompt": "今日纽约天气预报，搭配城市天际线动画和温度叠加展示",
-                    "duration": 8,
-                    "quality": "720p",
-                    "aspect_ratio": "16:9",
-                    "model_params": {
-                      "web_search": true
-                    }
-                  }
-                },
-                "draft": {
-                  "summary": "样片模式（480p）",
-                  "value": {
-                    "model": "seedance-2.5-text-to-video",
-                    "prompt": "微距镜头对准叶片上翠绿的玻璃蛙。焦点逐渐从它光滑的皮肤，转移到它完全透明的腹部，一颗鲜红的心脏正在有力地、规律地收缩扩张。",
-                    "duration": 8,
-                    "quality": "480p",
-                    "aspect_ratio": "16:9",
-                    "generate_audio": true,
-                    "content_filter": true,
-                    "draft": true
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
                   }
                 }
               }
@@ -80,7 +57,7 @@
         },
         "responses": {
           "200": {
-            "description": "视频生成任务创建成功",
+            "description": "转正式任务创建成功",
             "content": {
               "application/json": {
                 "schema": {
@@ -90,17 +67,32 @@
             }
           },
           "400": {
-            "description": "请求参数错误",
+            "description": "请求参数错误，或源任务不是可转换的样片",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
-                "example": {
-                  "error": {
-                    "code": "invalid_parameter",
-                    "message": "Invalid request parameters",
-                    "type": "invalid_request_error"
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "传入了不允许的字段",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "源任务不是样片",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
                   }
                 }
               }
@@ -150,8 +142,84 @@
                 "example": {
                   "error": {
                     "code": "model_access_denied",
-                    "message": "Token does not have access to model: seedance-2.5-text-to-video",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
                     "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "源任务不存在或不属于当前账号",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "找不到源任务",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "样片尚未完成或缺少转换所需信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "样片未完成",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "缺少转换所需信息",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "样片已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "已超过 draft_expires_at",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
                   }
                 }
               }
@@ -192,19 +260,29 @@
             }
           },
           "503": {
-            "description": "服务暂时不可用；样片模式不可用时可能返回 draft_unavailable",
+            "description": "源服务或源任务信息暂时不可用",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "examples": {
-                  "draft_unavailable": {
-                    "summary": "样片模式暂不可用",
+                  "source_channel_unavailable": {
+                    "summary": "源服务不可用",
                     "value": {
                       "error": {
-                        "code": "draft_unavailable",
-                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "暂时无法读取源任务信息",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
                         "type": "invalid_request_error"
                       }
                     }
@@ -223,76 +301,26 @@
         "type": "object",
         "required": [
           "model",
-          "prompt"
+          "source_task_id"
         ],
         "properties": {
           "model": {
             "type": "string",
             "description": "视频生成模型名称",
             "enum": [
-              "seedance-2.5-text-to-video"
+              "seedance-2.5-draft-to-video"
             ],
-            "default": "seedance-2.5-text-to-video",
-            "example": "seedance-2.5-text-to-video"
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
           },
-          "prompt": {
+          "source_task_id": {
             "type": "string",
-            "description": "描述期望生成视频的文本提示词。支持中英文，建议中文不超过 500 字，英文不超过 1000 词。提示词最大长度：10000 tokens\n\n**注意：**\n- 本模型为纯文生视频，不支持 `image_urls`、`video_urls`、`audio_urls` 输入",
-            "example": "微距镜头对准叶片上翠绿的玻璃蛙。焦点逐渐从它光滑的皮肤，转移到它完全透明的腹部，一颗鲜红的心脏正在有力地、规律地收缩扩张。"
-          },
-          "duration": {
-            "type": "integer",
-            "description": "视频时长（秒），默认为 `5` 秒\n\n**说明：**\n- 支持 `4`–`30` 秒之间的任意整数值\n- `-1`：自动时长，由模型在 `4`–`30` 秒内自行决定，按实际产出时长计费\n- 时长与计费直接相关",
-            "default": 5,
-            "example": 8
-          },
-          "quality": {
-            "type": "string",
-            "description": "视频分辨率，默认为 `720p`\n\n**可选值：**\n- `480p`：清晰度较低，价格较低\n- `720p`：标准清晰度，此为默认值\n- `1080p`：超高清晰度\n\n**样片模式：** `draft` 为 `true` 时只能使用 `480p`，不传时自动使用 `480p`",
-            "enum": [
-              "480p",
-              "720p",
-              "1080p"
-            ],
-            "default": "720p",
-            "example": "720p"
-          },
-          "draft": {
-            "type": "boolean",
-            "default": false,
-            "description": "样片模式开关，默认为 `false`\n\n**说明：**\n- `true`：先生成 480p 样片，出片更快，按 480p 正常计费\n- 开启时 `quality` 只能为 `480p` 或不传，传其它清晰度会返回 400 参数错误\n- 只能写在请求体顶层，写在 `model_params` 里会返回 400 参数错误\n\n**转为正式视频：**\n- 样片完成后，[查询任务](/cn/api-manual/task-management/get-task-detail)会返回 `draft_expires_at`\n- 在这个时间之前，用 [Seedance 2.5 Draft-to-Video](/cn/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) 传入样片的任务 ID，即可生成同一内容的 1080p 正式视频\n- 正式视频与样片分开计费；样片不满意可以不转，只付样片的费用\n- 默认有效期为样片完成后 24 小时，实际截止时间以 `draft_expires_at` 为准；请提前提交转换请求，排队期间过期也会导致转换失败\n\n**暂不可用时：** 服务暂不可用时可能返回 503；若错误码为 `draft_unavailable`，可稍后重试，或去掉 `draft` 按普通模式生成",
-            "example": false
-          },
-          "aspect_ratio": {
-            "type": "string",
-            "description": "视频宽高比，默认为 `adaptive`\n\n**可选值：**\n- `16:9`（横屏）、`9:16`（竖屏）、`1:1`（方形）、`4:3`、`3:4`、`21:9`（超宽屏）\n- `adaptive`：模型根据提示词智能选择最佳宽高比\n\n**各分辨率对应像素值：**\n\n| 宽高比 | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
-            "enum": [
-              "16:9",
-              "9:16",
-              "1:1",
-              "4:3",
-              "3:4",
-              "21:9",
-              "adaptive"
-            ],
-            "default": "adaptive",
-            "example": "16:9"
-          },
-          "generate_audio": {
-            "type": "boolean",
-            "description": "是否生成同步音频，默认为 `true`\n\n**可选值：**\n- `true`：视频包含同步音频（人声、音效、背景音乐），不额外收费。建议将对话部分置于双引号内以优化音频生成效果\n- `false`：输出无声视频",
-            "default": true,
-            "example": true
-          },
-          "content_filter": {
-            "type": "boolean",
-            "description": "内容过滤开关，默认为 `true`\n\n**可选值：**\n- `true`：标准内容安全检查，这是默认值\n- `false`：放松内容限制，按 +10%（`1.1x`）计费。违法违禁内容始终强制拦截，不受此设置影响\n\n**与联网搜索互斥：**\n- `content_filter: false` 与 `model_params.web_search: true` 不能同时使用，同时传会返回 400 参数错误\n- 需要联网搜索时请保持 `content_filter: true`（默认值）",
-            "default": true,
-            "example": true
+            "description": "已完成的 Seedance 2.5 样片任务的 Task ID\n\n**获取方式：** 创建样片（`draft: true`）请求返回的 `id` 字段\n\n**要求：**\n1. 任务必须属于当前账号\n2. 任务模型为 Seedance 2.5 的五个生成模型之一\n3. 任务创建时传了 `draft: true`\n4. 任务状态为 `completed`\n5. 当前时间早于该任务查询结果中的 `draft_expires_at`",
+            "example": "task-unified-1774857405-abc123"
           },
           "output_format": {
             "type": "string",
-            "description": "输出容器格式，默认为 `mp4`\n\n**可选值：**\n- `mp4`：H.264 编码，兼容性最好，标准色彩精度，此为默认值\n- `mov`：H.264 + yuv444p 色度采样 + PCM 音频，色彩保真度更高，适合调色、抠像、合成等后期流程。浏览器内嵌播放可能不支持，请下载后使用 VLC / mpv / ffplay 播放。不额外收费",
+            "description": "输出容器格式，默认为 `mp4`\n\n**可选值：**\n- `mp4`：H.264 编码，兼容性最好，标准色彩精度，此为默认值\n- `mov`：H.264 + yuv444p 色度采样 + PCM 音频，色彩保真度更高，适合调色、抠像、合成等后期流程。浏览器内嵌播放可能不支持，请下载后使用 VLC / mpv / ffplay 播放。不额外收费\n\n不继承样片的输出格式，需要 `mov` 时请在这里指定",
             "enum": [
               "mp4",
               "mov"
@@ -300,25 +328,14 @@
             "default": "mp4",
             "example": "mp4"
           },
-          "model_params": {
-            "type": "object",
-            "description": "模型扩展参数",
-            "properties": {
-              "web_search": {
-                "type": "boolean",
-                "description": "联网搜索，默认为 `false`\n\n**说明：**\n- 开启后模型根据提示词自主判断是否搜索互联网内容（如商品、天气等），可提升时效性\n- 会增加一定时延\n- 仅在实际触发搜索时产生费用，开启后可能调用多次\n\n**与内容过滤互斥：**\n- 开启联网搜索时必须保持 `content_filter: true`；与 `content_filter: false` 同时使用会返回 400 参数错误",
-                "default": false,
-                "example": false
-              }
-            }
-          },
           "callback_url": {
             "type": "string",
             "description": "任务完成后的 HTTPS 回调地址\n\n**回调时机：**\n- 任务完成（completed）、失败（failed）或取消（cancelled）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持 HTTPS 协议\n- 禁止回调到内网 IP 地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x 等）\n- URL 长度不超过 `2048` 字符\n\n**回调机制：**\n- 超时时间：`10` 秒\n- 失败后最多重试 `3` 次（分别在失败后 `1`/`2`/`4` 秒重试）\n- 回调响应体格式与任务查询接口返回格式一致\n- 返回 2xx 状态码视为成功，其他状态码触发重试",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "VideoGenerationResponse": {
         "type": "object",
@@ -336,7 +353,7 @@
           "model": {
             "type": "string",
             "description": "实际使用的模型名称",
-            "example": "seedance-2.5-text-to-video"
+            "example": "seedance-2.5-draft-to-video"
           },
           "object": {
             "type": "string",

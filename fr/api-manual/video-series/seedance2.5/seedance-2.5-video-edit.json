@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Video Edit",
-        "description": "- Edition d'une video d'entree : remplacer des sujets, ajouter ou supprimer des objets, restyliser ou repeindre des zones\n- Le prompt doit exprimer l'intention d'edition (par exemple \"Editer la video : supprimer la musique de fond de @video1\")\n- Fournissez la video a editer (obligatoire) + des images de reference facultatives (0–30) + des videos de reference (10 au maximum au total) + de l'audio de reference (0–10)\n- **Prend desormais en charge les contenus humains realistes generes par IA (AIGC)**\n- Mode de traitement asynchrone, utilisez l'ID de tache retourne pour [consulter le statut](/fr/api-manual/task-management/get-task-detail)\n- Le lien de la video generee est valide pendant 24 heures, veuillez le sauvegarder rapidement",
+        "description": "- Edition d'une video d'entree : remplacer des sujets, ajouter ou supprimer des objets, restyliser ou repeindre des zones\n- Le prompt doit exprimer l'intention d'edition (par exemple \"Editer la video : supprimer la musique de fond de @video1\")\n- Fournissez la video a editer (obligatoire) + des images de reference facultatives (0–30) + des videos de reference (10 au maximum au total) + de l'audio de reference (0–10)\n- **Prend desormais en charge les contenus humains realistes generes par IA (AIGC)**\n- Le **mode brouillon** est pris en charge : envoyez `draft: true` pour générer un brouillon en 480p, puis utilisez [Draft-to-Video](/fr/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) pour obtenir une vidéo finale en 1080p si le résultat vous convient. Les deux générations sont facturées séparément\n- Mode de traitement asynchrone, utilisez l'ID de tache retourne pour [consulter le statut](/fr/api-manual/task-management/get-task-detail)\n- Le lien de la video generee est valide pendant 24 heures, veuillez le sauvegarder rapidement",
         "operationId": "createSeedance25VideoEdit",
         "tags": [
           "Generation video"
@@ -60,7 +60,22 @@
                     "video_urls": [
                       "https://example.com/original.mp4"
                     ],
-                    "duration": -1
+                    "duration": -1,
+                    "quality": "720p"
+                  }
+                },
+                "draft": {
+                  "summary": "Mode brouillon (480p)",
+                  "value": {
+                    "model": "seedance-2.5-video-edit",
+                    "prompt": "Editer la video : supprimer tous les passants de @video1 et ne garder que le personnage principal",
+                    "video_urls": [
+                      "https://example.com/original.mp4"
+                    ],
+                    "quality": "480p",
+                    "generate_audio": true,
+                    "content_filter": true,
+                    "draft": true
                   }
                 }
               }
@@ -179,6 +194,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service temporairement indisponible ; le code draft_unavailable peut être renvoyé lorsque le mode brouillon est indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Mode brouillon temporairement indisponible",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -259,7 +296,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Resolution video, par defaut `720p`\n\n**Valeurs possibles :**\n- `480p` : resolution inferieure, prix reduit\n- `720p` : resolution standard, valeur par defaut\n- `1080p` : resolution Ultra HD",
+            "description": "Resolution video, par defaut `720p`\n\n**Valeurs possibles :**\n- `480p` : resolution inferieure, prix reduit\n- `720p` : resolution standard, valeur par defaut\n- `1080p` : resolution Ultra HD\n\n**Mode brouillon :** lorsque `draft` vaut `true`, seule la résolution `480p` est autorisée. Si `quality` est omis, `480p` est utilisé automatiquement",
             "enum": [
               "480p",
               "720p",
@@ -267,6 +304,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Active le mode brouillon, `false` par défaut\n\n**Détails :**\n- `true` : génère d’abord un brouillon en 480p, plus rapidement, au tarif normal de la résolution 480p\n- Lorsque ce mode est activé, `quality` doit valoir `480p` ou être omis. Toute autre résolution renvoie une erreur de paramètre 400\n- Ce champ doit figurer au niveau racine du corps de la requête. Le placer dans `model_params` renvoie une erreur de paramètre 400\n\n**Conversion en vidéo finale :**\n- Une fois le brouillon terminé, la [consultation de la tâche](/fr/api-manual/task-management/get-task-detail) renvoie `draft_expires_at`\n- Avant cette échéance, transmettez l’ID de tâche du brouillon à [Seedance 2.5 Draft-to-Video](/fr/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) pour générer une vidéo finale en 1080p au contenu identique\n- La vidéo finale et le brouillon sont facturés séparément. Si le brouillon ne vous convient pas, vous pouvez renoncer à la conversion et ne payer que le brouillon\n- Par défaut, le brouillon reste convertible pendant 24 heures après son achèvement ; `draft_expires_at` indique l’échéance réelle. Envoyez la demande de conversion suffisamment tôt : une expiration pendant l’attente dans la file entraîne également l’échec de la conversion\n\n**Indisponibilité temporaire :** une réponse 503 peut être renvoyée lorsque le service est temporairement indisponible. Si le code d’erreur est `draft_unavailable`, réessayez plus tard ou retirez `draft` pour utiliser le mode normal",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",

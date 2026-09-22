@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "API de Seedance 2.5 Image-to-Video",
-    "description": "API de Seedance 2.5 imagen a video, admite video desde primer fotograma y video desde primer y ultimo fotograma",
+    "title": "API Seedance 2.5 Draft-to-Video",
+    "description": "Convierte un borrador Seedance 2.5 completado en un video final en 1080p con el mismo contenido",
     "license": {
       "name": "MIT"
     },
@@ -22,9 +22,9 @@
   "paths": {
     "/v1/videos/generations": {
       "post": {
-        "summary": "Seedance 2.5 Image-to-Video",
-        "description": "- Ingrese 1 imagen para generar video desde el primer fotograma, ingrese 2 imagenes para generar video desde el primer y ultimo fotograma, el modelo determina automaticamente\n- **Ahora compatible con materiales realistas de personas generados por IA (AIGC)**\n- Admite el **modo borrador**: envíe `draft: true` para generar primero un borrador en 480p y, si le convence, use [Draft-to-Video](/es/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) para obtener un video final en 1080p. Las dos generaciones se facturan por separado\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible",
-        "operationId": "createSeedance25ImageToVideo",
+        "summary": "Seedance 2.5 Draft-to-Video — conversión en video final",
+        "description": "- Convierte un borrador Seedance 2.5 completado (una tarea creada con `draft: true`) en un video final en 1080p con el mismo contenido\n- Solo admite cuatro campos: `model`, `source_task_id`, `output_format` y `callback_url`. La indicación, los materiales, la duración, la relación de aspecto, la semilla aleatoria y la configuración de audio se reutilizan del borrador: no es necesario ni está permitido enviarlos de nuevo. Cualquier otro campo devuelve un error de parámetro 400\n- Envíe la solicitud de conversión antes del `draft_expires_at` del borrador. El período de validez predeterminado es de 24 horas desde su finalización; la fecha límite real es el `draft_expires_at` devuelto al consultar la tarea\n- El sistema comprueba la validez al aceptar la solicitud y antes de enviarla para su generación. Si el borrador caduca mientras la tarea espera en la cola, la conversión falla y se reembolsa el costo de esa conversión. Deje margen para el tiempo de espera\n- El mismo borrador puede convertirse varias veces antes de caducar; cada conversión se factura por separado\n- El procesamiento es asíncrono. Use el ID de tarea devuelto para [consultar la tarea](/es/api-manual/task-management/get-task-detail); la respuesta incluye `source_task_id`\n- El enlace del video generado es válido durante 24 horas. Guárdelo cuanto antes\n\n**Reglas de facturación:**\n- La conversión se factura por separado del borrador, siempre con la tarifa de `1080p`\n- La duración de salida corresponde a la duración real del video registrada para el borrador de origen. Si no existe ese valor, se usa la duración de salida efectiva registrada en la tarea de origen\n- Si el borrador no tiene videos de entrada, la duración facturada es la duración de salida. Si tiene videos de entrada (incluidos Reference-to-Video, Video Edit y Video Extend), se calcula como `duración de salida + max(duración de los videos de entrada, duración de salida)`, redondeada hacia arriba a la décima de segundo\n- Si el borrador tenía el filtro de contenido desactivado (`content_filter: false`), el video final también se factura con un recargo del +10% (`1.1x`)\n- Si la conversión falla, se reembolsa el costo de esa conversión; el costo del borrador no se reembolsa",
+        "operationId": "createSeedance25DraftToVideo",
         "tags": [
           "Generacion de video"
         ],
@@ -36,45 +36,19 @@
                 "$ref": "#/components/schemas/VideoGenerationRequest"
               },
               "examples": {
-                "first_frame": {
-                  "summary": "Video desde primer fotograma",
+                "basic": {
+                  "summary": "Convertir en video final en 1080p (MP4)",
                   "value": {
-                    "model": "seedance-2.5-image-to-video",
-                    "prompt": "The camera slowly zooms in, the scene gradually comes to life",
-                    "image_urls": [
-                      "https://example.com/first-frame.jpg"
-                    ],
-                    "duration": 5,
-                    "quality": "720p",
-                    "aspect_ratio": "adaptive"
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
                   }
                 },
-                "first_last_frame": {
-                  "summary": "Video desde primer y ultimo fotograma",
+                "mov": {
+                  "summary": "Convertir a un video final en 1080p (MOV)",
                   "value": {
-                    "model": "seedance-2.5-image-to-video",
-                    "prompt": "A smooth transition between two scenes",
-                    "image_urls": [
-                      "https://example.com/first.jpg",
-                      "https://example.com/last.jpg"
-                    ],
-                    "duration": 6,
-                    "quality": "720p",
-                    "aspect_ratio": "adaptive"
-                  }
-                },
-                "draft": {
-                  "summary": "Modo borrador (480p)",
-                  "value": {
-                    "model": "seedance-2.5-image-to-video",
-                    "prompt": "La cámara se acerca lentamente y la escena cobra vida de forma gradual",
-                    "image_urls": [
-                      "https://example.com/first-frame.jpg"
-                    ],
-                    "duration": 5,
-                    "quality": "480p",
-                    "aspect_ratio": "adaptive",
-                    "draft": true
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
                   }
                 }
               }
@@ -83,7 +57,7 @@
         },
         "responses": {
           "200": {
-            "description": "Tarea de generacion de video creada exitosamente",
+            "description": "Tarea de conversión en video final creada correctamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -93,17 +67,32 @@
             }
           },
           "400": {
-            "description": "Error en los parametros de la solicitud",
+            "description": "Parámetros de solicitud incorrectos o tarea de origen que no es un borrador convertible",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
-                "example": {
-                  "error": {
-                    "code": "invalid_parameter",
-                    "message": "Invalid request parameters",
-                    "type": "invalid_request_error"
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "Se ha enviado un campo no permitido",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "La tarea de origen no es un borrador",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
                   }
                 }
               }
@@ -153,8 +142,84 @@
                 "example": {
                   "error": {
                     "code": "model_access_denied",
-                    "message": "Token does not have access to model: seedance-2.5-image-to-video",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
                     "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La tarea de origen no existe o no pertenece a la cuenta actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "No se encuentra la tarea de origen",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El borrador no está completado o faltan datos necesarios para la conversión",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "El borrador no está completado",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Faltan datos necesarios para la conversión",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "El borrador ha caducado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "Se ha superado draft_expires_at",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
                   }
                 }
               }
@@ -195,19 +260,29 @@
             }
           },
           "503": {
-            "description": "Servicio temporalmente no disponible; puede devolver draft_unavailable cuando el modo borrador no está disponible",
+            "description": "El servicio de origen o los datos de la tarea de origen no están disponibles temporalmente",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "examples": {
-                  "draft_unavailable": {
-                    "summary": "Modo borrador temporalmente no disponible",
+                  "source_channel_unavailable": {
+                    "summary": "El servicio de origen no está disponible",
                     "value": {
                       "error": {
-                        "code": "draft_unavailable",
-                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "No se pueden leer temporalmente los datos de la tarea de origen",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
                         "type": "invalid_request_error"
                       }
                     }
@@ -226,84 +301,26 @@
         "type": "object",
         "required": [
           "model",
-          "prompt",
-          "image_urls"
+          "source_task_id"
         ],
         "properties": {
           "model": {
             "type": "string",
             "description": "Nombre del modelo de generacion de video",
             "enum": [
-              "seedance-2.5-image-to-video"
+              "seedance-2.5-draft-to-video"
             ],
-            "default": "seedance-2.5-image-to-video",
-            "example": "seedance-2.5-image-to-video"
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
           },
-          "prompt": {
+          "source_task_id": {
             "type": "string",
-            "description": "Indicacion de texto que describe el video deseado. Admite chino e ingles, se recomienda no exceder 500 caracteres en chino o 1000 palabras en ingles. Longitud maxima del prompt: 10000 tokens\n\n**Nota:**\n- Este modelo no admite entrada de `video_urls`, `audio_urls`",
-            "example": "The camera slowly zooms in, the scene gradually comes to life"
-          },
-          "image_urls": {
-            "type": "array",
-            "description": "Array de URLs de imagenes, **1-2 imagenes**\n\n**Cantidad de imagenes y comportamiento:**\n\n| Cantidad | Comportamiento | Rol |\n|:--------:|------|------|\n| 1 imagen | Video desde primer fotograma | Se establece automaticamente como `first_frame` |\n| 2 imagenes | Video desde primer y ultimo fotograma | 1ra imagen -> `first_frame`, 2da imagen -> `last_frame` |\n\n**Requisitos de imagen:**\n- Formatos admitidos: `.jpeg`, `.png`, `.webp`\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Tamano por imagen: no mas de `30MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`\n- Al proporcionar fotogramas primero y ultimo, ambas imagenes pueden ser iguales. Cuando las relaciones de aspecto no coinciden, se toma el primer fotograma como referencia y el ultimo se recorta automaticamente\n- Las URLs de imagenes deben ser accesibles directamente por el servidor",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "minItems": 1,
-            "maxItems": 2,
-            "example": [
-              "https://example.com/first-frame.jpg"
-            ]
-          },
-          "duration": {
-            "type": "integer",
-            "description": "Duracion del video (segundos), valor predeterminado `5` segundos\n\n**Descripcion:**\n- Admite cualquier valor entero entre `4` y `30` segundos\n- `-1`: duracion automatica, el modelo elige una duracion entre `4` y `30` segundos y la facturacion sigue la duracion real de salida\n- La duracion esta directamente relacionada con la facturacion",
-            "default": 5,
-            "example": 5
-          },
-          "quality": {
-            "type": "string",
-            "description": "Resolucion del video, valor predeterminado `720p`\n\n**Valores opcionales:**\n- `480p`: menor claridad, precio mas bajo\n- `720p`: claridad estandar, este es el valor predeterminado\n- `1080p`: claridad Ultra HD\n\n**Modo borrador:** cuando `draft` es `true`, solo se permite `480p`. Si se omite `quality`, se utiliza `480p` automáticamente",
-            "enum": [
-              "480p",
-              "720p",
-              "1080p"
-            ],
-            "default": "720p",
-            "example": "720p"
-          },
-          "draft": {
-            "type": "boolean",
-            "default": false,
-            "description": "Activa el modo borrador; el valor predeterminado es `false`\n\n**Detalles:**\n- `true`: genera primero un borrador en 480p, más rápidamente, con la tarifa normal de 480p\n- Cuando está activado, `quality` debe ser `480p` o debe omitirse. Cualquier otra resolución devuelve un error de parámetro 400\n- Solo se admite en el nivel superior del cuerpo de la solicitud. Incluirlo en `model_params` devuelve un error de parámetro 400\n\n**Conversión en video final:**\n- Una vez completado el borrador, la [consulta de la tarea](/es/api-manual/task-management/get-task-detail) devuelve `draft_expires_at`\n- Antes de esa fecha, envíe el ID de tarea del borrador a [Seedance 2.5 Draft-to-Video](/es/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) para generar un video final en 1080p con el mismo contenido\n- El video final y el borrador se facturan por separado. Si el borrador no le convence, puede omitir la conversión y pagar solo el borrador\n- El período de validez predeterminado es de 24 horas desde que se completa el borrador; `draft_expires_at` indica la fecha límite real. Envíe la solicitud de conversión con antelación: si el borrador caduca mientras la tarea espera en la cola, la conversión también fallará\n\n**Indisponibilidad temporal:** el servicio puede devolver 503 cuando no está disponible temporalmente. Si el código de error es `draft_unavailable`, reintente más tarde o retire `draft` para generar en el modo normal",
-            "example": false
-          },
-          "aspect_ratio": {
-            "type": "string",
-            "description": "Relacion de aspecto del video, Image-to-Video solo admite `adaptive`\n\n**Valores opcionales:**\n- `adaptive`: selecciona automaticamente la relacion de aspecto mas cercana segun la proporcion de la imagen del primer fotograma; es el unico valor admitido por este modelo\n- Este modelo no permite especificar relaciones fijas como `16:9` o `9:16`",
-            "enum": [
-              "adaptive"
-            ],
-            "default": "adaptive",
-            "example": "adaptive"
-          },
-          "generate_audio": {
-            "type": "boolean",
-            "description": "Si se genera audio sincronizado, valor predeterminado `true`\n\n**Valores opcionales:**\n- `true`: el video incluye audio sincronizado, sin cargo adicional\n- `false`: salida de video sin audio",
-            "default": true,
-            "example": true
-          },
-          "content_filter": {
-            "type": "boolean",
-            "description": "Filtro de contenido, valor predeterminado `true`\n\n**Valores opcionales:**\n- `true`: verificacion estandar de seguridad de contenido, este es el valor predeterminado\n- `false`: relaja las restricciones de contenido, facturado con +10% (`1.1x`). El contenido ilegal y prohibido siempre se aplica independientemente de esta configuracion\n\n**Incompatible con la busqueda web:**\n- `content_filter: false` y `model_params.web_search: true` no se pueden usar juntos; enviarlos a la vez devuelve un error de parametro 400\n- Mantenga `content_filter: true` (valor predeterminado) cuando necesite la busqueda web",
-            "default": true,
-            "example": true
+            "description": "ID de una tarea de borrador Seedance 2.5 completada\n\n**Cómo obtenerlo:** el campo `id` devuelto por la solicitud que crea el borrador (`draft: true`)\n\n**Requisitos:**\n1. La tarea debe pertenecer a la cuenta actual\n2. Su modelo debe ser uno de los cinco modelos de generación Seedance 2.5\n3. Debe haberse creado con `draft: true`\n4. Su estado debe ser `completed`\n5. La hora actual debe ser anterior al `draft_expires_at` devuelto al consultar la tarea",
+            "example": "task-unified-1774857405-abc123"
           },
           "output_format": {
             "type": "string",
-            "description": "Formato de contenedor de salida, valor predeterminado `mp4`\n\n**Valores opcionales:**\n- `mp4`: codificacion H.264, la mejor compatibilidad y precision de color estandar; es el valor predeterminado\n- `mov`: H.264 + submuestreo de croma yuv444p + audio PCM, con mayor fidelidad de color, recomendado para etalonaje, recorte de croma y composicion. Es posible que el navegador no lo reproduzca en linea; descarguelo y reproduzcalo con VLC / mpv / ffplay. Sin cargo adicional",
+            "description": "Formato de contenedor de salida, valor predeterminado `mp4`\n\n**Valores opcionales:**\n- `mp4`: codificacion H.264, la mejor compatibilidad y precision de color estandar; es el valor predeterminado\n- `mov`: H.264 + submuestreo de croma yuv444p + audio PCM, con mayor fidelidad de color, recomendado para etalonaje, recorte de croma y composicion. Es posible que el navegador no lo reproduzca en linea; descarguelo y reproduzcalo con VLC / mpv / ffplay. Sin cargo adicional\n\nNo se hereda el formato de salida del borrador. Si necesita `mov`, especifíquelo aquí",
             "enum": [
               "mp4",
               "mov"
@@ -317,7 +334,8 @@
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "VideoGenerationResponse": {
         "type": "object",
@@ -335,7 +353,7 @@
           "model": {
             "type": "string",
             "description": "Nombre del modelo utilizado",
-            "example": "seedance-2.5-image-to-video"
+            "example": "seedance-2.5-draft-to-video"
           },
           "object": {
             "type": "string",

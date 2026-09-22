@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Seedance 2.5 Text-to-Video API",
-    "description": "Seedance 2.5 text-to-video API, supports generating videos from text prompts with web search for enhanced timeliness",
+    "title": "Seedance 2.5 Draft-to-Video API",
+    "description": "Convert a completed Seedance 2.5 draft into a 1080p final video with the same content",
     "license": {
       "name": "MIT"
     },
@@ -22,9 +22,9 @@
   "paths": {
     "/v1/videos/generations": {
       "post": {
-        "summary": "Seedance 2.5 Text-to-Video",
-        "description": "- Generate videos from text prompts, supports web search for enhanced timeliness\n- **Now supports AIGC realistic human materials**\n- Supports **draft mode**: set `draft: true` to generate a 480p draft first. If you are satisfied, use [Draft-to-Video](/en/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) to convert it into a 1080p final video. The two requests are billed separately\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
-        "operationId": "createSeedance25TextToVideo",
+        "summary": "Seedance 2.5 Draft-to-Video",
+        "description": "- Convert a completed Seedance 2.5 draft (a task created with `draft: true`) into a 1080p final video with the same content\n- Only four fields are accepted: `model`, `source_task_id`, `output_format`, and `callback_url`. The prompt, assets, duration, aspect ratio, seed, and audio settings are all reused from the draft. Do not send them again; any other field returns a 400 parameter error\n- Submit the conversion request before the draft's `draft_expires_at`. The default validity period is 24 hours after the draft completes; use the actual `draft_expires_at` returned by the task query as the deadline\n- Expiration is checked both when the request is accepted and before generation is submitted. If the draft expires while queued, the conversion task fails and its charge is refunded. Allow time for queuing\n- The same draft can be converted multiple times before it expires; each conversion is billed separately\n- Asynchronous processing mode: use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail). The query response includes `source_task_id`\n- Generated video links are valid for 24 hours; save them promptly\n\n**Billing rules:**\n- Billed separately from the draft, always at the `1080p` rate\n- The output duration is the actual output duration recorded for the source draft. If that value is unavailable, the effective output duration recorded for the source task is used\n- Without video input, the billable duration is the output duration. With video input (including Reference-to-Video, Video Edit, and Video Extend), it is `output duration + max(input video duration, output duration)`, rounded up to the next 0.1 second\n- If content filtering was disabled for the draft (`content_filter: false`), the final video is also billed at +10% (`1.1x`)\n- If conversion fails, the conversion charge is refunded; the draft charge is not refunded",
+        "operationId": "createSeedance25DraftToVideo",
         "tags": [
           "Video Generation"
         ],
@@ -37,41 +37,18 @@
               },
               "examples": {
                 "basic": {
-                  "summary": "Basic text-to-video",
+                  "summary": "Convert to a 1080p final video (MP4)",
                   "value": {
-                    "model": "seedance-2.5-text-to-video",
-                    "prompt": "A macro lens focuses on a green glass frog on a leaf. The focus gradually shifts from its smooth skin to its completely transparent abdomen, where a bright red heart is beating powerfully and rhythmically.",
-                    "duration": 8,
-                    "quality": "720p",
-                    "aspect_ratio": "16:9",
-                    "generate_audio": true,
-                    "content_filter": true
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
                   }
                 },
-                "web_search": {
-                  "summary": "Text-to-video with web search",
+                "mov": {
+                  "summary": "Convert to a 1080p final video (MOV)",
                   "value": {
-                    "model": "seedance-2.5-text-to-video",
-                    "prompt": "Today's New York weather forecast, with city skyline animation and temperature overlay display",
-                    "duration": 8,
-                    "quality": "720p",
-                    "aspect_ratio": "16:9",
-                    "model_params": {
-                      "web_search": true
-                    }
-                  }
-                },
-                "draft": {
-                  "summary": "Draft mode (480p)",
-                  "value": {
-                    "model": "seedance-2.5-text-to-video",
-                    "prompt": "A macro lens focuses on a green glass frog on a leaf. The focus gradually shifts from its smooth skin to its completely transparent abdomen, where a bright red heart is beating powerfully and rhythmically.",
-                    "duration": 8,
-                    "quality": "480p",
-                    "aspect_ratio": "16:9",
-                    "generate_audio": true,
-                    "content_filter": true,
-                    "draft": true
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
                   }
                 }
               }
@@ -80,7 +57,7 @@
         },
         "responses": {
           "200": {
-            "description": "Video generation task created successfully",
+            "description": "Final video conversion task created successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -90,17 +67,32 @@
             }
           },
           "400": {
-            "description": "Invalid request parameters",
+            "description": "Invalid request parameters, or the source task is not an eligible draft",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
-                "example": {
-                  "error": {
-                    "code": "invalid_parameter",
-                    "message": "Invalid request parameters",
-                    "type": "invalid_request_error"
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "An unsupported field was provided",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "The source task is not a draft",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
                   }
                 }
               }
@@ -150,8 +142,84 @@
                 "example": {
                   "error": {
                     "code": "model_access_denied",
-                    "message": "Token does not have access to model: seedance-2.5-text-to-video",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
                     "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The source task does not exist or does not belong to the current account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "Source task not found",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The draft is not complete or is missing information required for conversion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "The draft is not complete",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Missing information required for conversion",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The draft has expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "The draft_expires_at deadline has passed",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
                   }
                 }
               }
@@ -192,19 +260,29 @@
             }
           },
           "503": {
-            "description": "Service temporarily unavailable; draft_unavailable may be returned when draft mode is unavailable",
+            "description": "The source service or source task information is temporarily unavailable",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "examples": {
-                  "draft_unavailable": {
-                    "summary": "Draft mode temporarily unavailable",
+                  "source_channel_unavailable": {
+                    "summary": "Source service unavailable",
                     "value": {
                       "error": {
-                        "code": "draft_unavailable",
-                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Source task information temporarily unavailable",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
                         "type": "invalid_request_error"
                       }
                     }
@@ -223,76 +301,26 @@
         "type": "object",
         "required": [
           "model",
-          "prompt"
+          "source_task_id"
         ],
         "properties": {
           "model": {
             "type": "string",
             "description": "Video generation model name",
             "enum": [
-              "seedance-2.5-text-to-video"
+              "seedance-2.5-draft-to-video"
             ],
-            "default": "seedance-2.5-text-to-video",
-            "example": "seedance-2.5-text-to-video"
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
           },
-          "prompt": {
+          "source_task_id": {
             "type": "string",
-            "description": "Text prompt describing the desired video. Supports both Chinese and English, recommended no more than 500 characters for Chinese or 1000 words for English. Maximum prompt length: 10000 tokens\n\n**Note:**\n- This model is text-to-video only and does not support `image_urls`, `video_urls`, or `audio_urls` input",
-            "example": "A macro lens focuses on a green glass frog on a leaf. The focus gradually shifts from its smooth skin to its completely transparent abdomen, where a bright red heart is beating powerfully and rhythmically."
-          },
-          "duration": {
-            "type": "integer",
-            "description": "Video duration (seconds), defaults to `5` seconds\n\n**Details:**\n- Supports any integer value between `4`–`30` seconds\n- `-1`: automatic duration, the model picks a length within `4`–`30` seconds and billing follows the actual output length\n- Duration directly affects billing",
-            "default": 5,
-            "example": 8
-          },
-          "quality": {
-            "type": "string",
-            "description": "Video resolution, defaults to `720p`\n\n**Options:**\n- `480p`: Lower clarity, lower cost\n- `720p`: Standard clarity, this is the default\n- `1080p`: Ultra HD clarity\n\n**Draft mode:** When `draft` is `true`, only `480p` is supported. If omitted, `quality` automatically defaults to `480p`",
-            "enum": [
-              "480p",
-              "720p",
-              "1080p"
-            ],
-            "default": "720p",
-            "example": "720p"
-          },
-          "draft": {
-            "type": "boolean",
-            "default": false,
-            "description": "Draft mode switch, defaults to `false`\n\n**Details:**\n- `true`: Generate a 480p draft first, with faster turnaround and standard 480p billing\n- When enabled, `quality` must be `480p` or omitted. Any other resolution returns a 400 parameter error\n- Must be a top-level request body field. Placing it inside `model_params` returns a 400 parameter error\n\n**Convert to a final video:**\n- Once the draft is complete, [querying the task](/en/api-manual/task-management/get-task-detail) returns `draft_expires_at`\n- Before that time, pass the draft task ID to [Seedance 2.5 Draft-to-Video](/en/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) to generate a 1080p final video with the same content\n- The final video and draft are billed separately. If you are not satisfied with the draft, skip conversion and pay only for the draft\n- The default validity period is 24 hours after the draft completes; the actual deadline is `draft_expires_at`. Submit the conversion request early: expiration while queued also causes conversion to fail\n\n**Temporary unavailability:** A 503 error may be returned when the service is temporarily unavailable. If the error code is `draft_unavailable`, retry later or remove `draft` to use normal generation mode",
-            "example": false
-          },
-          "aspect_ratio": {
-            "type": "string",
-            "description": "Video aspect ratio, defaults to `adaptive`\n\n**Options:**\n- `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`, `21:9` (ultrawide)\n- `adaptive`: The model intelligently selects the best aspect ratio based on the prompt\n\n**Pixel values per resolution:**\n\n| Aspect Ratio | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
-            "enum": [
-              "16:9",
-              "9:16",
-              "1:1",
-              "4:3",
-              "3:4",
-              "21:9",
-              "adaptive"
-            ],
-            "default": "adaptive",
-            "example": "16:9"
-          },
-          "generate_audio": {
-            "type": "boolean",
-            "description": "Whether to generate synchronized audio, defaults to `true`\n\n**Options:**\n- `true`: Video includes synchronized audio (voice, sound effects, background music) at no additional charge. It is recommended to place dialogue within double quotes to optimize audio generation\n- `false`: Output silent video",
-            "default": true,
-            "example": true
-          },
-          "content_filter": {
-            "type": "boolean",
-            "description": "Content filter, enabled by default `true`\n\n**Options:**\n- `true`: Standard content safety check, this is the default\n- `false`: Relaxes content restrictions, billed at +10% (`1.1x`). Illegal and prohibited content is always enforced regardless of this setting\n\n**Mutually exclusive with web search:**\n- `content_filter: false` and `model_params.web_search: true` cannot be used together; sending both returns a 400 parameter error\n- Keep `content_filter: true` (the default) when web search is needed",
-            "default": true,
-            "example": true
+            "description": "Task ID of a completed Seedance 2.5 draft\n\n**Where to find it:** The `id` field returned when creating a draft (`draft: true`)\n\n**Requirements:**\n1. The task must belong to the current account\n2. The task must use one of the five Seedance 2.5 generation models\n3. The task must have been created with `draft: true`\n4. The task status must be `completed`\n5. The current time must be earlier than `draft_expires_at` in the task query response",
+            "example": "task-unified-1774857405-abc123"
           },
           "output_format": {
             "type": "string",
-            "description": "Output container format, defaults to `mp4`\n\n**Options:**\n- `mp4`: H.264 encoding with the best compatibility and standard color precision, this is the default\n- `mov`: H.264 + yuv444p chroma sampling + PCM audio for higher color fidelity, recommended for color grading, keying and compositing workflows. Browser inline playback may not support it; download and play with VLC / mpv / ffplay. No extra charge",
+            "description": "Output container format, defaults to `mp4`\n\n**Options:**\n- `mp4`: H.264 encoding with the best compatibility and standard color precision, this is the default\n- `mov`: H.264 + yuv444p chroma sampling + PCM audio for higher color fidelity, recommended for color grading, keying and compositing workflows. Browser inline playback may not support it; download and play with VLC / mpv / ffplay. No extra charge\n\nThe draft's output format is not inherited. Specify `mov` here if required",
             "enum": [
               "mp4",
               "mov"
@@ -300,25 +328,14 @@
             "default": "mp4",
             "example": "mp4"
           },
-          "model_params": {
-            "type": "object",
-            "description": "Model extension parameters",
-            "properties": {
-              "web_search": {
-                "type": "boolean",
-                "description": "Web search, defaults to `false`\n\n**Details:**\n- When enabled, the model autonomously decides whether to search internet content (e.g., products, weather) based on the prompt, improving timeliness\n- May increase latency\n- Fees are only charged when searches are actually triggered; multiple searches may occur once enabled\n\n**Mutually exclusive with the content filter:**\n- Keep `content_filter: true` when web search is enabled; using it together with `content_filter: false` returns a 400 parameter error",
-                "default": false,
-                "example": false
-              }
-            }
-          },
           "callback_url": {
             "type": "string",
             "description": "HTTPS callback URL for task completion\n\n**Callback timing:**\n- Triggered when the task is completed, failed, or cancelled\n- Sent after billing confirmation is complete\n\n**Security restrictions:**\n- Only HTTPS protocol is supported\n- Callbacks to private IP addresses are prohibited (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- URL length must not exceed `2048` characters\n\n**Callback mechanism:**\n- Timeout: `10` seconds\n- Up to `3` retries after failure (at `1`/`2`/`4` seconds after failure respectively)\n- Callback response body format is consistent with the task query endpoint response format\n- A 2xx status code is considered successful; other status codes trigger retries",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "VideoGenerationResponse": {
         "type": "object",
@@ -336,7 +353,7 @@
           "model": {
             "type": "string",
             "description": "Actual model name used",
-            "example": "seedance-2.5-text-to-video"
+            "example": "seedance-2.5-draft-to-video"
           },
           "object": {
             "type": "string",

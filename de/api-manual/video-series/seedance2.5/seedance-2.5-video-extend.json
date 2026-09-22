@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Video Extend",
-        "description": "- Verlängert ein Eingabevideo nach vorne oder nach hinten\n- Der Prompt muss die Verlängerungsabsicht nennen (z. B. \"@video1 nach hinten verlängern, die Figur läuft aus dem Bild\")\n- Eingabe des zu verlängernden Videos (erforderlich) + optionale Referenzbilder (0–30) + Referenzvideos (insgesamt bis zu 10) + Referenzaudio (0–10)\n- **Unterstützt jetzt AIGC-Real-Person-Materialien**\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID [zur Abfrage](/de/api-manual/task-management/get-task-detail)\n- Der generierte Video-Link ist 24 Stunden gültig, bitte speichern Sie ihn rechtzeitig",
+        "description": "- Verlängert ein Eingabevideo nach vorne oder nach hinten\n- Der Prompt muss die Verlängerungsabsicht nennen (z. B. \"@video1 nach hinten verlängern, die Figur läuft aus dem Bild\")\n- Eingabe des zu verlängernden Videos (erforderlich) + optionale Referenzbilder (0–30) + Referenzvideos (insgesamt bis zu 10) + Referenzaudio (0–10)\n- **Unterstützt jetzt AIGC-Real-Person-Materialien**\n- Unterstützt den **Entwurfsmodus**: Mit `draft: true` erstellen Sie zunächst einen 480p-Entwurf. Wenn Sie zufrieden sind, wandeln Sie ihn mit [Draft-to-Video](/de/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) in ein finales 1080p-Video um. Beide Anfragen werden separat abgerechnet\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID [zur Abfrage](/de/api-manual/task-management/get-task-detail)\n- Der generierte Video-Link ist 24 Stunden gültig, bitte speichern Sie ihn rechtzeitig",
         "operationId": "createSeedance25VideoExtend",
         "tags": [
           "Videogenerierung"
@@ -58,7 +58,23 @@
                     "video_urls": [
                       "https://example.com/original.mp4"
                     ],
-                    "duration": -1
+                    "duration": -1,
+                    "quality": "720p"
+                  }
+                },
+                "draft": {
+                  "summary": "Entwurfsmodus (480p)",
+                  "value": {
+                    "model": "seedance-2.5-video-extend",
+                    "prompt": "@video1 nach hinten verlängern: die Figur läuft aus dem Bild, die Kamera fährt langsam zurück und gibt die leere Straße frei",
+                    "video_urls": [
+                      "https://example.com/original.mp4"
+                    ],
+                    "duration": 12,
+                    "quality": "480p",
+                    "generate_audio": true,
+                    "content_filter": true,
+                    "draft": true
                   }
                 }
               }
@@ -177,6 +193,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar; bei nicht verfügbarem Entwurfsmodus kann draft_unavailable zurückgegeben werden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Entwurfsmodus vorübergehend nicht verfügbar",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -254,7 +292,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Videoauflösung, Standard ist `720p`\n\n**Verfügbare Werte:**\n- `480p`: Niedrigere Auflösung, günstigerer Preis\n- `720p`: Standardauflösung, dies ist der Standardwert\n- `1080p`: Ultra-HD-Auflösung",
+            "description": "Videoauflösung, Standard ist `720p`\n\n**Verfügbare Werte:**\n- `480p`: Niedrigere Auflösung, günstigerer Preis\n- `720p`: Standardauflösung, dies ist der Standardwert\n- `1080p`: Ultra-HD-Auflösung\n\n**Entwurfsmodus:** Wenn `draft` auf `true` gesetzt ist, wird nur `480p` unterstützt. Wird `quality` weggelassen, wird automatisch `480p` verwendet",
             "enum": [
               "480p",
               "720p",
@@ -262,6 +300,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Schalter für den Entwurfsmodus, Standard ist `false`\n\n**Details:**\n- `true`: Erstellt zunächst einen 480p-Entwurf mit kürzerer Generierungszeit und regulärer 480p-Abrechnung\n- Bei aktiviertem Entwurfsmodus muss `quality` entweder `480p` sein oder weggelassen werden. Andere Auflösungen führen zu einem 400-Parameterfehler\n- Darf nur auf der obersten Ebene des Anfragekörpers stehen. Innerhalb von `model_params` führt das Feld zu einem 400-Parameterfehler\n\n**In ein finales Video umwandeln:**\n- Sobald der Entwurf fertig ist, liefert die [Aufgabenabfrage](/de/api-manual/task-management/get-task-detail) das Feld `draft_expires_at`\n- Übergeben Sie vor diesem Zeitpunkt die Aufgaben-ID des Entwurfs an [Seedance 2.5 Draft-to-Video](/de/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video), um ein finales 1080p-Video mit demselben Inhalt zu erstellen\n- Das finale Video und der Entwurf werden separat abgerechnet. Wenn Sie mit dem Entwurf nicht zufrieden sind, können Sie auf die Konvertierung verzichten und zahlen nur für den Entwurf\n- Die Gültigkeitsdauer beträgt standardmäßig 24 Stunden ab Fertigstellung des Entwurfs; maßgeblich ist `draft_expires_at`. Senden Sie die Konvertierungsanfrage frühzeitig: Läuft der Entwurf in der Warteschlange ab, schlägt die Konvertierung ebenfalls fehl\n\n**Vorübergehend nicht verfügbar:** Wenn der Dienst vorübergehend nicht verfügbar ist, kann ein 503-Fehler zurückgegeben werden. Bei Fehlercode `draft_unavailable` versuchen Sie es später erneut oder entfernen Sie `draft`, um den normalen Generierungsmodus zu verwenden",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",

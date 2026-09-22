@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 全模型接口",
-        "description": "Seedance 2.5 全系列统一接口，通过 `model` 参数选择具体模型\n\n**5 种生成模式：**\n- **Text-to-Video**：纯文本描述生成视频，支持联网搜索增强\n- **Image-to-Video**：1-2 张图片作为首尾帧驱动视频生成\n- **Reference-to-Video**：图片 + 视频 + 音频多模态素材混合参考\n- **Video Edit**：对输入视频做编辑，替换主体、增删物体、局部改写\n- **Video Extend**：将输入视频向前或向后延长\n\n- **现已支持 AIGC 类真人素材**\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
+        "description": "Seedance 2.5 全系列统一接口，通过 `model` 参数选择具体模型\n\n**5 种生成模式：**\n- **Text-to-Video**：纯文本描述生成视频，支持联网搜索增强\n- **Image-to-Video**：1-2 张图片作为首尾帧驱动视频生成\n- **Reference-to-Video**：图片 + 视频 + 音频多模态素材混合参考\n- **Video Edit**：对输入视频做编辑，替换主体、增删物体、局部改写\n- **Video Extend**：将输入视频向前或向后延长\n\n**样片模式：**\n- 任一生成模式传 `draft: true`，先出 480p 样片，出片更快，按 480p 正常计费\n- 满意后用 [Seedance 2.5 Draft-to-Video](/cn/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) 转为同一内容的 1080p 正式视频，两次分开计费；不满意可以不转\n- 转正式只接受样片的任务 ID 和输出格式，参数与计费规则见该页面\n\n- **现已支持 AIGC 类真人素材**\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
         "operationId": "createSeedance25Video",
         "tags": [
           "视频生成"
@@ -57,6 +57,7 @@
                       "https://example.com/first-frame.jpg"
                     ],
                     "duration": 5,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
                   }
                 },
@@ -107,6 +108,19 @@
                     "quality": "720p",
                     "generate_audio": true,
                     "content_filter": true
+                  }
+                },
+                "draft": {
+                  "summary": "样片模式（480p，任一生成模式均可）",
+                  "value": {
+                    "model": "seedance-2.5-text-to-video",
+                    "prompt": "微距镜头对准叶片上翠绿的玻璃蛙。焦点逐渐从它光滑的皮肤，转移到它完全透明的腹部，一颗鲜红的心脏正在有力地、规律地收缩扩张。",
+                    "duration": 8,
+                    "quality": "480p",
+                    "aspect_ratio": "16:9",
+                    "generate_audio": true,
+                    "content_filter": true,
+                    "draft": true
                   }
                 }
               }
@@ -225,6 +239,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂时不可用；样片模式不可用时可能返回 draft_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "样片模式暂不可用",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -304,7 +340,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "视频分辨率，默认为 `720p`\n\n**可选值：**\n- `480p`：清晰度较低，价格较低\n- `720p`：标准清晰度，此为默认值\n- `1080p`：超高清晰度\n\n适用于全部 5 个模型",
+            "description": "视频分辨率，默认为 `720p`\n\n**可选值：**\n- `480p`：清晰度较低，价格较低\n- `720p`：标准清晰度，此为默认值\n- `1080p`：超高清晰度\n\n适用于全部 5 个模型\n\n**样片模式：** `draft` 为 `true` 时只能使用 `480p`，不传时自动使用 `480p`",
             "enum": [
               "480p",
               "720p",
@@ -312,6 +348,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "样片模式开关，默认为 `false`\n\n**说明：**\n- `true`：先生成 480p 样片，出片更快，按 480p 正常计费\n- 开启时 `quality` 只能为 `480p` 或不传，传其它清晰度会返回 400 参数错误\n- 只能写在请求体顶层，写在 `model_params` 里会返回 400 参数错误\n\n**转为正式视频：**\n- 样片完成后，[查询任务](/cn/api-manual/task-management/get-task-detail)会返回 `draft_expires_at`\n- 在这个时间之前，用 [Seedance 2.5 Draft-to-Video](/cn/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) 传入样片的任务 ID，即可生成同一内容的 1080p 正式视频\n- 正式视频与样片分开计费；样片不满意可以不转，只付样片的费用\n- 默认有效期为样片完成后 24 小时，实际截止时间以 `draft_expires_at` 为准；请提前提交转换请求，排队期间过期也会导致转换失败\n\n**暂不可用时：** 服务暂不可用时可能返回 503；若错误码为 `draft_unavailable`，可稍后重试，或去掉 `draft` 按普通模式生成",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",

@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Video Edit",
-        "description": "- Video editing on an input video — replace subjects, add/remove objects, restyle or repaint regions\n- Prompt must state the editing intent (e.g. \"Edit the video: remove the background music of @video1\")\n- Input the video to edit (required) + optional reference images (0–30) + reference videos (up to 10 in total) + reference audio (0–10)\n- **Now supports AIGC realistic human materials**\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "description": "- Video editing on an input video — replace subjects, add/remove objects, restyle or repaint regions\n- Prompt must state the editing intent (e.g. \"Edit the video: remove the background music of @video1\")\n- Input the video to edit (required) + optional reference images (0–30) + reference videos (up to 10 in total) + reference audio (0–10)\n- **Now supports AIGC realistic human materials**\n- Supports **draft mode**: set `draft: true` to generate a 480p draft first. If you are satisfied, use [Draft-to-Video](/en/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) to convert it into a 1080p final video. The two requests are billed separately\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
         "operationId": "createSeedance25VideoEdit",
         "tags": [
           "Video Generation"
@@ -60,7 +60,22 @@
                     "video_urls": [
                       "https://example.com/original.mp4"
                     ],
-                    "duration": -1
+                    "duration": -1,
+                    "quality": "720p"
+                  }
+                },
+                "draft": {
+                  "summary": "Draft mode (480p)",
+                  "value": {
+                    "model": "seedance-2.5-video-edit",
+                    "prompt": "Edit the video: remove all passers-by in @video1, keep only the main character",
+                    "video_urls": [
+                      "https://example.com/original.mp4"
+                    ],
+                    "quality": "480p",
+                    "generate_audio": true,
+                    "content_filter": true,
+                    "draft": true
                   }
                 }
               }
@@ -179,6 +194,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service temporarily unavailable; draft_unavailable may be returned when draft mode is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Draft mode temporarily unavailable",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -259,7 +296,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Video resolution, defaults to `720p`\n\n**Options:**\n- `480p`: Lower clarity, lower cost\n- `720p`: Standard clarity, this is the default\n- `1080p`: Ultra HD clarity",
+            "description": "Video resolution, defaults to `720p`\n\n**Options:**\n- `480p`: Lower clarity, lower cost\n- `720p`: Standard clarity, this is the default\n- `1080p`: Ultra HD clarity\n\n**Draft mode:** When `draft` is `true`, only `480p` is supported. If omitted, `quality` automatically defaults to `480p`",
             "enum": [
               "480p",
               "720p",
@@ -267,6 +304,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Draft mode switch, defaults to `false`\n\n**Details:**\n- `true`: Generate a 480p draft first, with faster turnaround and standard 480p billing\n- When enabled, `quality` must be `480p` or omitted. Any other resolution returns a 400 parameter error\n- Must be a top-level request body field. Placing it inside `model_params` returns a 400 parameter error\n\n**Convert to a final video:**\n- Once the draft is complete, [querying the task](/en/api-manual/task-management/get-task-detail) returns `draft_expires_at`\n- Before that time, pass the draft task ID to [Seedance 2.5 Draft-to-Video](/en/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) to generate a 1080p final video with the same content\n- The final video and draft are billed separately. If you are not satisfied with the draft, skip conversion and pay only for the draft\n- The default validity period is 24 hours after the draft completes; the actual deadline is `draft_expires_at`. Submit the conversion request early: expiration while queued also causes conversion to fail\n\n**Temporary unavailability:** A 503 error may be returned when the service is temporarily unavailable. If the error code is `draft_unavailable`, retry later or remove `draft` to use normal generation mode",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",
