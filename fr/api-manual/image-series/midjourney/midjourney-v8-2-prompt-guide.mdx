@@ -1,23 +1,45 @@
 ---
 title: "Midjourney V8.2 Guide des paramètres de prompt"
 icon: "book-open"
-description: "Tous les paramètres disponibles pour le modèle Midjourney V8.2 dans les prompts, y compris les plages de valeurs, les valeurs par défaut, les dépendances et les conflits"
+description: "Tous les paramètres disponibles pour le modèle Midjourney V8.2 dans les prompts, y compris les plages de valeurs, les valeurs par défaut, les dépendances, les conflits, les règles pour les images en entrée, les limites de longueur et le flux de travail des tâches"
+---
+
+## Ce qui a changé depuis V8.1
+
+Midjourney V8.2 est devenu la version par défaut le **24 juillet 2026**. Officiellement, il s'agit d'une mise à jour axée sur l'esthétique, la qualité d'image et la personnalisation : les résultats sont plus créatifs, audacieux et sophistiqués, et les résultats aberrants de faible qualité sont beaucoup plus rares. Sur cette plateforme, V8.2 utilise **les mêmes sept identifiants de modèle, les mêmes points de terminaison et les mêmes prix** que V8.1 ; la migration se résume donc à un changement d'une ligne : remplacez `mj-v8.1` par `mj-v8.2` dans le champ `model`. Les prompts n'ont pas besoin d'être réécrits.
+
+| Élément | V8.1 | V8.2 |
+|---------|------|------|
+| Identifiants de modèle | `mj-v8.1`, `mj-v8.1-variation`, `-remix`, `-edit`, `-retexture`, `-upload-paint`, `-remove-bg` | Les mêmes sept, avec le préfixe `mj-v8.2` |
+| Niveau de détail `--q` / `--quality` | `1` ou `4` uniquement | `1` – `4` |
+| Vitesse `turbo` (2x) | Non acceptée | Acceptée pour la génération d'images et pour remix / edit / retexture / upload-paint |
+| Drapeaux non pris en charge | Retirés silencieusement | Transmis ; le fournisseur les rejette avec une erreur explicite et les crédits réservés sont remboursés |
+| `--oref` / `--ow` | Acceptés | Non pris en charge (rejetés par le fournisseur) |
+| Prix et multiplicateurs | 5.4 / 8.1 crédits, `turbo` x2, `hd` x1.5 | Identiques |
+| Tâches dérivées (variation / remix / edit) | Rendues par le moteur V7 chez le fournisseur | Idem |
+
+<Note>
+La sortie officielle de Midjourney V8.2 a également introduit le **Edit Model** (édition basée sur des instructions et génération à partir de 4 images de référence au maximum, remplaçant Omni Reference, Character Reference et l'outil Retexture). Le Edit Model n'est pas encore exposé sur cette route. `mj-v8.2-edit` et `mj-v8.2-upload-paint` sont des éditions sur canevas (`canvas` + `img_pos` + `mask` facultatif), et `mj-v8.2-retexture` est l'outil retexture classique.
+</Note>
+
 ---
 
 ## Aperçu des paramètres
 
 | Paramètre | Syntaxe | Type | Plage | Par défaut | Description |
 |-----------|---------|------|-------|------------|-------------|
-| Rapport d'aspect | `--ar W:H` | Ratio entier | Tout ratio d'entiers positifs | 1:1 | Rapport d'aspect de l'image |
+| Rapport d'aspect | `--ar W:H` | Ratio entier | Tout ratio d'entiers positifs, sans décimales | 1:1 | Rapport d'aspect de l'image |
 | Chaos | `--c N` | int | 0 - 100 | 0 | Diversité des résultats générés |
 | Seed | `--seed N` | int | 0 - 4294967295 | Aléatoire | Fixer le seed pour des résultats reproductibles |
 | Stylisation | `--s N` | int | 0 - 1000 | 100 | Intensité du style artistique |
 | Expérimental | `--exp N` | int | 0 - 100 | 0 | Effet esthétique, cumulable avec la stylisation |
 | Qualité (niveau de détail) | `--quality N` / `--q N` | int | 1 - 4 | 1 | Niveau de détail du rendu ; sans surcoût. V8.1 n'accepte que 1 / 4 |
 | Mode Raw | `--raw` | Drapeau | — | Désactivé | Désactiver l'embellissement par défaut |
+| Prompt négatif | `--no item1, item2` | Texte | — | — | Éléments à exclure de l'image |
 | Poids de l'image | `--iw N` | float | 0 - 3 | 1 | Influence du prompt image |
 | Référence de style | `--sref [URL]` | URL | — | — | Correspondre au style visuel |
 | Poids du style | `--sw N` | int | 0 - 1000 | 100 | Force de la référence de style |
+| Personnalisation | `--p [code]` | Code | — | — | Appliquer un code de profil de personnalisation Midjourney, transmis tel quel |
 | Mosaïque | `--tile` | Drapeau | — | Désactivé | Générer des motifs répétitifs sans couture |
 | Weird | `--weird N` / `--w N` | int | 0 - 3000 | 0 | Esthétique non conventionnelle et expérimentale |
 
@@ -36,13 +58,13 @@ Deux réglages ne s'écrivent **pas** dans le prompt — ils sont contrôlés vi
 
 ### Rapport d'aspect `--ar`
 
-Définit le rapport d'aspect de l'image. Seuls les ratios entiers sont pris en charge.
+Définit le rapport d'aspect de l'image. Seuls les ratios entiers sont pris en charge ; les décimales sont rejetées (écrivez `139:100`, pas `1.39:1`).
 
 ```
 un chat --ar 16:9
 ```
 
-Valeurs courantes : `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `2:3`. Les ratios extrêmes peuvent produire des résultats imprévisibles.
+Valeurs courantes : `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `2:3`. Les ratios extrêmes peuvent produire des résultats imprévisibles. Voir [Qualité de sortie](#qualité-de-sortie) pour les dimensions en pixels produites par chaque ratio.
 
 ### Chaos `--chaos` / `--c`
 
@@ -86,13 +108,14 @@ un chat --exp 25
 
 ### Qualité `--quality` / `--q`
 
-Définit le niveau de détail du rendu. Plage 1 - 4, par défaut 1. Des valeurs plus élevées produisent des détails plus riches et un temps de rendu plus long. Le drapeau est transmis tel quel au fournisseur et **ne change pas le prix**.
+Définit le niveau de détail du rendu. Plage 1 - 4, par défaut 1. Le drapeau est transmis tel quel au fournisseur et **ne change pas le prix**.
 
 ```
 un chat --q 3
 ```
 
-- V8.2 accepte `1` / `2` / `3` / `4` ; V8.1 n'accepte que `1` / `4`
+- V8.2 accepte `1` / `2` / `3` / `4` ; V8.1 n'accepte que `1` / `4`. Les valeurs hors plage sont rejetées par le fournisseur (`quality: should in [1 2 3 4]`), la tâche échoue et les crédits réservés sont remboursés
+- La table de paramètres officielle de Midjourney ne mentionne pas `--q` pour V8 ; l'effet visuel est donc fourni par le fournisseur au mieux de ses possibilités — comparez quelques valeurs sur vos propres prompts avant de vous y fier
 - Uniquement pour le point de terminaison de génération d'images ; les tâches dérivées (variation, remix, édition, etc.) héritent de l'image source
 
 ### Mode Raw `--raw`
@@ -101,6 +124,14 @@ Désactive l'embellissement par défaut pour une adhérence plus stricte aux dé
 
 ```
 photo de produit --raw
+```
+
+### Prompt négatif `--no`
+
+Liste les éléments qui ne doivent pas apparaître dans l'image. Séparez plusieurs éléments par des virgules. Écrire « pas de fruits » ou « sans fruits » dans la description ne fonctionne pas — Midjourney traite ces mots comme du contenu — ; utilisez donc le drapeau à la place.
+
+```
+still life gouache painting --no fruit, flowers
 ```
 
 ### Seed `--seed`
@@ -112,7 +143,8 @@ un chat --seed 23453422
 ```
 
 - Plage : 0 - 4294967295
-- Même seed + même prompt → résultats similaires (non identiques)
+- Même seed + même prompt → résultats identiques à environ 99 % sur V8.x (chiffre officiel) ; de petits changements de paramètres modifient tout de même l'image
+- Ne combinez pas les seeds avec la vitesse `turbo` : turbo est optimisé pour le débit et le verrouillage du seed n'y est pas fiable
 
 ---
 
@@ -138,6 +170,7 @@ https://example.com/ref.jpg description textuelle --iw 1.5
 - Maximum 20 prompts image
 - Formats pris en charge : `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg`
 - Non disponible avec la vitesse `draft` (utilisez `fast`)
+- Les URL doivent être accessibles publiquement en quelques secondes, voir [Exigences relatives aux images en entrée](#exigences-relatives-aux-images-en-entrée)
 
 ### Poids de l'image `--iw`
 
@@ -158,6 +191,7 @@ un chat --sref https://example.com/style.jpg
 - Plusieurs prises en charge : `--sref URL1 URL2`
 - Style aléatoire pris en charge : `--sref random` (renvoie un code numérique après génération, réutilisable)
 - Maximum 20 srefs
+- Le prompt textuel doit décrire le contenu, pas donner des instructions (« un chat », pas « fais ressembler ceci à la référence »)
 
 ### Poids du style `--sw`
 
@@ -167,20 +201,32 @@ Contrôle l'influence de la référence de style. Plage 0 - 1000, par défaut 10
 un chat --sref https://example.com/style.jpg --sw 500
 ```
 
+### Personnalisation `--p`
+
+Applique un profil de personnalisation Midjourney ou un code de moodboard. Le drapeau est transmis sans modification. Les profils sont créés et notés sur midjourney.com ; l'API ne peut ni les créer ni les lister. N'utilisez donc que des codes que vous possédez déjà et validez d'abord l'effet sur un petit lot.
+
+```
+un chat --p abc123
+```
+
 ---
 
 ## Modes de vitesse
 
-Le mode de vitesse est contrôlé via le champ API `model_params.speed` (n'écrivez pas `--draft` / `--fast` dans le prompt).
+Le mode de vitesse est contrôlé via le champ API `model_params.speed` (n'écrivez pas `--draft` / `--fast` / `--turbo` dans le prompt).
 
 | Mode | Description | Coût |
 |------|-------------|------|
-| `draft` | Renvoie 24 images d'esquisse légères en 0.5K en une seule exécution. Uniquement pour le point de terminaison de génération d'images. | Même multiplicateur que fast |
+| `draft` | Renvoie 24 images d'esquisse légères en 512 px en une seule exécution. Uniquement pour le point de terminaison de génération d'images. | Même multiplicateur que fast |
 | `fast` | Mode standard (par défaut), 4 images par génération | Standard |
 | `turbo` | Mode turbo, génération plus rapide, 4 images par génération | 2x |
 
 <Note>
-Contrairement à V7, le mode `draft` de V8.2 n'est **pas** à moitié prix — il utilise le même multiplicateur que `fast`. Le mode draft renvoie 24 petites esquisses en une seule exécution ; choisissez celles que vous préférez et relancez-les en pleine qualité. Le mode draft ne peut pas être combiné avec la qualité `hd`.
+Contrairement à V7, le mode `draft` de V8.2 n'est **pas** à moitié prix — il utilise le même multiplicateur que `fast`. Le mode draft renvoie 24 petites esquisses en une seule exécution ; choisissez celles que vous préférez et relancez-les en pleine qualité. Le mode draft ne peut pas être combiné avec la qualité `hd`, et `draft` + `turbo` ne peuvent pas non plus être combinés (`speed` est une valeur unique).
+</Note>
+
+<Note>
+La documentation publique de Midjourney indique que Turbo n'est pas disponible sur V8. Le canal fournisseur utilisé par cette plateforme accepte bien `turbo` pour V8.2 (vérifié en production, facturé 2x). Si le fournisseur venait à refuser une requête turbo, la tâche échoue avec le message du fournisseur et les crédits réservés sont remboursés.
 </Note>
 
 ---
@@ -191,11 +237,33 @@ La résolution de sortie est contrôlée via le paramètre de premier niveau `qu
 
 | Valeur | Résolution | Coût |
 |--------|------------|------|
-| `standard` | Résolution standard (par défaut) | 1x |
-| `hd` | Sortie HD native 2K | 1.5x |
+| `standard` | Résolution standard, environ 1 MP (par défaut) | 1x |
+| `hd` | Sortie HD native, environ 4 MP | 1.5x |
 
-- Le multiplicateur de qualité est **combiné (multiplié)** avec le multiplicateur de vitesse.
-- `hd` est **incompatible** avec la vitesse `draft`.
+Dimensions de sortie approximatives par rapport d'aspect (chiffres officiels V8.2 ; les dimensions HD exactes peuvent varier légèrement) :
+
+| Rapport d'aspect | `standard` | `hd` |
+|------------------|-----------|------|
+| 1:1 | 1024 x 1024 | 2048 x 2048 |
+| 4:3 | 1232 x 928 | 2464 x 1856 |
+| 2:3 | 896 x 1344 | 1792 x 2688 |
+| 16:9 | 1456 x 816 | 2912 x 1632 |
+
+- Le multiplicateur de qualité est **combiné (multiplié)** avec le multiplicateur de vitesse : `turbo` + `hd` = 3x
+- `hd` est **incompatible** avec la vitesse `draft`
+- Il n'existe pas de point de terminaison d'upscale distinct sur V8.2 ; utilisez `hd` lorsque vous avez besoin de la sortie 2K
+
+---
+
+## Limites de longueur du prompt
+
+| Point de terminaison | Limite | Remarques |
+|----------------------|--------|-----------|
+| `mj-v8.2` (génération d'images) | **1024 caractères de description textuelle**, imposés par le fournisseur ; l'API accepte jusqu'à 2048 caractères au total | Le fournisseur ne compte que la description, une fois les URL d'images et les `--flags` retirés. La marge supplémentaire est destinée aux URL et aux paramètres |
+| `mj-v8.2-remix` / `-edit` / `-retexture` / `-upload-paint` | 8100 caractères | Le prompt est envoyé comme instruction d'édition ; la règle des 1024 ne s'applique pas |
+| `mj-v8.2-variation` / `-remove-bg` | — | `prompt` est ignoré |
+
+Une description trop longue est rejetée par le fournisseur avec `v8系列模型提示词长度限制为1024` ; la tâche échoue et les crédits réservés sont remboursés.
 
 ---
 
@@ -217,9 +285,11 @@ Les paramètres suivants nécessitent d'autres paramètres pour prendre effet :
 | Paramètre A | Paramètre B | Description |
 |-------------|-------------|-------------|
 | Vitesse `draft` | Qualité `hd` | Le mode draft ne peut pas être combiné avec HD |
+| Vitesse `draft` | Vitesse `turbo` | `speed` est une valeur unique ; 24 esquisses en vitesse turbo ne sont pas disponibles |
 | Vitesse `draft` | Prompt image / `--sref` | Les références d'image nécessitent `fast` |
 | Prompt image uniquement | `--stylize` / `--exp` | Incompatible sans texte |
 | `--exp` > 25 | `--stylize` | Un `--exp` élevé peut supprimer `--stylize` ; abaissez `--exp` lors de leur combinaison |
+| `--seed` | Vitesse `turbo` | Le verrouillage du seed n'est pas fiable en turbo |
 
 ---
 
@@ -233,12 +303,25 @@ V8.2 ne retire que les drapeaux qui fausseraient le verrouillage de version ou l
 | `--fast` / `--turbo` / `--draft` / `--relax` | Retiré — utilisez `model_params.speed` |
 | `--hd` | Retiré — utilisez le paramètre de premier niveau `quality` |
 | `--bs` / `--batchsize` | Retiré — la taille de lot n'est pas configurable |
+| `--edit` | Non disponible — le Edit Model officiel n'est pas exposé sur cette route ; utilisez `mj-v8.2-edit` / `mj-v8.2-upload-paint` pour les éditions sur canevas |
 | `--oref` / `--ow` | Rejeté par le fournisseur (non pris en charge sur V8.2) |
 | `--cref` / `--cw` | Rejeté par le fournisseur (non pris en charge sur V8.2) |
 | `--stop` | Rejeté par le fournisseur |
 | Multi-prompt `::` | Rejeté par le fournisseur |
 | `--sv` | Seul `--sv 6` est accepté, et uniquement avec `--sref` |
 | `--repeat` / `--r`, permutations `{}`, `--stealth` / `--public` | Non pris en charge via API |
+
+---
+
+## Exigences relatives aux images en entrée
+
+Ces règles s'appliquent aux prompts image, aux URL `--sref` et au champ `image_urls` de retexture / upload-paint / remove-bg.
+
+- **URL HTTP(S) publique uniquement.** Les données Base64 et les URL data ne sont pas acceptées.
+- **Le fournisseur télécharge l'image de manière synchrone lors de la création de la tâche et abandonne après environ 10 secondes.** S'il ne parvient pas à télécharger le fichier à temps, la requête échoue avec `400` et aucune tâche n'est créée. Les hébergeurs d'images situés hors de Chine continentale (imgur, ibb, raw.githubusercontent, pinimg, picsum et similaires) échouent presque systématiquement en pratique. Hébergez les images sur un CDN rapide ou téléversez-les d'abord avec l'[API de téléversement de fichiers](/fr/api-manual/file-series/upload-url) et utilisez l'URL renvoyée.
+- Formats pris en charge : `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg`. Gardez des fichiers de taille raisonnable ; les fichiers très volumineux peuvent dépasser le délai de récupération même depuis un hôte accessible.
+- `mj-v8.2-remove-bg` n'accepte pas les liens de résultat signés renvoyés par les tâches Midjourney sur cette plateforme (URL contenant `Expires` / `Signature`). Réhébergez l'image ou utilisez une URL non signée. Retexture et upload-paint acceptent ces liens.
+- Les références d'image ne sont pas disponibles en vitesse `draft`.
 
 ---
 
@@ -256,6 +339,7 @@ V8.2 ne retire que les drapeaux qui fausseraient le verrouillage de version ou l
 - Un **espace** est requis avant `--`
 - Ne pas utiliser de ponctuation dans les paramètres
 - Aucun texte ne peut suivre après les paramètres
+- Pour faire apparaître des mots dans l'image, entourez-les de guillemets doubles : `a neon sign that says "OPEN" --ar 3:2`
 
 ### Exemples
 
@@ -271,6 +355,51 @@ a yellow Persian cat --ar 2:3, --s 50 ← ponctuation dans les paramètres
 a yellow Persian cat --ar 2:3 more description ← texte après les paramètres
 ```
 </CodeGroup>
+
+---
+
+## Flux de travail des tâches
+
+Les sept modèles V8.2 sont asynchrones et facturés à l'appel.
+
+1. **Soumettre** — `POST /v1/images/generations` répond immédiatement avec un `id` de tâche, `status: processing` et `usage.credits_reserved`. Le job fournisseur est créé en arrière-plan.
+2. **Interroger** — `GET /v1/tasks/{task_id}` ([Interroger l'état d'une tâche](/fr/api-manual/task-management/get-task-detail)). Interrogez toutes les 3 à 5 secondes avec un plafond côté client d'environ 20 minutes ; ne resoumettez pas le même prompt tant qu'une tâche est encore en `processing`.
+3. **Lire le résultat** — lorsque `status` vaut `completed`, `results` contient les URL des images : 4 pour `fast` / `turbo`, 24 pour `draft`. `usage.cost` indique le montant final facturé.
+4. **Sauvegarder les images** — les liens de résultat sont valides **30 jours**. Téléchargez ou réhébergez tout ce que vous souhaitez conserver.
+5. **Callback facultatif** — passez `callback_url` (HTTPS, hôte public) pour être notifié lors de `completed` / `failed` / `cancelled`. Les callbacks sont réessayés 3 fois avec backoff ; considérez-les comme une indication et confirmez par l'interrogation de la tâche.
+
+| Statut | Signification | Final ? |
+|--------|---------------|---------|
+| `pending` | Acceptée, en attente de la file du fournisseur | Non |
+| `processing` | Rendu en cours | Non |
+| `completed` | Images prêtes dans `results` | Oui |
+| `failed` | Erreur du fournisseur, rejet de paramètre, modération ou échec de récupération ; le message figure dans `error` et les crédits réservés sont remboursés | Oui |
+| `cancelled` | Annulée par l'utilisateur | Oui |
+
+Les tâches échouées sont intégralement remboursées, y compris les rejets de paramètres par le fournisseur (`--oref`, `--q` hors plage, description trop longue) et les échecs de récupération d'image. La seule exception est la modération de contenu, voir ci-dessous. Les codes d'erreur et les conseils de nouvelle tentative sont listés sur la page [Codes d'erreur](/fr/api-manual/task-management/error-codes).
+
+### Les tâches dérivées utilisent le moteur V7
+
+Les tâches de variation, de remix et d'édition sur canevas construites à partir d'une image source V8.2 sont rendues par le moteur V7 de Midjourney chez le fournisseur (comportement officiel de Midjourney pour les jobs dérivés basés sur V8). Le résultat peut différer légèrement en style de l'image source. La tarification est inchangée. Les tâches sources doivent être des tâches terminées de la série `mj-v8.2` appartenant au même compte ; les sources V8.1 ne sont pas acceptées.
+
+---
+
+## FAQ
+
+**Dois-je modifier mes prompts en passant de V8.1 ?**
+Non. Changez la valeur de `model` ; les prompts, `model_params` et les prix sont inchangés. Seuls `--oref` / `--ow` ne fonctionnent plus, et `--q` accepte `2` et `3` en plus de `1` et `4`.
+
+**Pourquoi mon prompt image échoue-t-il avec un 400 avant même qu'une tâche soit créée ?**
+Le fournisseur n'a pas pu télécharger l'image dans le délai imparti. Déplacez le fichier vers un hôte rapide et accessible publiquement, ou utilisez l'API de téléversement de fichiers, puis réessayez.
+
+**Puis-je obtenir 24 esquisses draft en vitesse turbo ?**
+Non. `speed` est une valeur unique ; draft s'exécute toujours au multiplicateur fast.
+
+**`--q 4` est-il plus lent ou plus cher ?**
+Il n'est pas facturé différemment. Le temps de rendu peut être légèrement plus long ; le gain visuel dépend du prompt.
+
+**Puis-je upscaler une image V8.2 ?**
+Il n'y a pas de point de terminaison d'upscale sur V8.2. Générez plutôt avec `quality: "hd"` pour une sortie 2K native.
 
 ---
 
