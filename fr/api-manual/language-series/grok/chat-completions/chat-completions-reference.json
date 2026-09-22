@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "Complétion de conversation Grok (tous modèles, paramètres complets)",
-        "description": "- Point de terminaison Chat Completions compatible OpenAI pour les modèles de texte xAI Grok ; sélection du modèle via le paramètre `model` (toutes les valeurs figurent dans le tableau du paramètre `model`)\n- Fenêtre de contexte de 500K tokens ; à partir de 200K tokens dans le prompt, tous les types de tokens sont facturés au double du tarif\n- La mise en cache du prompt est automatique : les tokens servis depuis le cache sont facturés au tarif d'entrée en cache, moins élevé\n- Modes synchrone et streaming (SSE)\n- Les appels d'outils `function` classiques sont pris en charge ; les outils côté serveur de xAI sont disponibles uniquement via la [Responses API](../responses/responses-reference)",
+        "description": "- Point de terminaison Chat Completions compatible OpenAI pour les modèles de texte xAI Grok ; sélection du modèle via le paramètre `model` (toutes les valeurs figurent dans le tableau du paramètre `model`)\n- Fenêtre de contexte de 500K tokens ; à partir de 200K tokens dans le prompt, tous les types de tokens sont facturés au double du tarif\n- La mise en cache du prompt est automatique : les tokens servis depuis le cache sont facturés au tarif d'entrée en cache, moins élevé\n- Modes synchrone et streaming (SSE)\n- Les appels `function` classiques sont pris en charge ; pour les outils côté serveur comme la recherche web et la recherche X, utilisez de préférence la [Responses API](../responses/responses-reference).",
         "operationId": "grokChatCompletionsReference",
         "tags": [
           "Complétion de chat"
@@ -38,6 +38,23 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "Raisonnement approfondi": {
+                  "summary": "Grok 4.7 — Raisonnement approfondi",
+                  "value": {
+                    "model": "grok-4.7",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Explique la mise en cache des prompts en une phrase."
+                      }
+                    ],
+                    "reasoning_effort": "xhigh",
+                    "max_tokens": 2048,
+                    "prompt_cache_key": "grok-session-001"
+                  }
+                }
               }
             }
           }
@@ -174,12 +191,13 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Modèle à appeler :\n\n| ID du modèle | Positionnement |\n|---|---|\n| `grok-4.6` | Modèle xAI de raisonnement et d'appel d'outils, fenêtre de contexte de 500K ; ajoute le niveau de raisonnement `xhigh` ; connaissances arrêtées au 2026-02-01 |\n| `grok-4.5` | Modèle xAI de raisonnement et d'appel d'outils, fenêtre de contexte de 500K ; niveaux de raisonnement jusqu'à `high` (`xhigh` est accepté mais rétrogradé en `high`) |",
+            "description": "Modèle à appeler :\n\n| ID du modèle | Positionnement |\n|---|---|\n| `grok-4.7` | Modèle xAI de raisonnement et d'appel d'outils ; contexte de 500K tokens ; prend en charge `xhigh` ; connaissances arrêtées à 2026-05 |\n| `grok-4.6` | Modèle xAI de raisonnement et d'appel d'outils, fenêtre de contexte de 500K ; ajoute le niveau de raisonnement `xhigh` ; connaissances arrêtées au 2026-02-01 |\n| `grok-4.5` | Modèle xAI de raisonnement et d'appel d'outils, fenêtre de contexte de 500K ; niveaux de raisonnement jusqu'à `high` (`xhigh` est accepté mais rétrogradé en `high`) |",
             "enum": [
+              "grok-4.7",
               "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "messages": {
             "type": "array",
@@ -219,7 +237,7 @@
               "xhigh"
             ],
             "default": "high",
-            "description": "Profondeur de raisonnement : `low` / `medium` / `high` (par défaut) / `xhigh`. Le raisonnement ne peut pas être désactivé. `xhigh` n'est pris en charge que par `grok-4.6` — `grok-4.5` accepte la valeur mais la rétrograde en `high`. Les tokens de raisonnement sont facturés comme des tokens de sortie."
+            "description": "Niveau de raisonnement : `low` / `medium` / `high` (par défaut) / `xhigh`. Le raisonnement ne peut pas être désactivé. `grok-4.7` et `grok-4.6` prennent en charge `xhigh` ; `grok-4.5` accepte cette valeur mais la traite comme `high`. Les tokens de raisonnement sont facturés comme des tokens de sortie."
           },
           "temperature": {
             "type": "number",
@@ -233,7 +251,7 @@
           },
           "tools": {
             "type": "array",
-            "description": "Définitions d'outils `function` OpenAI classiques (appels de fonctions côté client, sans frais supplémentaires par appel). Les outils côté serveur de xAI sont disponibles uniquement via la Responses API.",
+            "description": "Cette page décrit les outils OpenAI classiques de type `function` (appels de fonctions côté client, sans frais d'appel d'outil côté serveur). Consultez la Responses API pour configurer les outils côté serveur, notamment les recherches web et X, et comprendre leur utilisation.",
             "items": {
               "$ref": "#/components/schemas/FunctionTool"
             }
@@ -253,6 +271,11 @@
                 "type": "object"
               }
             ]
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "Clé facultative de routage du cache. Une valeur stable pour une même conversation ou des requêtes partageant le même préfixe de prompt peut améliorer les chances de réutilisation du cache. Aucun résultat n'est garanti et les règles de facturation du cache restent inchangées. Consultez cached_tokens dans usage pour connaître les résultats réels.",
+            "example": "grok-session-001"
           }
         }
       },
@@ -290,7 +313,7 @@
             "enum": [
               "function"
             ],
-            "description": "Type d'outil ; le point de terminaison Chat Completions n'accepte que `function`"
+            "description": "Type d'un outil de fonction côté client."
           },
           "function": {
             "type": "object",
@@ -309,7 +332,7 @@
           "model": {
             "type": "string",
             "description": "Nom du modèle réellement utilisé",
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "object": {
             "type": "string",

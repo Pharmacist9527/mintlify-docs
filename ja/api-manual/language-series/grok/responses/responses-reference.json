@@ -27,7 +27,7 @@
     "/v1/responses": {
       "post": {
         "summary": "Grok Responses（全モデル、完全なパラメータ）",
-        "description": "- xAI Grok テキストモデル向けの OpenAI 互換 Responses エンドポイント。モデルは `model` パラメータで選択（全指定値は `model` パラメータの対照表を参照）\n- コンテキストウィンドウ 500K トークン。プロンプトが 200K トークン以上になると、すべてのトークン種別が 2 倍の料金で課金されます\n- プロンプトキャッシュは自動的に有効：キャッシュにヒットした入力トークンはより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- xAI のサーバーサイドツールは xAI のインフラ上で実行され、成功した呼び出しごとに課金されます：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`\n- 通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません",
+        "description": "- xAI Grok テキストモデル向けの OpenAI 互換 Responses エンドポイント。モデルは `model` パラメータで選択（全指定値は `model` パラメータの対照表を参照）\n- コンテキストウィンドウ 500K トークン。プロンプトが 200K トークン以上になると、すべてのトークン種別が 2 倍の料金で課金されます\n- プロンプトキャッシュは自動的に有効：キャッシュにヒットした入力トークンはより安いキャッシュ料金で課金されます\n- 同期モードとストリーミング（SSE）モードに対応\n- xAI のサーバーサイドツールは xAI のインフラ上で実行されます：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`。X Search は取得した投稿数とユーザープロフィール数に基づき、それ以外は成功した呼び出し回数に基づいて課金されます。\n- 通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません\n- xAI の公式仕様では、`grok-4.7` はデフォルトで `encrypted_content` を含む `reasoning` 項目を返します。実際に返されるフィールドは利用する接続先のレスポンスを確認してください。",
         "operationId": "grokResponsesReference",
         "tags": [
           "Responses"
@@ -38,13 +38,41 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "深い推論": {
+                  "summary": "Grok 4.7 — 深い推論",
+                  "value": {
+                    "model": "grok-4.7",
+                    "input": "プロンプトキャッシュとは何かを一文で説明してください。",
+                    "reasoning": {
+                      "effort": "xhigh"
+                    },
+                    "max_output_tokens": 2048,
+                    "prompt_cache_key": "grok-session-001"
+                  }
+                },
+                "X 検索": {
+                  "summary": "Grok 4.7 — X 検索",
+                  "value": {
+                    "model": "grok-4.7",
+                    "input": "X で SpaceX の最新の打ち上げ発表を検索し、出典リンクを示してください。",
+                    "tools": [
+                      {
+                        "type": "x_search"
+                      }
+                    ],
+                    "tool_choice": "required",
+                    "max_output_tokens": 2048
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "レスポンス生成成功（JSON オブジェクト、または `stream=true` の場合は `response.completed` で終わる SSE イベントストリーム）",
+            "description": "レスポンスが返されました。status も確認してください。生成完了は completed、出力上限などによる未完了は incomplete、失敗は failed です。stream=true の場合は SSE ストリームとなるため、終端レスポンスの status と usage を読み取ってください。",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,12 +202,13 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "呼び出すモデル：\n\n| モデル ID | 位置づけ |\n|---|---|\n| `grok-4.6` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K；`xhigh` 推論レベルに追加対応；知識のカットオフは 2026-02-01 |\n| `grok-4.5` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K；推論レベルは `high` まで（`xhigh` は受理されますが `high` に降格されます） |",
+            "description": "呼び出すモデル：\n\n| モデル ID | 位置づけ |\n|---|---|\n| `grok-4.7` | xAI の推論・ツール呼び出しモデル。500K トークンのコンテキストウィンドウ。`xhigh` 対応。知識のカットオフ：2026-05 |\n| `grok-4.6` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K；`xhigh` 推論レベルに追加対応；知識のカットオフは 2026-02-01 |\n| `grok-4.5` | xAI の推論 + ツール呼び出しモデル、コンテキストウィンドウ 500K；推論レベルは `high` まで（`xhigh` は受理されますが `high` に降格されます） |",
             "enum": [
+              "grok-4.7",
               "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "input": {
             "description": "モデルへの入力：単純な文字列、または OpenAI Responses の入力アイテムの配列（例：`{\"role\":\"user\",\"content\":[...]}`）。",
@@ -198,7 +227,7 @@
           },
           "stream": {
             "type": "boolean",
-            "description": "ストリーミングでレスポンスを返すかどうか（SSE イベント。`response.completed` で終了）。デフォルトは `false`。",
+            "description": "SSE によるストリーミング出力の有無。デフォルトは false。終端レスポンスの status と usage を確認してください。completed は生成完了を表し、出力上限などに達した場合は incomplete になることがあります。response.completed イベントだけを待たないでください。",
             "default": false,
             "example": false
           },
@@ -209,7 +238,7 @@
           },
           "reasoning": {
             "type": "object",
-            "description": "推論の深さの制御。オブジェクト形式：`{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`。既定値は `high` で、推論は無効化できません。`xhigh` は `grok-4.6` のみ対応で、`grok-4.5` は値を受理しますが `high` に降格します。推論トークンは出力トークンとして課金され、`usage.output_tokens_details.reasoning_tokens` に計上されます。",
+            "description": "推論の深さをオブジェクトで指定します：`{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`。デフォルトは `high` で、推論は無効化できません。`grok-4.7` と `grok-4.6` は `xhigh` に対応し、`grok-4.5` は `high` として扱います。推論トークンは出力トークンとして課金され、`usage.output_tokens_details.reasoning_tokens` に記録されます。",
             "properties": {
               "effort": {
                 "type": "string",
@@ -225,7 +254,7 @@
           },
           "tools": {
             "type": "array",
-            "description": "ツールの宣言。xAI のサーバーサイドツール（成功した呼び出しごとに課金。料金はロングコンテキストの倍率の影響を受けません）：\n\n| ツールタイプ | 機能 | 1 回あたりの料金 |\n|---|---|---|\n| `web_search` | インターネットを検索し、ウェブページを閲覧 | $0.005 |\n| `x_search` | X の投稿・プロフィール・スレッドを検索 | $0.005 |\n| `code_execution` | サンドボックス内で Python を実行（`code_interpreter` もエイリアスとして使用可能） | $0.005 |\n| `attachment_search` | 会話に添付されたファイルを検索（入力にファイルが含まれる場合は自動的に有効になることがあります） | $0.01 |\n| `collections_search` | アップロード済みのドキュメントコレクションを検索（`file_search` もエイリアスとして使用可能） | $0.0025 |\n\n通常の `function` ツール（クライアント側の関数呼び出し）にも対応し、呼び出しごとの追加料金はかかりません。\n\n`image_generation` は現在利用できません：互換性のため宣言は受け付けますが、リクエストがモデルに届く前に削除されます。未認識のツールタイプは `400` で拒否されます。",
+            "description": "ツールの宣言。サーバーサイドツール料金はトークン料金に加算され、長いコンテキストの料金倍率は適用されません：\n\n| ツールの種類 | 機能 | 課金単位と料金 |\n|---|---|---|\n| `web_search` | ウェブ検索とページ閲覧 | 成功した呼び出し 1 回あたり 0.005 米ドル |\n| `x_search` | X の投稿・アカウント・話題を検索 | 取得した投稿 1 件あたり 0.005 米ドル + プロフィール 1 件あたり 0.01 米ドル |\n| `code_execution` | サンドボックスで Python を実行（別名：`code_interpreter`） | 成功した呼び出し 1 回あたり 0.005 米ドル |\n| `attachment_search` | 会話の添付ファイルを検索（入力にファイルがある場合は自動で有効になることがあります） | 成功した呼び出し 1 回あたり 0.01 米ドル |\n| `collections_search` | アップロード済みの文書コレクションを検索（別名：`file_search`） | 成功した呼び出し 1 回あたり 0.0025 米ドル |\n\nX Search の新しい課金方式は `grok-4.5`、`grok-4.6`、`grok-4.7` に適用されます。1 回の呼び出しで複数の投稿が返る場合があり、検索やスレッド取得で返る親投稿・引用投稿も数えます。実際の使用量は `usage.server_side_tool_usage_details` を参照してください。2 つの取得数フィールドが両方ともない場合は、互換処理として成功した呼び出し回数で課金します。\n\n通常の `function` ツールにも対応します（クライアント側の関数呼び出しで、サーバーサイドツールの呼び出し料金はかかりません）。\n\n`image_generation` は現在 Grok 4.5、4.6、4.7 で利用できません。互換性のため宣言は受け付けますが、モデルに届く前にツールが削除されます。認識されない `tools[].type` は `400` を返します。",
             "items": {
               "$ref": "#/components/schemas/Tool"
             },
@@ -250,6 +279,26 @@
                 "type": "object"
               }
             ]
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "任意のキャッシュルーティングキー。同一会話や同じプロンプト接頭辞を共有するリクエストで安定した値を使うと、キャッシュヒットの可能性を高められます。ヒットは保証されず、キャッシュの課金規則も変わりません。実際のヒット数は usage 内の cached_tokens で確認してください。",
+            "example": "grok-session-001"
+          },
+          "include": {
+            "type": "array",
+            "description": "追加で返すレスポンスフィールド。たとえば grok-4.6 では [\"reasoning.encrypted_content\"] で暗号化された推論を要求できます。xAI の仕様では grok-4.7 は明示的な include なしでデフォルトで返します。",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "ツール呼び出し回数の制御値。ゲートウェイはこの値を転送し、ツール料金の事前確保額の見積もりに使います。接続先が回数を厳密に制限するかどうかは、実際の動作で確認する必要があります。X の投稿やユーザープロフィールの取得数は制限されず、料金の上限にもなりません。",
+            "example": 1
           }
         }
       },
@@ -305,7 +354,7 @@
           "model": {
             "type": "string",
             "description": "実際に使用されたモデル名",
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "created_at": {
             "type": "integer",
@@ -314,7 +363,7 @@
           },
           "output": {
             "type": "array",
-            "description": "生成順に並んだ出力アイテム：`reasoning` アイテム（思考の要約）、`web_search_call` / `code_interpreter_call` などのサーバーサイドツール呼び出しアイテム（ステータス `completed` は成功した課金対象の呼び出しを示します）、最後に `output_text` を含む `message` アイテム。",
+            "description": "生成順に並ぶ出力項目：reasoning 項目（暗号化された推論を含む場合があります）、サーバーサイドツールの呼び出し項目、function_call 項目、output_text を含む message 項目。ツール使用量は usage に基づきます。1 回の x_search 呼び出しで複数の投稿やプロフィールの料金が発生する場合があります。",
             "items": {
               "$ref": "#/components/schemas/OutputItem"
             }
@@ -349,7 +398,7 @@
           },
           "status": {
             "type": "string",
-            "description": "出力アイテムのステータス。課金対象は `completed` のツール呼び出しです",
+            "description": "出力項目の実行状態。completed は完了を表します。ツール料金は usage の内訳と合わせて確認してください。",
             "example": "completed"
           },
           "content": {
@@ -358,6 +407,10 @@
             "items": {
               "type": "object"
             }
+          },
+          "encrypted_content": {
+            "type": "string",
+            "description": "type=reasoning の出力項目に含まれる暗号化された推論内容。xAI の仕様では grok-4.7 は include なしでこのフィールドをデフォルトで返します。会話履歴を自分で管理する場合は、完全な reasoning 項目を変更せず次の input に渡してください。実際のレスポンスにフィールドがあるかを確認し、暗号文をデコードしたり変更したりしないでください。"
           }
         }
       },
@@ -404,12 +457,12 @@
           },
           "num_server_side_tools_used": {
             "type": "integer",
-            "description": "このレスポンスにおけるサーバーサイドツール呼び出しの合計回数",
+            "description": "サーバーサイドツールの合計呼び出し回数。X の投稿数やプロフィール数ではなく、X Search の課金単位でもありません。",
             "example": 2
           },
           "server_side_tool_usage_details": {
             "type": "object",
-            "description": "ツールごとの呼び出し回数（一部のサードパーティ経路ではこのオブジェクトが返らない場合があり、その際は完了したツール呼び出しアイテムの数で課金します）",
+            "description": "サーバーサイドツールの使用量内訳。X Search は x_posts_fetched と x_users_fetched があれば優先して使用し、明示的な 0 はその項目の料金がゼロであることを示します。両方のフィールドがない場合は、互換処理として x_search_calls で課金します。このオブジェクト自体がない場合は、完了したツール呼び出しの出力項目を数えます。",
             "properties": {
               "web_search_calls": {
                 "type": "integer",
@@ -417,7 +470,8 @@
               },
               "x_search_calls": {
                 "type": "integer",
-                "example": 0
+                "example": 0,
+                "description": "X Search の呼び出し回数。取得した投稿数やプロフィール数とは異なります。取得数フィールドが返された場合、この呼び出し回数による X Search 課金は行いません。"
               },
               "code_interpreter_calls": {
                 "type": "integer",
@@ -435,6 +489,18 @@
               },
               "mcp_calls": {
                 "type": "integer",
+                "example": 0
+              },
+              "x_posts_fetched": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "取得した X 投稿数。検索やスレッド取得で返される親投稿や引用投稿も含みます。1 投稿あたり 0.005 米ドル。",
+                "example": 0
+              },
+              "x_users_fetched": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "取得した X ユーザープロフィール数。1 プロフィールあたり 0.01 米ドル。使用量フィールドであり、tools[].type に指定するツールの種類ではありません。",
                 "example": 0
               }
             }

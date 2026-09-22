@@ -27,7 +27,7 @@
     "/v1/responses": {
       "post": {
         "summary": "Grok Responses (todos los modelos, parámetros completos)",
-        "description": "- Endpoint Responses compatible con OpenAI para los modelos de texto xAI Grok; selecciona el modelo con el parámetro `model` (todos los valores están en la tabla del parámetro `model`)\n- Ventana de contexto de 500K tokens; a partir de 200K tokens en el prompt, todos los tipos de token se facturan al doble\n- El almacenamiento en caché del prompt es automático: los tokens de entrada servidos desde la caché se facturan a la tarifa de caché, más baja\n- Modos sincrónico y streaming (SSE)\n- Las herramientas del lado del servidor de xAI se ejecutan en la infraestructura de xAI y se facturan por llamada exitosa: `web_search`, `x_search`, `code_execution`, `attachment_search`, `collections_search`\n- También se admiten las herramientas `function` normales (llamadas a funciones del lado del cliente), que no generan coste por llamada",
+        "description": "- Endpoint Responses compatible con OpenAI para los modelos de texto xAI Grok; selecciona el modelo con el parámetro `model` (todos los valores están en la tabla del parámetro `model`)\n- Ventana de contexto de 500K tokens; a partir de 200K tokens en el prompt, todos los tipos de token se facturan al doble\n- El almacenamiento en caché del prompt es automático: los tokens de entrada servidos desde la caché se facturan a la tarifa de caché, más baja\n- Modos sincrónico y streaming (SSE)\n- Las herramientas del servidor se ejecutan en la infraestructura de xAI: `web_search`, `x_search`, `code_execution`, `attachment_search` y `collections_search`. X Search se factura por publicaciones y perfiles obtenidos; las demás herramientas, por llamada exitosa.\n- También se admiten las herramientas `function` normales (llamadas a funciones del lado del cliente), que no generan coste por llamada\n- Según la especificación oficial de xAI, `grok-4.7` devuelve por defecto elementos `reasoning` con `encrypted_content`; los campos realmente devueltos dependen de la ruta utilizada.",
         "operationId": "grokResponsesReference",
         "tags": [
           "Responses"
@@ -38,13 +38,41 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "Razonamiento profundo": {
+                  "summary": "Grok 4.7 — Razonamiento profundo",
+                  "value": {
+                    "model": "grok-4.7",
+                    "input": "Explica el almacenamiento en caché de prompts en una frase.",
+                    "reasoning": {
+                      "effort": "xhigh"
+                    },
+                    "max_output_tokens": 2048,
+                    "prompt_cache_key": "grok-session-001"
+                  }
+                },
+                "Búsqueda en X": {
+                  "summary": "Grok 4.7 — Búsqueda en X",
+                  "value": {
+                    "model": "grok-4.7",
+                    "input": "Busca en X el anuncio de lanzamiento más reciente de SpaceX e incluye el enlace a la fuente.",
+                    "tools": [
+                      {
+                        "type": "x_search"
+                      }
+                    ],
+                    "tool_choice": "required",
+                    "max_output_tokens": 2048
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Respuesta generada con éxito (objeto JSON, o un flujo de eventos SSE que termina con `response.completed` cuando `stream=true`)",
+            "description": "Se ha devuelto una respuesta; comprueba también status: completed si la generación terminó, incomplete en casos como límites de salida y failed si falló. Con stream=true, la respuesta es un flujo SSE; lee status y usage en la respuesta final.",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,12 +202,13 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Modelo a invocar:\n\n| ID del modelo | Posicionamiento |\n|---|---|\n| `grok-4.6` | Modelo xAI de razonamiento y uso de herramientas, ventana de contexto de 500K; añade el nivel de razonamiento `xhigh`; corte de conocimiento 2026-02-01 |\n| `grok-4.5` | Modelo xAI de razonamiento y uso de herramientas, ventana de contexto de 500K; niveles de razonamiento hasta `high` (`xhigh` se acepta pero se degrada a `high`) |",
+            "description": "Modelo a invocar:\n\n| ID del modelo | Posicionamiento |\n|---|---|\n| `grok-4.7` | Modelo xAI de razonamiento y uso de herramientas; contexto de 500K tokens; admite `xhigh`; conocimiento hasta 2026-05 |\n| `grok-4.6` | Modelo xAI de razonamiento y uso de herramientas, ventana de contexto de 500K; añade el nivel de razonamiento `xhigh`; corte de conocimiento 2026-02-01 |\n| `grok-4.5` | Modelo xAI de razonamiento y uso de herramientas, ventana de contexto de 500K; niveles de razonamiento hasta `high` (`xhigh` se acepta pero se degrada a `high`) |",
             "enum": [
+              "grok-4.7",
               "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "input": {
             "description": "Entrada para el modelo: una cadena simple, o un arreglo de elementos de entrada de OpenAI Responses (p. ej. `{\"role\":\"user\",\"content\":[...]}`).",
@@ -198,7 +227,7 @@
           },
           "stream": {
             "type": "boolean",
-            "description": "Indica si se devuelve una respuesta en streaming (eventos SSE que terminan con `response.completed`). Predeterminado `false`.",
+            "description": "Indica si la respuesta se transmite por SSE. Por defecto, false. Lee status y usage en la respuesta final: completed indica generación completada; los límites de salida y situaciones similares pueden producir incomplete. No esperes únicamente un evento response.completed.",
             "default": false,
             "example": false
           },
@@ -209,7 +238,7 @@
           },
           "reasoning": {
             "type": "object",
-            "description": "Control de la profundidad de razonamiento, forma de objeto: `{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`. Por defecto `high`; el razonamiento no se puede desactivar. `xhigh` solo lo admite `grok-4.6`: `grok-4.5` acepta el valor pero lo degrada a `high`. Los tokens de razonamiento se facturan como tokens de salida y se informan en `usage.output_tokens_details.reasoning_tokens`.",
+            "description": "El nivel de razonamiento se indica mediante un objeto: `{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`. El valor predeterminado es `high`; el razonamiento no se puede desactivar. `grok-4.7` y `grok-4.6` admiten `xhigh`; `grok-4.5` lo trata como `high`. Los tokens de razonamiento se facturan como tokens de salida y aparecen en `usage.output_tokens_details.reasoning_tokens`.",
             "properties": {
               "effort": {
                 "type": "string",
@@ -225,7 +254,7 @@
           },
           "tools": {
             "type": "array",
-            "description": "Declaraciones de herramientas. Herramientas del lado del servidor de xAI (facturadas por llamada exitosa; las tarifas no se ven afectadas por el multiplicador de contexto largo):\n\n| Tipo de herramienta | Función | Precio por llamada |\n|---|---|---|\n| `web_search` | Buscar en Internet y consultar páginas web | $0.005 |\n| `x_search` | Buscar publicaciones, perfiles e hilos de X | $0.005 |\n| `code_execution` | Ejecutar Python en un entorno aislado (`code_interpreter` se acepta como alias) | $0.005 |\n| `attachment_search` | Buscar en los archivos adjuntos a la conversación (puede activarse automáticamente cuando la entrada contiene archivos) | $0.01 |\n| `collections_search` | Consultar colecciones de documentos subidas (`file_search` se acepta como alias) | $0.0025 |\n\nTambién se admiten las herramientas `function` normales (llamadas a funciones del lado del cliente), que no generan coste por llamada.\n\n`image_generation` no está disponible actualmente: su declaración se acepta por compatibilidad, pero la herramienta se elimina antes de que la solicitud llegue al modelo. Los tipos de herramienta no reconocidos se rechazan con `400`.",
+            "description": "Declaraciones de herramientas. Las tarifas de herramientas del servidor se suman a las de tokens y no se ven afectadas por el multiplicador de contexto largo:\n\n| Tipo de herramienta | Función | Unidad de facturación y precio |\n|---|---|---|\n| `web_search` | Buscar y consultar páginas web | 0.005 USD por llamada exitosa |\n| `x_search` | Buscar publicaciones, cuentas y temas en X | 0.005 USD por publicación obtenida + 0.01 USD por perfil obtenido |\n| `code_execution` | Ejecutar Python en un entorno aislado (alias: `code_interpreter`) | 0.005 USD por llamada exitosa |\n| `attachment_search` | Buscar en archivos adjuntos de la conversación (puede activarse automáticamente con entradas de archivos) | 0.01 USD por llamada exitosa |\n| `collections_search` | Buscar en colecciones de documentos cargados (alias: `file_search`) | 0.0025 USD por llamada exitosa |\n\nLa nueva facturación de X Search se aplica a `grok-4.5`, `grok-4.6` y `grok-4.7`. Una llamada puede devolver varias publicaciones; también cuentan las publicaciones superiores y citadas de búsquedas o hilos. Consulta el uso real en `usage.server_side_tool_usage_details`. Si faltan ambos contadores de elementos obtenidos, se factura por llamada exitosa por compatibilidad.\n\nTambién se admiten herramientas `function` normales (llamadas a funciones del cliente sin tarifa de llamada a herramientas del servidor).\n\n`image_generation` no está disponible actualmente en Grok 4.5, 4.6 ni 4.7: se acepta la declaración por compatibilidad, pero la herramienta se elimina antes de que la solicitud llegue al modelo. Los valores desconocidos de `tools[].type` devuelven `400`.",
             "items": {
               "$ref": "#/components/schemas/Tool"
             },
@@ -250,6 +279,26 @@
                 "type": "object"
               }
             ]
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "Clave opcional de enrutamiento de caché. Un valor estable para la misma conversación o para solicitudes con el mismo prefijo de prompt puede mejorar la probabilidad de acierto. No se garantiza el acierto ni cambian las reglas de facturación de caché. Consulta cached_tokens en usage para conocer los aciertos reales.",
+            "example": "grok-session-001"
+          },
+          "include": {
+            "type": "array",
+            "description": "Campos adicionales que se solicitan en la respuesta. Por ejemplo, grok-4.6 puede solicitar razonamiento cifrado con [\"reasoning.encrypted_content\"]. Según la especificación de xAI, grok-4.7 lo devuelve por defecto sin include explícito.",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "Valor de control del número de llamadas a herramientas. La pasarela lo reenvía y lo usa para estimar la reserva de tarifas de herramientas; la aplicación estricta del límite depende del comportamiento real de la ruta. Este valor no limita las publicaciones ni los perfiles obtenidos de X y no es un tope de gasto.",
+            "example": 1
           }
         }
       },
@@ -305,7 +354,7 @@
           "model": {
             "type": "string",
             "description": "Nombre del modelo realmente utilizado",
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "created_at": {
             "type": "integer",
@@ -314,7 +363,7 @@
           },
           "output": {
             "type": "array",
-            "description": "Elementos de salida en orden de generación: elementos `reasoning` (resumen del razonamiento), elementos de llamada a herramientas del lado del servidor como `web_search_call` / `code_interpreter_call` (el estado `completed` indica una llamada exitosa y facturable) y, por último, un elemento `message` con contenido `output_text`.",
+            "description": "Elementos en orden de generación: reasoning (puede incluir razonamiento cifrado), llamadas a herramientas del servidor, function_call y message con output_text. El uso de herramientas se indica en usage; una llamada x_search puede generar cargos por varias publicaciones y perfiles.",
             "items": {
               "$ref": "#/components/schemas/OutputItem"
             }
@@ -349,7 +398,7 @@
           },
           "status": {
             "type": "string",
-            "description": "Estado del elemento de salida; solo se facturan las llamadas a herramientas con `completed`",
+            "description": "Estado de ejecución del elemento; completed indica que terminó. Determina los cargos de herramientas a partir del desglose de usage.",
             "example": "completed"
           },
           "content": {
@@ -358,6 +407,10 @@
             "items": {
               "type": "object"
             }
+          },
+          "encrypted_content": {
+            "type": "string",
+            "description": "Razonamiento cifrado en elementos de salida con type=reasoning. Según la especificación de xAI, grok-4.7 devuelve este campo por defecto sin include. Si gestionas el historial, envía el elemento reasoning completo y sin cambios en el siguiente input. Comprueba que el campo esté presente en la respuesta real; no decodifiques ni modifiques el contenido cifrado."
           }
         }
       },
@@ -404,12 +457,12 @@
           },
           "num_server_side_tools_used": {
             "type": "integer",
-            "description": "Número total de llamadas a herramientas del lado del servidor en esta respuesta",
+            "description": "Número total de llamadas a herramientas del servidor, no la cantidad de publicaciones o perfiles de X ni la unidad de facturación de X Search.",
             "example": 2
           },
           "server_side_tool_usage_details": {
             "type": "object",
-            "description": "Recuento de llamadas por herramienta (algunas rutas de terceros pueden omitir este objeto; en ese caso la facturación se basa en contar los elementos de salida de llamadas a herramientas completadas)",
+            "description": "Desglose del uso de herramientas del servidor. X Search se factura preferentemente según x_posts_fetched y x_users_fetched; un 0 explícito implica que ese componente no tiene coste. Si faltan ambos campos, se usa x_search_calls por compatibilidad. Si falta este objeto, se cuentan los elementos de salida de llamadas a herramientas completadas.",
             "properties": {
               "web_search_calls": {
                 "type": "integer",
@@ -417,7 +470,8 @@
               },
               "x_search_calls": {
                 "type": "integer",
-                "example": 0
+                "example": 0,
+                "description": "Número de llamadas a X Search, no de publicaciones o perfiles obtenidos. Si se devuelven los contadores de elementos obtenidos, X Search deja de facturarse por este número de llamadas."
               },
               "code_interpreter_calls": {
                 "type": "integer",
@@ -435,6 +489,18 @@
               },
               "mcp_calls": {
                 "type": "integer",
+                "example": 0
+              },
+              "x_posts_fetched": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Número de publicaciones obtenidas de X, incluidas las publicaciones superiores y citadas devueltas en búsquedas o hilos; 0.005 USD por publicación.",
+                "example": 0
+              },
+              "x_users_fetched": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Número de perfiles obtenidos de X; 0.01 USD por perfil. Es un campo de uso, no un tipo de herramienta para tools[].type.",
                 "example": 0
               }
             }
