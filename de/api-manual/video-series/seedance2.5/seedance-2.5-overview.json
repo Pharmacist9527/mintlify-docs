@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Videogenerierung (Alle Modelle)",
-        "description": "Einheitliche Schnittstelle für die gesamte Seedance 2.5 Serie, Modellauswahl über den `model`-Parameter\n\n**5 Generierungsmodi:**\n- **Text-to-Video**: Videogenerierung aus reiner Textbeschreibung, mit Unterstützung für Websuche-Erweiterung\n- **Image-to-Video**: 1-2 Bilder als Start-/Endframe zur Steuerung der Videogenerierung\n- **Reference-to-Video**: Multimodale Materialien aus Bild + Video + Audio gemischt als Referenz\n- **Video Edit**: Bearbeitet ein Eingabevideo — Motive ersetzen, Objekte hinzufügen oder entfernen, Bereiche umgestalten\n- **Video Extend**: Verlängert ein Eingabevideo nach vorne oder nach hinten\n\n- **Unterstützt jetzt AIGC-Real-Person-Materialien**\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID [zur Abfrage](/de/api-manual/task-management/get-task-detail)\n- Der generierte Video-Link ist 24 Stunden gültig, bitte speichern Sie ihn rechtzeitig",
+        "description": "Einheitliche Schnittstelle für die gesamte Seedance 2.5 Serie, Modellauswahl über den `model`-Parameter\n\n**5 Generierungsmodi:**\n- **Text-to-Video**: Videogenerierung aus reiner Textbeschreibung, mit Unterstützung für Websuche-Erweiterung\n- **Image-to-Video**: 1-2 Bilder als Start-/Endframe zur Steuerung der Videogenerierung\n- **Reference-to-Video**: Multimodale Materialien aus Bild + Video + Audio gemischt als Referenz\n- **Video Edit**: Bearbeitet ein Eingabevideo — Motive ersetzen, Objekte hinzufügen oder entfernen, Bereiche umgestalten\n- **Video Extend**: Verlängert ein Eingabevideo nach vorne oder nach hinten\n\n**Entwurfsmodus:**\n- Mit `draft: true` erstellen Sie in jedem Generierungsmodus zunächst einen 480p-Entwurf – mit kürzerer Generierungszeit und regulärer 480p-Abrechnung\n- Wenn Sie zufrieden sind, wandeln Sie ihn mit [Seedance 2.5 Draft-to-Video](/de/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) in ein finales 1080p-Video mit demselben Inhalt um. Beide Anfragen werden separat abgerechnet; bei Unzufriedenheit können Sie auf die Konvertierung verzichten\n- Die Konvertierung übernimmt die Generierungsparameter des Entwurfs. Erforderlich sind `model` und `source_task_id`; optional sind `output_format` und `callback_url`. Alle Parameter und Abrechnungsregeln finden Sie auf der verlinkten Seite\n\n- **Unterstützt jetzt AIGC-Real-Person-Materialien**\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID [zur Abfrage](/de/api-manual/task-management/get-task-detail)\n- Der generierte Video-Link ist 24 Stunden gültig, bitte speichern Sie ihn rechtzeitig",
         "operationId": "createSeedance25Video",
         "tags": [
           "Videogenerierung"
@@ -57,6 +57,7 @@
                       "https://example.com/first-frame.jpg"
                     ],
                     "duration": 5,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
                   }
                 },
@@ -107,6 +108,19 @@
                     "quality": "720p",
                     "generate_audio": true,
                     "content_filter": true
+                  }
+                },
+                "draft": {
+                  "summary": "Entwurfsmodus (480p, für jeden Generierungsmodus verfügbar)",
+                  "value": {
+                    "model": "seedance-2.5-text-to-video",
+                    "prompt": "Eine Makrokamera fokussiert einen grünen Glasfrosch auf einem Blatt. Der Fokus wandert langsam von seiner glatten Haut zu seinem vollständig durchsichtigen Bauch, in dem ein leuchtend rotes Herz kräftig und rhythmisch schlägt.",
+                    "duration": 8,
+                    "quality": "480p",
+                    "aspect_ratio": "16:9",
+                    "generate_audio": true,
+                    "content_filter": true,
+                    "draft": true
                   }
                 }
               }
@@ -225,6 +239,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar; bei nicht verfügbarem Entwurfsmodus kann draft_unavailable zurückgegeben werden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Entwurfsmodus vorübergehend nicht verfügbar",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -304,7 +340,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Videoauflösung, Standard ist `720p`\n\n**Verfügbare Werte:**\n- `480p`: Niedrigere Auflösung, günstigerer Preis\n- `720p`: Standardauflösung, dies ist der Standardwert\n- `1080p`: Ultra-HD-Auflösung\n\nGilt für alle 5 Modelle",
+            "description": "Videoauflösung, Standard ist `720p`\n\n**Verfügbare Werte:**\n- `480p`: Niedrigere Auflösung, günstigerer Preis\n- `720p`: Standardauflösung, dies ist der Standardwert\n- `1080p`: Ultra-HD-Auflösung\n\nGilt für alle 5 Modelle\n\n**Entwurfsmodus:** Wenn `draft` auf `true` gesetzt ist, wird nur `480p` unterstützt. Wird `quality` weggelassen, wird automatisch `480p` verwendet",
             "enum": [
               "480p",
               "720p",
@@ -313,9 +349,15 @@
             "default": "720p",
             "example": "720p"
           },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Schalter für den Entwurfsmodus, Standard ist `false`\n\n**Details:**\n- `true`: Erstellt zunächst einen 480p-Entwurf mit kürzerer Generierungszeit und regulärer 480p-Abrechnung\n- Bei aktiviertem Entwurfsmodus muss `quality` entweder `480p` sein oder weggelassen werden. Andere Auflösungen führen zu einem 400-Parameterfehler\n- Darf nur auf der obersten Ebene des Anfragekörpers stehen. Innerhalb von `model_params` führt das Feld zu einem 400-Parameterfehler\n\n**In ein finales Video umwandeln:**\n- Sobald der Entwurf fertig ist, liefert die [Aufgabenabfrage](/de/api-manual/task-management/get-task-detail) das Feld `draft_expires_at`\n- Übergeben Sie vor diesem Zeitpunkt die Aufgaben-ID des Entwurfs an [Seedance 2.5 Draft-to-Video](/de/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video), um ein finales 1080p-Video mit demselben Inhalt zu erstellen\n- Das finale Video und der Entwurf werden separat abgerechnet. Wenn Sie mit dem Entwurf nicht zufrieden sind, können Sie auf die Konvertierung verzichten und zahlen nur für den Entwurf\n- Die Gültigkeitsdauer beträgt standardmäßig 24 Stunden ab Fertigstellung des Entwurfs; maßgeblich ist `draft_expires_at`. Senden Sie die Konvertierungsanfrage frühzeitig: Läuft der Entwurf in der Warteschlange ab, schlägt die Konvertierung ebenfalls fehl\n\n**Vorübergehend nicht verfügbar:** Wenn der Dienst vorübergehend nicht verfügbar ist, kann ein 503-Fehler zurückgegeben werden. Bei Fehlercode `draft_unavailable` versuchen Sie es später erneut oder entfernen Sie `draft`, um den normalen Generierungsmodus zu verwenden",
+            "example": false
+          },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video-Seitenverhältnis, Standard ist `adaptive`\n\n**Verfügbare Werte:**\n- `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`, `21:9` (Ultraweitbild)\n- `adaptive`: Automatische Auswahl des besten Verhältnisses\n\n**`adaptive` Verhalten je nach Modell:**\n- **Text-to-Video**: Automatische Auswahl basierend auf dem Prompt-Inhalt\n- **Image-to-Video**: Automatische Anpassung basierend auf dem Seitenverhältnis des Startbilds (dieses Modell unterstützt nur `adaptive`, feste Seitenverhältnisse können nicht angegeben werden)\n- **Reference-to-Video**: Priorität: Videomaterial-Verhältnis > Bildmaterial-Verhältnis > Prompt-Ableitung\n- **Video Edit / Video Extend**: Folgt dem Verhältnis des ersten Eingabevideos (beide Modelle unterstützen nur `adaptive`)\n\n**Pixelwerte pro Auflösung:**\n\n| Seitenverhältnis | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |\n\nGilt für alle 5 Modelle (Image-to-Video / Video Edit / Video Extend akzeptiert nur `adaptive`)",
+            "description": "Video-Seitenverhältnis, Standard ist `adaptive`\n\n**Verfügbare Werte:**\n- `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`, `21:9` (Ultraweitbild)\n- `adaptive`: Automatische Auswahl des besten Verhältnisses\n\n**`adaptive` Verhalten je nach Modell:**\n- **Text-to-Video**: Automatische Auswahl basierend auf dem Prompt-Inhalt\n- **Image-to-Video**: Automatische Anpassung basierend auf dem Seitenverhältnis des Startbilds (dieses Modell unterstützt nur `adaptive`, feste Seitenverhältnisse können nicht angegeben werden)\n- **Reference-to-Video**: Priorität: Videomaterial-Verhältnis > Bildmaterial-Verhältnis > Prompt-Ableitung\n- **Video Edit / Video Extend**: Folgt dem Verhältnis des ersten Eingabevideos (beide Modelle unterstützen nur `adaptive`)\n\n**Pixelwerte pro Auflösung:**\n\n| Seitenverhältnis | 480p | 720p | 1080p |\n|:------:|:----:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 | 1920×1080 |\n| 4:3 | 752×560 | 1112×834 | 1664×1248 |\n| 1:1 | 640×640 | 960×960 | 1440×1440 |\n| 3:4 | 560×752 | 834×1112 | 1248×1664 |\n| 9:16 | 480×854 | 720×1280 | 1080×1920 |\n| 21:9 | 992×432 | 1470×630 | 2206×946 |\n\nGilt für alle 5 Modelle (Image-to-Video / Video Edit / Video Extend akzeptiert nur `adaptive`)",
             "enum": [
               "16:9",
               "9:16",
@@ -364,7 +406,7 @@
           },
           "callback_url": {
             "type": "string",
-            "description": "HTTPS-Callback-URL nach Aufgabenabschluss\n\n**Callback-Zeitpunkte:**\n- Wird ausgelöst bei Aufgabenabschluss (completed), Fehler (failed) oder Abbruch (cancelled)\n- Wird nach Bestätigung der Abrechnung gesendet\n\n**Sicherheitseinschränkungen:**\n- Nur HTTPS-Protokoll unterstützt\n- Callbacks an interne IP-Adressen sind verboten (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x usw.)\n- URL-Länge maximal `2048` Zeichen\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Maximal `3` Wiederholungsversuche nach Fehler (jeweils nach `1`/`2`/`4` Sekunden)\n- Das Format des Callback-Antwortkörpers entspricht dem Rückgabeformat der Aufgabenabfrage-Schnittstelle\n- Ein 2xx-Statuscode gilt als Erfolg, andere Statuscodes lösen Wiederholungsversuche aus",
+            "description": "HTTPS-Callback-URL nach Aufgabenabschluss\n\n**Callback-Zeitpunkte:**\n- Wird bei Aufgabenabschluss (completed) oder Fehler (failed) ausgelöst\n- Wird nach Bestätigung der Abrechnung gesendet\n\n**Sicherheitseinschränkungen:**\n- Nur HTTPS-Protokoll unterstützt\n- Callbacks an interne IP-Adressen sind verboten (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x usw.)\n- URL-Länge maximal `2048` Zeichen\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Maximal `3` Wiederholungsversuche nach Fehler (jeweils nach `1`/`2`/`4` Sekunden)\n- Das Format des Callback-Antwortkörpers entspricht dem Rückgabeformat der Aufgabenabfrage-Schnittstelle\n- Ein 2xx-Statuscode gilt als Erfolg, andere Statuscodes lösen Wiederholungsversuche aus",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -439,8 +481,8 @@
         "properties": {
           "can_cancel": {
             "type": "boolean",
-            "description": "Ob die Aufgabe abgebrochen werden kann",
-            "example": true
+            "description": "Gibt an, ob die Aufgabe abgebrochen werden kann. Seedance 2.5 unterstützt keinen Abbruch durch Benutzer; dieses Feld gibt immer `false` zurück.",
+            "example": false
           },
           "estimated_time": {
             "type": "integer",

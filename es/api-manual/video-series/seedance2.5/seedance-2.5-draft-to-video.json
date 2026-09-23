@@ -1,0 +1,489 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API Seedance 2.5 Draft-to-Video",
+    "description": "Convierte un borrador Seedance 2.5 completado en un video final en 1080p con el mismo contenido",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Produccion"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Seedance 2.5 Draft-to-Video — conversión en video final",
+        "description": "- Convierte un borrador Seedance 2.5 completado (una tarea creada con `draft: true`) en un video final en 1080p con el mismo contenido\n- Solo admite cuatro campos: `model`, `source_task_id`, `output_format` y `callback_url`. La indicación, los materiales, la duración, la relación de aspecto, la semilla aleatoria y la configuración de audio se reutilizan del borrador: no es necesario ni está permitido enviarlos de nuevo. Cualquier otro campo devuelve un error de parámetro 400\n- Envíe la solicitud de conversión antes del `draft_expires_at` del borrador. El período de validez predeterminado es de 24 horas desde su finalización; la fecha límite real es el `draft_expires_at` devuelto al consultar la tarea\n- El sistema comprueba la validez al aceptar la solicitud y antes de enviarla para su generación. Si el borrador caduca mientras la tarea espera en la cola, la conversión falla y se reembolsa el costo de esa conversión. Deje margen para el tiempo de espera\n- El mismo borrador puede convertirse varias veces antes de caducar; cada conversión se factura por separado\n- El procesamiento es asíncrono. Use el ID de tarea devuelto para [consultar la tarea](/es/api-manual/task-management/get-task-detail); la respuesta incluye `source_task_id`\n- El enlace del video generado es válido durante 24 horas. Guárdelo cuanto antes\n\n**Reglas de facturación:**\n- La conversión se factura por separado del borrador, siempre con la tarifa de `1080p`\n- La duración de salida corresponde a la duración real del video registrada para el borrador de origen. Si no existe ese valor, se usa la duración de salida efectiva registrada en la tarea de origen\n- Duración facturada: si el borrador no tiene videos de entrada, la duración de salida; si los tiene (incluidos Reference-to-Video, Video Edit y Video Extend), `duración de salida + max(duración de los videos de entrada, duración de salida)`. En ambos casos se redondea hacia arriba a la décima de segundo\n- Si el borrador tenía el filtro de contenido desactivado (`content_filter: false`), el video final también se factura con un recargo del +10% (`1.1x`)\n- Si la conversión falla, se reembolsa el costo de esa conversión; el costo del borrador no se reembolsa",
+        "operationId": "createSeedance25DraftToVideo",
+        "tags": [
+          "Generacion de video"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Convertir en video final en 1080p (MP4)",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
+                  }
+                },
+                "mov": {
+                  "summary": "Convertir a un video final en 1080p (MOV)",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tarea de conversión en video final creada correctamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud incorrectos o tarea de origen que no es un borrador convertible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "Se ha enviado un campo no permitido",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "La tarea de origen no es un borrador",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autenticado, Token invalido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente, se requiere recarga",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no autorizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La tarea de origen no existe o no pertenece a la cuenta actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "No se encuentra la tarea de origen",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El borrador no está completado o faltan datos necesarios para la conversión",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "El borrador no está completado",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Faltan datos necesarios para la conversión",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "El borrador ha caducado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "Se ha superado draft_expires_at",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de frecuencia de solicitudes excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El servicio de origen o los datos de la tarea de origen no están disponibles temporalmente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_channel_unavailable": {
+                    "summary": "El servicio de origen no está disponible",
+                    "value": {
+                      "error": {
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "No se pueden leer temporalmente los datos de la tarea de origen",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "source_task_id"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo de generacion de video",
+            "enum": [
+              "seedance-2.5-draft-to-video"
+            ],
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "source_task_id": {
+            "type": "string",
+            "description": "ID de una tarea de borrador Seedance 2.5 completada\n\n**Cómo obtenerlo:** el campo `id` devuelto por la solicitud que crea el borrador (`draft: true`)\n\n**Requisitos:**\n1. La tarea debe pertenecer a la cuenta actual\n2. Su modelo debe ser uno de los cinco modelos de generación Seedance 2.5\n3. Debe haberse creado con `draft: true`\n4. Su estado debe ser `completed`\n5. La hora actual debe ser anterior al `draft_expires_at` devuelto al consultar la tarea",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Formato de contenedor de salida, valor predeterminado `mp4`\n\n**Valores opcionales:**\n- `mp4`: formato de contenedor predeterminado. Este endpoint genera vídeos 1080p con una profundidad de color de 10 bits y codificación H.265/HEVC. La reproducción requiere compatibilidad con HEVC de 10 bits; los reproductores que solo admiten H.264 podrían no reproducir el vídeo\n- `mov`: H.264 + submuestreo de croma yuv444p + audio PCM, con mayor fidelidad de color, recomendado para etalonaje, recorte de croma y composicion. Es posible que el navegador no lo reproduzca en linea; descarguelo y reproduzcalo con VLC / mpv / ffplay. Sin cargo adicional\n\nNo se hereda el formato de salida del borrador. Si necesita `mov`, especifíquelo aquí",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "Direccion de callback HTTPS despues de completar la tarea\n\n**Momento del callback:**\n- Se activa cuando la tarea se completa (completed) o falla (failed)\n- Se envia despues de confirmar la facturacion\n\n**Restricciones de seguridad:**\n- Solo admite protocolo HTTPS\n- Prohibido el callback a direcciones IP de red interna (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longitud de la URL no debe exceder `2048` caracteres\n\n**Mecanismo de callback:**\n- Tiempo de espera: `10` segundos\n- Maximo `3` reintentos despues del fallo (reintentos a los `1`/`2`/`4` segundos despues del fallo)\n- El formato del cuerpo de respuesta del callback es consistente con el formato de retorno de la interfaz de consulta de tareas\n- Un codigo de estado 2xx se considera exitoso, otros codigos de estado activan reintentos",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Marca de tiempo de creacion de la tarea",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de la tarea",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nombre del modelo utilizado",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Tipo especifico de la tarea"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Porcentaje de progreso de la tarea (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la tarea",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Informacion detallada de la tarea de video"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Tipo de salida de la tarea",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Informacion de uso y facturacion"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Indica si se puede cancelar la tarea. Seedance 2.5 no permite que el usuario cancele tareas; este campo siempre devuelve `false`.",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Tiempo estimado de finalizacion (segundos)",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Campo de duración en la respuesta de creación de la tarea (segundos). Actualmente, este endpoint devuelve `0` al crear la tarea; no representa la duración real del video generado. Consulte la duración del borrador de origen. Si la [consulta de la tarea](/es/api-manual/task-management/get-task-detail) devuelve el campo `video_duration` en el nivel superior una vez completada, use ese valor.",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Informacion de uso y facturacion",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Regla de facturacion",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Creditos estimados a consumir",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Categoria del grupo de usuarios",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Identificador del codigo de error"
+              },
+              "message": {
+                "type": "string",
+                "description": "Mensaje de descripcion del error"
+              },
+              "type": {
+                "type": "string",
+                "description": "Tipo de error"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las interfaces requieren autenticacion mediante Bearer Token##\n\n**Obtener API Key:**\n\nVisite la [Pagina de gestion de API Key](https://evolink.ai/dashboard/keys) para obtener su API Key\n\n**Agregue en el encabezado de la solicitud al usar:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Generacion de video",
+      "description": "APIs relacionadas con la generacion de video con IA"
+    }
+  ]
+}

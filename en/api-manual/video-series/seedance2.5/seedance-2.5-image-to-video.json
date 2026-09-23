@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Image-to-Video",
-        "description": "- Input 1 image for first-frame video generation, input 2 images for first-last-frame video generation, the model determines automatically\n- **Now supports AIGC realistic human materials**\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "description": "- Input 1 image for first-frame video generation, input 2 images for first-last-frame video generation, the model determines automatically\n- **Now supports AIGC realistic human materials**\n- Supports **draft mode**: set `draft: true` to generate a 480p draft first. If you are satisfied, use [Draft-to-Video](/en/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) to convert it into a 1080p final video. The two requests are billed separately\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
         "operationId": "createSeedance25ImageToVideo",
         "tags": [
           "Video Generation"
@@ -45,6 +45,7 @@
                       "https://example.com/first-frame.jpg"
                     ],
                     "duration": 5,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
                   }
                 },
@@ -58,7 +59,22 @@
                       "https://example.com/last.jpg"
                     ],
                     "duration": 6,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
+                  }
+                },
+                "draft": {
+                  "summary": "Draft mode (480p)",
+                  "value": {
+                    "model": "seedance-2.5-image-to-video",
+                    "prompt": "The camera slowly zooms in, the scene gradually comes to life",
+                    "image_urls": [
+                      "https://example.com/first-frame.jpg"
+                    ],
+                    "duration": 5,
+                    "quality": "480p",
+                    "aspect_ratio": "adaptive",
+                    "draft": true
                   }
                 }
               }
@@ -177,6 +193,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service temporarily unavailable; draft_unavailable may be returned when draft mode is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Draft mode temporarily unavailable",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -227,7 +265,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Video resolution, defaults to `720p`\n\n**Options:**\n- `480p`: Lower clarity, lower cost\n- `720p`: Standard clarity, this is the default\n- `1080p`: Ultra HD clarity",
+            "description": "Video resolution, defaults to `720p`\n\n**Options:**\n- `480p`: Lower clarity, lower cost\n- `720p`: Standard clarity, this is the default\n- `1080p`: Ultra HD clarity\n\n**Draft mode:** When `draft` is `true`, only `480p` is supported. If omitted, `quality` automatically defaults to `480p`",
             "enum": [
               "480p",
               "720p",
@@ -235,6 +273,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Draft mode switch, defaults to `false`\n\n**Details:**\n- `true`: Generate a 480p draft first, with faster turnaround and standard 480p billing\n- When enabled, `quality` must be `480p` or omitted. Any other resolution returns a 400 parameter error\n- Must be a top-level request body field. Placing it inside `model_params` returns a 400 parameter error\n\n**Convert to a final video:**\n- Once the draft is complete, [querying the task](/en/api-manual/task-management/get-task-detail) returns `draft_expires_at`\n- Before that time, pass the draft task ID to [Seedance 2.5 Draft-to-Video](/en/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) to generate a 1080p final video with the same content\n- The final video and draft are billed separately. If you are not satisfied with the draft, skip conversion and pay only for the draft\n- The default validity period is 24 hours after the draft completes; the actual deadline is `draft_expires_at`. Submit the conversion request early: expiration while queued also causes conversion to fail\n\n**Temporary unavailability:** A 503 error may be returned when the service is temporarily unavailable. If the error code is `draft_unavailable`, retry later or remove `draft` to use normal generation mode",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",
@@ -269,7 +313,7 @@
           },
           "callback_url": {
             "type": "string",
-            "description": "HTTPS callback URL for task completion\n\n**Callback timing:**\n- Triggered when the task is completed, failed, or cancelled\n- Sent after billing confirmation is complete\n\n**Security restrictions:**\n- Only HTTPS protocol is supported\n- Callbacks to private IP addresses are prohibited (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- URL length must not exceed `2048` characters\n\n**Callback mechanism:**\n- Timeout: `10` seconds\n- Up to `3` retries after failure (at `1`/`2`/`4` seconds after failure respectively)\n- Callback response body format is consistent with the task query endpoint response format\n- A 2xx status code is considered successful; other status codes trigger retries",
+            "description": "HTTPS callback URL for task completion\n\n**Callback timing:**\n- Triggered when the task is completed or failed\n- Sent after billing confirmation is complete\n\n**Security restrictions:**\n- Only HTTPS protocol is supported\n- Callbacks to private IP addresses are prohibited (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- URL length must not exceed `2048` characters\n\n**Callback mechanism:**\n- Timeout: `10` seconds\n- Up to `3` retries after failure (at `1`/`2`/`4` seconds after failure respectively)\n- Callback response body format is consistent with the task query endpoint response format\n- A 2xx status code is considered successful; other status codes trigger retries",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -344,8 +388,8 @@
         "properties": {
           "can_cancel": {
             "type": "boolean",
-            "description": "Whether the task can be cancelled",
-            "example": true
+            "description": "Whether the task can be cancelled. Seedance 2.5 does not support user cancellation; this field always returns `false`.",
+            "example": false
           },
           "estimated_time": {
             "type": "integer",

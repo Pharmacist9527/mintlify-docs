@@ -27,7 +27,7 @@
     "/v1/responses": {
       "post": {
         "summary": "Grok Responses（全模型，完整参数）",
-        "description": "- xAI Grok 系列文本模型的 OpenAI 兼容 Responses 接口，通过 `model` 选择具体模型（全部可选值见 `model` 参数的对照表）\n- 50 万 token 上下文窗口；Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费\n- Prompt 缓存自动生效：命中缓存的输入 token 按更低的缓存价计费\n- 支持同步与流式（SSE）两种模式\n- xAI 服务端工具在 xAI 基础设施上执行、按成功调用次数计费：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`\n- 同时支持普通 `function` 工具（客户端函数调用，无按次费用）",
+        "description": "- xAI Grok 系列文本模型的 OpenAI 兼容 Responses 接口，通过 `model` 选择具体模型（全部可选值见 `model` 参数的对照表）\n- 50 万 token 上下文窗口；Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费\n- Prompt 缓存自动生效：命中缓存的输入 token 按更低的缓存价计费\n- 支持同步与流式（SSE）两种模式\n- xAI 服务端工具在 xAI 基础设施上执行：`web_search`、`x_search`、`code_execution`、`attachment_search`、`collections_search`；X 搜索按抓取的帖子数和用户资料数计费，其他工具按成功调用次数计费\n- 同时支持普通 `function` 工具（客户端函数调用，无按次费用）\n- 按 xAI 官方约定，`grok-4.7` 默认返回含 `encrypted_content` 的 `reasoning` 项；实际字段以当前线路响应为准",
         "operationId": "grokResponsesReference",
         "tags": [
           "Responses"
@@ -38,13 +38,41 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "深度推理": {
+                  "summary": "Grok 4.7 深度推理",
+                  "value": {
+                    "model": "grok-4.7",
+                    "input": "用一句话解释什么是 Prompt 缓存。",
+                    "reasoning": {
+                      "effort": "xhigh"
+                    },
+                    "max_output_tokens": 2048,
+                    "prompt_cache_key": "grok-session-001"
+                  }
+                },
+                "X 搜索": {
+                  "summary": "Grok 4.7 搜索 X",
+                  "value": {
+                    "model": "grok-4.7",
+                    "input": "搜索 SpaceX 最近一条发射公告，并附上来源链接。",
+                    "tools": [
+                      {
+                        "type": "x_search"
+                      }
+                    ],
+                    "tool_choice": "required",
+                    "max_output_tokens": 2048
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "响应生成成功（JSON 对象；`stream=true` 时为 SSE 事件流，以 `response.completed` 结束）",
+            "description": "响应返回成功；请同时检查 status，生成完成为 completed，达到输出限制等情况可能为 incomplete，失败为 failed。stream=true 时为 SSE 事件流，应读取终态响应的 status 和 usage。",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,12 +202,13 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "要调用的模型：\n\n| 模型 ID | 定位 |\n|---|---|\n| `grok-4.6` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；额外支持 `xhigh` 推理档；知识截止 2026-02-01 |\n| `grok-4.5` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；推理档最高到 `high`（传 `xhigh` 会被降级为 `high`） |",
+            "description": "要调用的模型：\n\n| 模型 ID | 定位 |\n|---|---|\n| `grok-4.7` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；支持 `xhigh` 推理档；知识截止 2026-05 |\n| `grok-4.6` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；额外支持 `xhigh` 推理档；知识截止 2026-02-01 |\n| `grok-4.5` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；推理档最高到 `high`（传 `xhigh` 会被降级为 `high`） |",
             "enum": [
+              "grok-4.7",
               "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "input": {
             "description": "模型输入：纯字符串，或 OpenAI Responses 输入项数组（如 `{\"role\":\"user\",\"content\":[...]}`）。",
@@ -198,7 +227,7 @@
           },
           "stream": {
             "type": "boolean",
-            "description": "是否流式返回（SSE 事件流，以 `response.completed` 结束）。默认 `false`。",
+            "description": "是否流式返回（SSE）。默认 false。请读取终态响应的 status 和 usage：completed 表示生成完成；达到输出限制等情况可能为 incomplete，不应只等待 response.completed 事件。",
             "default": false,
             "example": false
           },
@@ -209,7 +238,7 @@
           },
           "reasoning": {
             "type": "object",
-            "description": "推理深度控制，对象形式：`{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`。默认 `high`，推理无法关闭。`xhigh` 仅 `grok-4.6` 支持——`grok-4.5` 接受该值但会降级为 `high`。推理 token 按输出 token 计费，并计入 `usage.output_tokens_details.reasoning_tokens`。",
+            "description": "推理深度控制，对象形式：`{\"effort\": \"low\" | \"medium\" | \"high\" | \"xhigh\"}`。默认 `high`，推理无法关闭。`xhigh` 支持 `grok-4.7` 和 `grok-4.6`；`grok-4.5` 接受该值但会降级为 `high`。推理 token 按输出 token 计费，并计入 `usage.output_tokens_details.reasoning_tokens`。",
             "properties": {
               "effort": {
                 "type": "string",
@@ -225,7 +254,7 @@
           },
           "tools": {
             "type": "array",
-            "description": "工具声明。xAI 服务端工具（按成功调用次数计费，工具费不受长上下文倍率影响）：\n\n| 工具类型 | 能力 | 单次价格 |\n|---|---|---|\n| `web_search` | 联网搜索并浏览网页 | $0.005 |\n| `x_search` | 搜索 X 帖子、账号与话题 | $0.005 |\n| `code_execution` | 在沙箱中运行 Python（别名 `code_interpreter`） | $0.005 |\n| `attachment_search` | 搜索对话附件文件（输入含文件时可能自动启用） | $0.01 |\n| `collections_search` | 检索已上传的文档集（别名 `file_search`） | $0.0025 |\n\n同时支持普通 `function` 工具（客户端函数调用，无按次费用）。\n\n`image_generation` 目前不可用：为兼容会接受该声明，但会在请求到达模型前被移除。未识别的工具类型返回 `400`。",
+            "description": "工具声明。服务端工具费在 Token 费用之外计算，不受长上下文倍率影响：\n\n| 工具类型 | 能力 | 计费单位与价格 |\n|---|---|---|\n| `web_search` | 联网搜索并浏览网页 | 0.005 美元 / 次成功调用 |\n| `x_search` | 搜索 X 帖子、账号与话题 | 0.005 美元 / 条抓取的帖子 + 0.01 美元 / 个抓取的用户资料 |\n| `code_execution` | 在沙箱中运行 Python（别名 `code_interpreter`） | 0.005 美元 / 次成功调用 |\n| `attachment_search` | 搜索对话附件文件（输入含文件时可能自动启用） | 0.01 美元 / 次成功调用 |\n| `collections_search` | 检索已上传的文档集（别名 `file_search`） | 0.0025 美元 / 次成功调用 |\n\nX Search 新口径适用于 `grok-4.5`、`grok-4.6` 和 `grok-4.7`。一次调用可能返回多条帖子；搜索或帖子串返回的父帖、引用帖也计数。实际计量见 `usage.server_side_tool_usage_details`；响应缺少两个抓取计数字段时，按成功调用次数兼容计费。\n\n同时支持普通 `function` 工具（客户端函数调用，无服务端工具调用费）。\n\n`image_generation` 目前不可用：为兼容会接受该声明，但会在请求到达模型前被移除。未识别的工具类型返回 `400`。",
             "items": {
               "$ref": "#/components/schemas/Tool"
             },
@@ -250,6 +279,26 @@
                 "type": "object"
               }
             ]
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "可选的缓存路由键。同一会话或共享相同 Prompt 前缀的请求使用稳定值，可提高 Prompt 缓存命中机会；不保证命中，也不改变缓存计费规则。实际命中量以 usage 中的 cached_tokens 为准。",
+            "example": "grok-session-001"
+          },
+          "include": {
+            "type": "array",
+            "description": "请求附加响应字段。例如 grok-4.6 可通过 [\"reasoning.encrypted_content\"] 请求加密思考内容；grok-4.7 按 xAI 接口约定默认返回，不需要显式设置。",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "max_tool_calls": {
+            "type": "integer",
+            "description": "工具调用次数控制值。网关透传此值，并用于估算工具费用预留；具体线路是否严格限制调用次数需以实际行为为准。该值不限制 X 搜索抓取的帖子数或用户资料数，也不能作为费用上限。",
+            "example": 1
           }
         }
       },
@@ -305,7 +354,7 @@
           "model": {
             "type": "string",
             "description": "实际使用的模型名称",
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "created_at": {
             "type": "integer",
@@ -314,7 +363,7 @@
           },
           "output": {
             "type": "array",
-            "description": "按生成顺序排列的输出项：`reasoning` 项（思考摘要）、服务端工具调用项（如 `web_search_call` / `code_interpreter_call`，状态 `completed` 表示成功且计费的调用），以及最后含 `output_text` 内容的 `message` 项。",
+            "description": "按生成顺序排列的输出项：reasoning 项（可含加密思考内容）、服务端工具调用项、function_call 项，以及含 output_text 内容的 message 项。工具用量以 usage 为准；一次 x_search 调用可能产生多条帖子和多个用户资料的费用。",
             "items": {
               "$ref": "#/components/schemas/OutputItem"
             }
@@ -349,7 +398,7 @@
           },
           "status": {
             "type": "string",
-            "description": "输出项状态；状态为 `completed` 的工具调用才计费",
+            "description": "输出项执行状态；completed 表示已完成。工具费用应结合 usage 中的计量明细判断。",
             "example": "completed"
           },
           "content": {
@@ -358,6 +407,10 @@
             "items": {
               "type": "object"
             }
+          },
+          "encrypted_content": {
+            "type": "string",
+            "description": "加密思考内容，出现在 type=reasoning 的输出项上。按 xAI 接口约定，grok-4.7 默认返回此字段，无需设置 include；自管多轮历史时，将完整 reasoning 项原样放回下一轮 input。请以实际响应是否包含该字段为准，不要解码或修改密文。"
           }
         }
       },
@@ -404,12 +457,12 @@
           },
           "num_server_side_tools_used": {
             "type": "integer",
-            "description": "本次响应中服务端工具的总调用次数",
+            "description": "服务端工具调用总次数，不是 X 帖子数或用户资料数，也不是 X Search 的计费单位。",
             "example": 2
           },
           "server_side_tool_usage_details": {
             "type": "object",
-            "description": "各工具的调用次数明细（部分第三方线路可能不返回该对象；此时计费按状态为 completed 的工具调用输出项计数）",
+            "description": "服务端工具用量明细。X Search 优先按 x_posts_fetched 与 x_users_fetched 计费，显式返回 0 表示该项无费用；两字段均缺失时按 x_search_calls 兼容计费。部分响应不返回此对象，此时按已完成的工具调用输出项统计。",
             "properties": {
               "web_search_calls": {
                 "type": "integer",
@@ -417,7 +470,8 @@
               },
               "x_search_calls": {
                 "type": "integer",
-                "example": 0
+                "example": 0,
+                "description": "X 搜索调用次数，不等于抓取的帖子数或用户资料数。返回抓取计数字段时，不再按此次数收取 X Search 费用。"
               },
               "code_interpreter_calls": {
                 "type": "integer",
@@ -435,6 +489,18 @@
               },
               "mcp_calls": {
                 "type": "integer",
+                "example": 0
+              },
+              "x_posts_fetched": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "抓取的 X 帖子条数，包含搜索或帖子串返回的父帖、引用帖；0.005 美元 / 条。",
+                "example": 0
+              },
+              "x_users_fetched": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "抓取的 X 用户资料个数；0.01 美元 / 个。这是用量字段，不是可放入 tools[].type 的工具类型。",
                 "example": 0
               }
             }

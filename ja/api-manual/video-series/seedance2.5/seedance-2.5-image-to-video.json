@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Image-to-Video 画像から動画",
-        "description": "- 画像1枚入力で先頭フレーム動画を生成、画像2枚入力で先頭・末尾フレーム動画を生成（モデルが自動判断）\n- **AIGCタイプの実写素材に対応**\n- 非同期処理モード。返却されたタスクIDで[照会してください](/ja/api-manual/task-management/get-task-detail)\n- 生成された動画リンクの有効期限は24時間です。お早めに保存してください",
+        "description": "- 画像1枚入力で先頭フレーム動画を生成、画像2枚入力で先頭・末尾フレーム動画を生成（モデルが自動判断）\n- **AIGCタイプの実写素材に対応**\n- **プレビューモード**に対応：`draft: true` を指定すると、まず 480p のプレビュー動画を生成します。内容を確認してから [Draft-to-Video](/ja/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) で 1080p の正式動画に変換できます。2 回の処理はそれぞれ課金されます\n- 非同期処理モード。返却されたタスクIDで[照会してください](/ja/api-manual/task-management/get-task-detail)\n- 生成された動画リンクの有効期限は24時間です。お早めに保存してください",
         "operationId": "createSeedance25ImageToVideo",
         "tags": [
           "動画生成"
@@ -45,6 +45,7 @@
                       "https://example.com/first-frame.jpg"
                     ],
                     "duration": 5,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
                   }
                 },
@@ -58,7 +59,22 @@
                       "https://example.com/last.jpg"
                     ],
                     "duration": 6,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
+                  }
+                },
+                "draft": {
+                  "summary": "プレビューモード（480p）",
+                  "value": {
+                    "model": "seedance-2.5-image-to-video",
+                    "prompt": "カメラがゆっくりと寄り、画面が徐々に動き出す",
+                    "image_urls": [
+                      "https://example.com/first-frame.jpg"
+                    ],
+                    "duration": 5,
+                    "quality": "480p",
+                    "aspect_ratio": "adaptive",
+                    "draft": true
                   }
                 }
               }
@@ -177,6 +193,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません。プレビューモードが利用できない場合、draft_unavailable が返されることがあります",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "プレビューモードが一時的に利用できません",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -227,7 +265,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "動画の解像度、デフォルトは `720p`\n\n**選択可能な値：**\n- `480p`：解像度が低め、料金も低め\n- `720p`：標準解像度、デフォルト値\n- `1080p`：超高解像度",
+            "description": "動画の解像度、デフォルトは `720p`\n\n**選択可能な値：**\n- `480p`：解像度が低め、料金も低め\n- `720p`：標準解像度、デフォルト値\n- `1080p`：超高解像度\n\n**プレビューモード：** `draft` が `true` の場合、`480p` のみ使用できます。省略した場合も自動的に `480p` が使用されます",
             "enum": [
               "480p",
               "720p",
@@ -235,6 +273,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "プレビューモードの切り替え。デフォルトは `false`\n\n**説明：**\n- `true`：まず 480p のプレビュー動画を生成します。より短時間で生成され、通常の 480p 料金が適用されます\n- 有効にした場合、`quality` は `480p` を指定するか省略してください。それ以外の解像度を指定すると 400 パラメータエラーが返されます\n- リクエストボディのトップレベルでのみ指定できます。`model_params` 内に指定すると 400 パラメータエラーが返されます\n\n**正式動画への変換：**\n- プレビュー動画が完成すると、[タスク照会](/ja/api-manual/task-management/get-task-detail)で `draft_expires_at` が返されます\n- この期限より前に、[Seedance 2.5 Draft-to-Video](/ja/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) にプレビュー動画のタスク ID を渡すと、同じ内容の 1080p 正式動画を生成できます\n- 正式動画とプレビュー動画は別々に課金されます。内容に満足できない場合は変換せず、プレビュー動画の料金のみを支払うこともできます\n- デフォルトの有効期限はプレビュー動画の完成から 24 時間です。実際の期限は `draft_expires_at` を基準にしてください。待機中に期限が切れた場合も変換に失敗するため、早めに変換リクエストを送信してください\n\n**一時的に利用できない場合：** サービスが一時的に利用できない場合、503 が返されることがあります。エラーコードが `draft_unavailable` の場合は、時間をおいて再試行するか、`draft` を省略して通常モードで生成してください",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",
@@ -269,7 +313,7 @@
           },
           "callback_url": {
             "type": "string",
-            "description": "タスク完了後の HTTPS コールバックアドレス\n\n**コールバックタイミング：**\n- タスク完了（completed）、失敗（failed）、またはキャンセル（cancelled）時にトリガー\n- 課金確認完了後に送信\n\n**セキュリティ制限：**\n- HTTPS プロトコルのみ対応\n- プライベートIPアドレスへのコールバックは禁止（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x など）\n- URL の長さは `2048` 文字以内\n\n**コールバックメカニズム：**\n- タイムアウト：`10` 秒\n- 失敗後最大 `3` 回リトライ（失敗後 `1`/`2`/`4` 秒でそれぞれリトライ）\n- コールバックレスポンスボディのフォーマットはタスク照会APIの返却フォーマットと同一\n- 2xx ステータスコードを成功とみなし、その他のステータスコードでリトライをトリガー",
+            "description": "タスク完了後の HTTPS コールバックアドレス\n\n**コールバックタイミング：**\n- タスク完了（completed）または失敗（failed）時にトリガー\n- 課金確認完了後に送信\n\n**セキュリティ制限：**\n- HTTPS プロトコルのみ対応\n- プライベートIPアドレスへのコールバックは禁止（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x など）\n- URL の長さは `2048` 文字以内\n\n**コールバックメカニズム：**\n- タイムアウト：`10` 秒\n- 失敗後最大 `3` 回リトライ（失敗後 `1`/`2`/`4` 秒でそれぞれリトライ）\n- コールバックレスポンスボディのフォーマットはタスク照会APIの返却フォーマットと同一\n- 2xx ステータスコードを成功とみなし、その他のステータスコードでリトライをトリガー",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -344,8 +388,8 @@
         "properties": {
           "can_cancel": {
             "type": "boolean",
-            "description": "タスクがキャンセル可能かどうか",
-            "example": true
+            "description": "タスクをキャンセルできるかどうか。Seedance 2.5 はユーザーによるタスクのキャンセルに対応していないため、常に `false` を返します。",
+            "example": false
           },
           "estimated_time": {
             "type": "integer",

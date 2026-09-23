@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "Grok 对话补全（全模型，完整参数）",
-        "description": "- xAI Grok 系列文本模型的 OpenAI 兼容 Chat Completions 接口，通过 `model` 选择具体模型（全部可选值见 `model` 参数的对照表）\n- 50 万 token 上下文窗口；Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费\n- Prompt 缓存自动生效：命中缓存的输入 token 按更低的缓存价计费\n- 支持同步与流式（SSE）两种模式\n- 支持普通 `function` 工具调用；xAI 服务端工具仅在 [Responses 接口](../responses/responses-reference)提供",
+        "description": "- xAI Grok 系列文本模型的 OpenAI 兼容 Chat Completions 接口，通过 `model` 选择具体模型（全部可选值见 `model` 参数的对照表）\n- 50 万 token 上下文窗口；Prompt 达到 20 万 token 起，全部 token 按 2 倍价格计费\n- Prompt 缓存自动生效：命中缓存的输入 token 按更低的缓存价计费\n- 支持同步与流式（SSE）两种模式\n- 支持普通 `function` 工具调用；联网搜索、X 搜索等服务端工具建议使用 [Responses 接口](../responses/responses-reference)",
         "operationId": "grokChatCompletionsReference",
         "tags": [
           "Chat Completion"
@@ -38,6 +38,23 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "深度推理": {
+                  "summary": "Grok 4.7 深度推理",
+                  "value": {
+                    "model": "grok-4.7",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "用一句话解释什么是 Prompt 缓存。"
+                      }
+                    ],
+                    "reasoning_effort": "xhigh",
+                    "max_tokens": 2048,
+                    "prompt_cache_key": "grok-session-001"
+                  }
+                }
               }
             }
           }
@@ -174,12 +191,13 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "要调用的模型：\n\n| 模型 ID | 定位 |\n|---|---|\n| `grok-4.6` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；额外支持 `xhigh` 推理档；知识截止 2026-02-01 |\n| `grok-4.5` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；推理档最高到 `high`（传 `xhigh` 会被降级为 `high`） |",
+            "description": "要调用的模型：\n\n| 模型 ID | 定位 |\n|---|---|\n| `grok-4.7` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；支持 `xhigh` 推理档；知识截止 2026-05 |\n| `grok-4.6` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；额外支持 `xhigh` 推理档；知识截止 2026-02-01 |\n| `grok-4.5` | xAI 推理 + 工具调用模型，50 万 token 上下文窗口；推理档最高到 `high`（传 `xhigh` 会被降级为 `high`） |",
             "enum": [
+              "grok-4.7",
               "grok-4.6",
               "grok-4.5"
             ],
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "messages": {
             "type": "array",
@@ -219,7 +237,7 @@
               "xhigh"
             ],
             "default": "high",
-            "description": "推理深度：`low` / `medium` / `high`（默认）/ `xhigh`。推理无法关闭。`xhigh` 仅 `grok-4.6` 支持——`grok-4.5` 接受该值但会降级为 `high`。推理 token 按输出 token 计费。"
+            "description": "推理深度：`low` / `medium` / `high`（默认）/ `xhigh`。推理无法关闭。`xhigh` 支持 `grok-4.7` 和 `grok-4.6`；`grok-4.5` 接受该值但会降级为 `high`。推理 token 按输出 token 计费。"
           },
           "temperature": {
             "type": "number",
@@ -233,7 +251,7 @@
           },
           "tools": {
             "type": "array",
-            "description": "普通 OpenAI `function` 工具定义（客户端函数调用，无按次费用）。xAI 服务端工具仅在 Responses 接口提供。",
+            "description": "本页展示普通 OpenAI function 工具定义（客户端函数调用，无服务端工具调用费）。联网搜索、X 搜索等服务端工具的配置与用量说明请参阅 Responses 接口。",
             "items": {
               "$ref": "#/components/schemas/FunctionTool"
             }
@@ -253,6 +271,11 @@
                 "type": "object"
               }
             ]
+          },
+          "prompt_cache_key": {
+            "type": "string",
+            "description": "可选的缓存路由键。同一会话或共享相同 Prompt 前缀的请求使用稳定值，可提高 Prompt 缓存命中机会；不保证命中，也不改变缓存计费规则。实际命中量以 usage 中的 cached_tokens 为准。",
+            "example": "grok-session-001"
           }
         }
       },
@@ -290,7 +313,7 @@
             "enum": [
               "function"
             ],
-            "description": "工具类型；Chat Completions 接口仅接受 `function`"
+            "description": "客户端函数工具的类型。"
           },
           "function": {
             "type": "object",
@@ -309,7 +332,7 @@
           "model": {
             "type": "string",
             "description": "实际使用的模型名称",
-            "example": "grok-4.6"
+            "example": "grok-4.7"
           },
           "object": {
             "type": "string",

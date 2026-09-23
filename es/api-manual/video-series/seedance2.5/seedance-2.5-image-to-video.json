@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Image-to-Video",
-        "description": "- Ingrese 1 imagen para generar video desde el primer fotograma, ingrese 2 imagenes para generar video desde el primer y ultimo fotograma, el modelo determina automaticamente\n- **Ahora compatible con materiales realistas de personas generados por IA (AIGC)**\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible",
+        "description": "- Ingrese 1 imagen para generar video desde el primer fotograma, ingrese 2 imagenes para generar video desde el primer y ultimo fotograma, el modelo determina automaticamente\n- **Ahora compatible con materiales realistas de personas generados por IA (AIGC)**\n- Admite el **modo borrador**: envíe `draft: true` para generar primero un borrador en 480p y, si le convence, use [Draft-to-Video](/es/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) para obtener un video final en 1080p. Las dos generaciones se facturan por separado\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible",
         "operationId": "createSeedance25ImageToVideo",
         "tags": [
           "Generacion de video"
@@ -45,6 +45,7 @@
                       "https://example.com/first-frame.jpg"
                     ],
                     "duration": 5,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
                   }
                 },
@@ -58,7 +59,22 @@
                       "https://example.com/last.jpg"
                     ],
                     "duration": 6,
+                    "quality": "720p",
                     "aspect_ratio": "adaptive"
+                  }
+                },
+                "draft": {
+                  "summary": "Modo borrador (480p)",
+                  "value": {
+                    "model": "seedance-2.5-image-to-video",
+                    "prompt": "La cámara se acerca lentamente y la escena cobra vida de forma gradual",
+                    "image_urls": [
+                      "https://example.com/first-frame.jpg"
+                    ],
+                    "duration": 5,
+                    "quality": "480p",
+                    "aspect_ratio": "adaptive",
+                    "draft": true
                   }
                 }
               }
@@ -177,6 +193,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Servicio temporalmente no disponible; puede devolver draft_unavailable cuando el modo borrador no está disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Modo borrador temporalmente no disponible",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -227,7 +265,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Resolucion del video, valor predeterminado `720p`\n\n**Valores opcionales:**\n- `480p`: menor claridad, precio mas bajo\n- `720p`: claridad estandar, este es el valor predeterminado\n- `1080p`: claridad Ultra HD",
+            "description": "Resolucion del video, valor predeterminado `720p`\n\n**Valores opcionales:**\n- `480p`: menor claridad, precio mas bajo\n- `720p`: claridad estandar, este es el valor predeterminado\n- `1080p`: claridad Ultra HD\n\n**Modo borrador:** cuando `draft` es `true`, solo se permite `480p`. Si se omite `quality`, se utiliza `480p` automáticamente",
             "enum": [
               "480p",
               "720p",
@@ -235,6 +273,12 @@
             ],
             "default": "720p",
             "example": "720p"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Activa el modo borrador; el valor predeterminado es `false`\n\n**Detalles:**\n- `true`: genera primero un borrador en 480p, más rápidamente, con la tarifa normal de 480p\n- Cuando está activado, `quality` debe ser `480p` o debe omitirse. Cualquier otra resolución devuelve un error de parámetro 400\n- Solo se admite en el nivel superior del cuerpo de la solicitud. Incluirlo en `model_params` devuelve un error de parámetro 400\n\n**Conversión en video final:**\n- Una vez completado el borrador, la [consulta de la tarea](/es/api-manual/task-management/get-task-detail) devuelve `draft_expires_at`\n- Antes de esa fecha, envíe el ID de tarea del borrador a [Seedance 2.5 Draft-to-Video](/es/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) para generar un video final en 1080p con el mismo contenido\n- El video final y el borrador se facturan por separado. Si el borrador no le convence, puede omitir la conversión y pagar solo el borrador\n- El período de validez predeterminado es de 24 horas desde que se completa el borrador; `draft_expires_at` indica la fecha límite real. Envíe la solicitud de conversión con antelación: si el borrador caduca mientras la tarea espera en la cola, la conversión también fallará\n\n**Indisponibilidad temporal:** el servicio puede devolver 503 cuando no está disponible temporalmente. Si el código de error es `draft_unavailable`, reintente más tarde o retire `draft` para generar en el modo normal",
+            "example": false
           },
           "aspect_ratio": {
             "type": "string",
@@ -269,7 +313,7 @@
           },
           "callback_url": {
             "type": "string",
-            "description": "Direccion de callback HTTPS despues de completar la tarea\n\n**Momento del callback:**\n- Se activa cuando la tarea se completa (completed), falla (failed) o se cancela (cancelled)\n- Se envia despues de confirmar la facturacion\n\n**Restricciones de seguridad:**\n- Solo admite protocolo HTTPS\n- Prohibido el callback a direcciones IP de red interna (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longitud de la URL no debe exceder `2048` caracteres\n\n**Mecanismo de callback:**\n- Tiempo de espera: `10` segundos\n- Maximo `3` reintentos despues del fallo (reintentos a los `1`/`2`/`4` segundos despues del fallo)\n- El formato del cuerpo de respuesta del callback es consistente con el formato de retorno de la interfaz de consulta de tareas\n- Un codigo de estado 2xx se considera exitoso, otros codigos de estado activan reintentos",
+            "description": "Direccion de callback HTTPS despues de completar la tarea\n\n**Momento del callback:**\n- Se activa cuando la tarea se completa (completed) o falla (failed)\n- Se envia despues de confirmar la facturacion\n\n**Restricciones de seguridad:**\n- Solo admite protocolo HTTPS\n- Prohibido el callback a direcciones IP de red interna (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longitud de la URL no debe exceder `2048` caracteres\n\n**Mecanismo de callback:**\n- Tiempo de espera: `10` segundos\n- Maximo `3` reintentos despues del fallo (reintentos a los `1`/`2`/`4` segundos despues del fallo)\n- El formato del cuerpo de respuesta del callback es consistente con el formato de retorno de la interfaz de consulta de tareas\n- Un codigo de estado 2xx se considera exitoso, otros codigos de estado activan reintentos",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -344,8 +388,8 @@
         "properties": {
           "can_cancel": {
             "type": "boolean",
-            "description": "Si la tarea se puede cancelar",
-            "example": true
+            "description": "Indica si se puede cancelar la tarea. Seedance 2.5 no permite que el usuario cancele tareas; este campo siempre devuelve `false`.",
+            "example": false
           },
           "estimated_time": {
             "type": "integer",

@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Reference-to-Video multimodale",
-        "description": "- Entrez des images de reference (0 a 30) + des videos de reference (0 a 10) + des audios de reference (0 a 10) + un prompt textuel pour generer une video ; au moins une image, une video ou un audio de reference doit etre fourni\n- Adapte a la creation de nouvelles videos : les images, videos et audios servent de reference de style, de sujet, de mouvement de camera et de musique\n- **Pour reecrire ou prolonger une video existante, utilisez [Video Edit](/fr/api-manual/video-series/seedance2.5/seedance-2.5-video-edit) / [Video Extend](/fr/api-manual/video-series/seedance2.5/seedance-2.5-video-extend)** : des que le prompt de ce modele exprime une intention d'edition ou d'extension, les parametres sont valides comme ceux d'une tache d'edition / extension : la requete est acceptee sans erreur et la tache echoue seulement pendant la generation\n- **Prend desormais en charge les contenus humains realistes generes par IA (AIGC)**\n- Mode de traitement asynchrone, utilisez l'ID de tache retourne pour [consulter le statut](/fr/api-manual/task-management/get-task-detail)\n- Le lien de la video generee est valide pendant 24 heures, veuillez le sauvegarder rapidement",
+        "description": "- Entrez des images de reference (0 a 30) + des videos de reference (0 a 10) + des audios de reference (0 a 10) + un prompt textuel pour generer une video ; au moins une image, une video ou un audio de reference doit etre fourni\n- Adapte a la creation de nouvelles videos : les images, videos et audios servent de reference de style, de sujet, de mouvement de camera et de musique\n- **Pour reecrire ou prolonger une video existante, utilisez [Video Edit](/fr/api-manual/video-series/seedance2.5/seedance-2.5-video-edit) / [Video Extend](/fr/api-manual/video-series/seedance2.5/seedance-2.5-video-extend)** : des que le prompt de ce modele exprime une intention d'edition ou d'extension, les parametres sont valides comme ceux d'une tache d'edition / extension : la requete est acceptee sans erreur et la tache echoue seulement pendant la generation\n- **Prend desormais en charge les contenus humains realistes generes par IA (AIGC)**\n- Le **mode brouillon** est pris en charge : envoyez `draft: true` pour générer un brouillon en 480p, puis utilisez [Draft-to-Video](/fr/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) pour obtenir une vidéo finale en 1080p si le résultat vous convient. Les deux générations sont facturées séparément\n- Mode de traitement asynchrone, utilisez l'ID de tache retourne pour [consulter le statut](/fr/api-manual/task-management/get-task-detail)\n- Le lien de la video generee est valide pendant 24 heures, veuillez le sauvegarder rapidement",
         "operationId": "createSeedance25ReferenceToVideo",
         "tags": [
           "Generation video"
@@ -70,6 +70,7 @@
                       "https://example.com/reference.mp4"
                     ],
                     "duration": 5,
+                    "quality": "720p",
                     "aspect_ratio": "16:9"
                   }
                 },
@@ -84,9 +85,33 @@
                       "https://example.com/part3.mp4"
                     ],
                     "duration": 8,
+                    "quality": "720p",
                     "aspect_ratio": "16:9",
                     "generate_audio": true,
                     "content_filter": true
+                  }
+                },
+                "draft": {
+                  "summary": "Mode brouillon (480p)",
+                  "value": {
+                    "model": "seedance-2.5-reference-to-video",
+                    "prompt": "Use the first-person perspective framing of @video1 throughout, and use @audio1 as background music throughout. First-person perspective fruit tea promotional video...",
+                    "image_urls": [
+                      "https://example.com/ref1.jpg",
+                      "https://example.com/ref2.jpg"
+                    ],
+                    "video_urls": [
+                      "https://example.com/reference.mp4"
+                    ],
+                    "audio_urls": [
+                      "https://example.com/bgm.mp3"
+                    ],
+                    "duration": 10,
+                    "quality": "480p",
+                    "aspect_ratio": "16:9",
+                    "generate_audio": true,
+                    "content_filter": true,
+                    "draft": true
                   }
                 }
               }
@@ -205,6 +230,28 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service temporairement indisponible ; le code draft_unavailable peut être renvoyé lorsque le mode brouillon est indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_unavailable": {
+                    "summary": "Mode brouillon temporairement indisponible",
+                    "value": {
+                      "error": {
+                        "code": "draft_unavailable",
+                        "message": "Draft mode is not available on the selected service right now. Retry later or send the request without draft.",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -281,7 +328,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Resolution video, par defaut `720p`\n\n**Valeurs possibles :**\n- `480p` : resolution inferieure, prix reduit\n- `720p` : resolution standard, valeur par defaut\n- `1080p` : resolution Ultra HD",
+            "description": "Resolution video, par defaut `720p`\n\n**Valeurs possibles :**\n- `480p` : resolution inferieure, prix reduit\n- `720p` : resolution standard, valeur par defaut\n- `1080p` : resolution Ultra HD\n\n**Mode brouillon :** lorsque `draft` vaut `true`, seule la résolution `480p` est autorisée. Si `quality` est omis, `480p` est utilisé automatiquement",
             "enum": [
               "480p",
               "720p",
@@ -290,9 +337,15 @@
             "default": "720p",
             "example": "720p"
           },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Active le mode brouillon, `false` par défaut\n\n**Détails :**\n- `true` : génère d’abord un brouillon en 480p, plus rapidement, au tarif normal de la résolution 480p\n- Lorsque ce mode est activé, `quality` doit valoir `480p` ou être omis. Toute autre résolution renvoie une erreur de paramètre 400\n- Ce champ doit figurer au niveau racine du corps de la requête. Le placer dans `model_params` renvoie une erreur de paramètre 400\n\n**Conversion en vidéo finale :**\n- Une fois le brouillon terminé, la [consultation de la tâche](/fr/api-manual/task-management/get-task-detail) renvoie `draft_expires_at`\n- Avant cette échéance, transmettez l’ID de tâche du brouillon à [Seedance 2.5 Draft-to-Video](/fr/api-manual/video-series/seedance2.5/seedance-2.5-draft-to-video) pour générer une vidéo finale en 1080p au contenu identique\n- La vidéo finale et le brouillon sont facturés séparément. Si le brouillon ne vous convient pas, vous pouvez renoncer à la conversion et ne payer que le brouillon\n- Par défaut, le brouillon reste convertible pendant 24 heures après son achèvement ; `draft_expires_at` indique l’échéance réelle. Envoyez la demande de conversion suffisamment tôt : une expiration pendant l’attente dans la file entraîne également l’échec de la conversion\n\n**Indisponibilité temporaire :** une réponse 503 peut être renvoyée lorsque le service est temporairement indisponible. Si le code d’erreur est `draft_unavailable`, réessayez plus tard ou retirez `draft` pour utiliser le mode normal",
+            "example": false
+          },
           "aspect_ratio": {
             "type": "string",
-            "description": "Rapport d'aspect de la video, par defaut `adaptive`\n\n**Valeurs possibles :**\n- `16:9` (paysage), `9:16` (portrait), `1:1` (carre), `4:3`, `3:4`, `21:9` (ultra-large)\n- `adaptive` : determine en fonction de l'intention du prompt, priorite : video > image > prompt\n\n**Pixels correspondants par resolution :**\n\n| Rapport d'aspect | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |\n\nSi le prompt est classe comme tache d'edition / extension video, seul `adaptive` est accepte ; un rapport fixe fait echouer la tache plus tard, sans erreur a l'envoi",
+            "description": "Rapport d'aspect de la video, par defaut `adaptive`\n\n**Valeurs possibles :**\n- `16:9` (paysage), `9:16` (portrait), `1:1` (carre), `4:3`, `3:4`, `21:9` (ultra-large)\n- `adaptive` : determine en fonction de l'intention du prompt, priorite : video > image > prompt\n\n**Pixels correspondants par resolution :**\n\n| Rapport d'aspect | 480p | 720p | 1080p |\n|:------:|:----:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 | 1920×1080 |\n| 4:3 | 752×560 | 1112×834 | 1664×1248 |\n| 1:1 | 640×640 | 960×960 | 1440×1440 |\n| 3:4 | 560×752 | 834×1112 | 1248×1664 |\n| 9:16 | 480×854 | 720×1280 | 1080×1920 |\n| 21:9 | 992×432 | 1470×630 | 2206×946 |\n\nSi le prompt est classe comme tache d'edition / extension video, seul `adaptive` est accepte ; un rapport fixe fait echouer la tache plus tard, sans erreur a l'envoi",
             "enum": [
               "16:9",
               "9:16",
@@ -329,7 +382,7 @@
           },
           "callback_url": {
             "type": "string",
-            "description": "URL de rappel HTTPS apres l'achevement de la tache\n\n**Declenchement du rappel :**\n- Declenche lorsque la tache est terminee (completed), echouee (failed) ou annulee (cancelled)\n- Envoye apres la confirmation de la facturation\n\n**Restrictions de securite :**\n- Seul le protocole HTTPS est pris en charge\n- Les rappels vers les adresses IP privees sont interdits (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longueur de l'URL ne doit pas depasser `2048` caracteres\n\n**Mecanisme de rappel :**\n- Delai d'expiration : `10` secondes\n- Jusqu'a `3` tentatives apres un echec (respectivement `1`/`2`/`4` secondes apres l'echec)\n- Le format du corps de reponse du rappel est identique a celui de l'interface de consultation de tache\n- Un code de statut 2xx est considere comme un succes, les autres codes declenchent une nouvelle tentative",
+            "description": "URL de rappel HTTPS apres l'achevement de la tache\n\n**Declenchement du rappel :**\n- Déclenché lorsque la tâche est terminée (completed) ou a échoué (failed)\n- Envoye apres la confirmation de la facturation\n\n**Restrictions de securite :**\n- Seul le protocole HTTPS est pris en charge\n- Les rappels vers les adresses IP privees sont interdits (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longueur de l'URL ne doit pas depasser `2048` caracteres\n\n**Mecanisme de rappel :**\n- Delai d'expiration : `10` secondes\n- Jusqu'a `3` tentatives apres un echec (respectivement `1`/`2`/`4` secondes apres l'echec)\n- Le format du corps de reponse du rappel est identique a celui de l'interface de consultation de tache\n- Un code de statut 2xx est considere comme un succes, les autres codes declenchent une nouvelle tentative",
             "format": "uri",
             "example": "https://your-domain.com/webhooks/video-task-completed"
           }
@@ -404,8 +457,8 @@
         "properties": {
           "can_cancel": {
             "type": "boolean",
-            "description": "Indique si la tache peut etre annulee",
-            "example": true
+            "description": "Indique si la tâche peut être annulée. Seedance 2.5 ne permet pas aux utilisateurs d’annuler une tâche ; ce champ renvoie toujours `false`.",
+            "example": false
           },
           "estimated_time": {
             "type": "integer",

@@ -1,0 +1,489 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Seedance 2.5 Draft-to-Video API",
+    "description": "Einen fertigen Seedance-2.5-Entwurf in ein finales 1080p-Video mit demselben Inhalt umwandeln",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Produktionsumgebung"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Seedance 2.5 Draft-to-Video",
+        "description": "- Wandelt einen fertigen Seedance-2.5-Entwurf (eine mit `draft: true` erstellte Aufgabe) in ein finales 1080p-Video mit demselben Inhalt um\n- Es werden nur vier Felder akzeptiert: `model`, `source_task_id`, `output_format` und `callback_url`. Prompt, Materialien, Dauer, Seitenverhältnis, Seed und Audioeinstellungen werden vollständig vom Entwurf übernommen. Diese Felder dürfen nicht erneut übergeben werden; jedes andere Feld führt zu einem 400-Parameterfehler\n- Senden Sie die Konvertierungsanfrage vor `draft_expires_at` des Entwurfs. Die Gültigkeitsdauer beträgt standardmäßig 24 Stunden ab Fertigstellung des Entwurfs; maßgeblich ist der tatsächliche Wert von `draft_expires_at` aus der Aufgabenabfrage\n- Die Gültigkeit wird sowohl bei Annahme der Anfrage als auch vor Übergabe zur Generierung geprüft. Läuft der Entwurf in der Warteschlange ab, schlägt die Konvertierungsaufgabe fehl und ihre Kosten werden erstattet. Planen Sie daher Wartezeit ein\n- Derselbe Entwurf kann innerhalb seiner Gültigkeitsdauer mehrfach konvertiert werden; jede Konvertierung wird separat abgerechnet\n- Asynchroner Verarbeitungsmodus: Verwenden Sie die zurückgegebene Aufgaben-ID [zur Statusabfrage](/de/api-manual/task-management/get-task-detail). Die Antwort enthält `source_task_id`\n- Generierte Video-Links sind 24 Stunden gültig; speichern Sie die Dateien rechtzeitig\n\n**Abrechnungsregeln:**\n- Wird separat vom Entwurf und immer zum `1080p`-Tarif abgerechnet\n- Als Ausgabedauer gilt die für den Quellentwurf gespeicherte tatsächliche Ausgabedauer. Fehlt dieser Wert, wird die für die Quellaufgabe gespeicherte effektive Ausgabedauer verwendet\n- Abrechenbare Dauer: ohne Videoeingabe die Ausgabedauer; mit Videoeingabe (einschließlich Reference-to-Video, Video Edit und Video Extend) `Ausgabedauer + max(Eingabevideodauer, Ausgabedauer)`. In beiden Fällen wird auf die nächste 0,1 Sekunde aufgerundet\n- War der Inhaltsfilter für den Entwurf deaktiviert (`content_filter: false`), wird auch das finale Video mit +10 % (`1.1x`) abgerechnet\n- Schlägt die Konvertierung fehl, werden die Kosten dieser Konvertierung erstattet; die Kosten des Entwurfs werden nicht erstattet",
+        "operationId": "createSeedance25DraftToVideo",
+        "tags": [
+          "Videogenerierung"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "In ein finales 1080p-Video umwandeln (MP4)",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
+                  }
+                },
+                "mov": {
+                  "summary": "In ein finales 1080p-Video umwandeln (MOV)",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Aufgabe zur Konvertierung in ein finales Video erfolgreich erstellt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Anfrageparameter oder die Quellaufgabe ist kein konvertierbarer Entwurf",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "Ein unzulässiges Feld wurde übergeben",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "Die Quellaufgabe ist kein Entwurf",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nicht authentifiziert, Token ungültig oder abgelaufen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Unzureichendes Guthaben, Aufladung erforderlich",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Zugriff verweigert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Die Quellaufgabe existiert nicht oder gehört nicht zum aktuellen Konto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "Quellaufgabe nicht gefunden",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Der Entwurf ist noch nicht fertig oder es fehlen für die Konvertierung erforderliche Informationen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "Der Entwurf ist noch nicht fertig",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Für die Konvertierung erforderliche Informationen fehlen",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Der Entwurf ist abgelaufen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "Die Frist draft_expires_at ist abgelaufen",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Interner Serverfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Der Quelldienst oder die Informationen zur Quellaufgabe sind vorübergehend nicht verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_channel_unavailable": {
+                    "summary": "Quelldienst nicht verfügbar",
+                    "value": {
+                      "error": {
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Informationen zur Quellaufgabe vorübergehend nicht verfügbar",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "source_task_id"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Name des Videogenerierungsmodells",
+            "enum": [
+              "seedance-2.5-draft-to-video"
+            ],
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "source_task_id": {
+            "type": "string",
+            "description": "Aufgaben-ID eines fertigen Seedance-2.5-Entwurfs\n\n**Wo Sie die ID finden:** Im Feld `id` der Antwort beim Erstellen eines Entwurfs (`draft: true`)\n\n**Voraussetzungen:**\n1. Die Aufgabe muss zum aktuellen Konto gehören\n2. Die Aufgabe muss eines der fünf Seedance-2.5-Generierungsmodelle verwenden\n3. Die Aufgabe muss mit `draft: true` erstellt worden sein\n4. Der Aufgabenstatus muss `completed` sein\n5. Die aktuelle Zeit muss vor `draft_expires_at` aus der Aufgabenabfrage liegen",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Ausgabe-Containerformat, Standard ist `mp4`\n\n**Verfügbare Werte:**\n- `mp4`: Standard-Containerformat. Dieser Endpunkt gibt 1080p-Videos mit 10-Bit-Farbtiefe und H.265/HEVC-Kodierung aus. Für die Wiedergabe ist Unterstützung für 10-Bit-HEVC erforderlich; reine H.264-Player können das Video möglicherweise nicht abspielen\n- `mov`: H.264 + yuv444p-Chroma-Sampling + PCM-Audio für höhere Farbtreue, empfohlen für Color-Grading-, Keying- und Compositing-Workflows. Die Wiedergabe im Browser wird möglicherweise nicht unterstützt; laden Sie die Datei herunter und spielen Sie sie mit VLC / mpv / ffplay ab. Keine zusätzlichen Kosten\n\nDas Ausgabeformat des Entwurfs wird nicht übernommen. Geben Sie hier bei Bedarf `mov` an",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "HTTPS-Callback-URL nach Aufgabenabschluss\n\n**Callback-Zeitpunkte:**\n- Wird bei Aufgabenabschluss (completed) oder Fehler (failed) ausgelöst\n- Wird nach Bestätigung der Abrechnung gesendet\n\n**Sicherheitseinschränkungen:**\n- Nur HTTPS-Protokoll unterstützt\n- Callbacks an interne IP-Adressen sind verboten (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x usw.)\n- URL-Länge maximal `2048` Zeichen\n\n**Callback-Mechanismus:**\n- Timeout: `10` Sekunden\n- Maximal `3` Wiederholungsversuche nach Fehler (jeweils nach `1`/`2`/`4` Sekunden)\n- Das Format des Callback-Antwortkörpers entspricht dem Rückgabeformat der Aufgabenabfrage-Schnittstelle\n- Ein 2xx-Statuscode gilt als Erfolg, andere Statuscodes lösen Wiederholungsversuche aus",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Zeitstempel der Aufgabenerstellung",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "Aufgaben-ID",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "Tatsächlich verwendeter Modellname",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Spezifischer Aufgabentyp"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Aufgabenfortschritt in Prozent (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Aufgabenstatus",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Detaillierte Informationen zur Videoaufgabe"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Ausgabetyp der Aufgabe",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Nutzungs- und Abrechnungsinformationen"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Gibt an, ob die Aufgabe abgebrochen werden kann. Seedance 2.5 unterstützt keinen Abbruch durch Benutzer; dieses Feld gibt immer `false` zurück.",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Geschätzte Fertigstellungszeit (Sekunden)",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Dauerfeld in der Antwort zur Aufgabenerstellung (Sekunden). Dieser Endpunkt gibt bei der Erstellung derzeit `0` zurück; dies ist nicht die tatsächliche Ausgabedauer. Orientieren Sie sich an der Dauer des Quellentwurfs. Wenn die [Aufgabenabfrage](/de/api-manual/task-management/get-task-detail) nach Abschluss das Feld `video_duration` auf oberster Ebene zurückgibt, ist dieser Wert maßgeblich.",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Nutzungs- und Abrechnungsinformationen",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Abrechnungsregel",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Geschätzter Credit-Verbrauch",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Benutzergruppenkategorie",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Fehlercode-Bezeichner"
+              },
+              "message": {
+                "type": "string",
+                "description": "Fehlerbeschreibung"
+              },
+              "type": {
+                "type": "string",
+                "description": "Fehlertyp"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle Schnittstellen erfordern eine Authentifizierung mit Bearer Token##\n\n**API Key erhalten:**\n\nBesuchen Sie die [API-Key-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API Key zu erhalten\n\n**Fügen Sie ihn im Anfrage-Header hinzu:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Videogenerierung",
+      "description": "API-Schnittstellen für KI-Videogenerierung"
+    }
+  ]
+}

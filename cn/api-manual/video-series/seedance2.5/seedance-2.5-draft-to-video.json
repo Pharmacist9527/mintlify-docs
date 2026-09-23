@@ -1,0 +1,489 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Seedance 2.5 Draft-to-Video 接口",
+    "description": "把已完成的 Seedance 2.5 样片转为同一内容的 1080p 正式视频",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Seedance 2.5 Draft-to-Video 样片转正式",
+        "description": "- 把已完成的 Seedance 2.5 样片（创建时传了 `draft: true` 的任务）转为同一内容的 1080p 正式视频\n- 只接受 `model`、`source_task_id`、`output_format`、`callback_url` 四个字段。提示词、素材、时长、宽高比、随机种子、音频设置全部沿用样片，不需要也不能重复传入，传入任何其它字段都会返回 400 参数错误\n- 请在样片的 `draft_expires_at` 之前提交转换请求。默认有效期为样片完成后 24 小时，实际截止时间以任务查询返回的 `draft_expires_at` 为准\n- 系统会在受理和提交生成前检查有效期；排队期间过期会导致转换任务失败并退回本次费用，请预留排队时间\n- 同一个样片在有效期内可以多次转换，每次单独计费\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)，查询结果会带上 `source_task_id`\n- 生成的视频链接，有效期为24小时，请尽快保存\n\n**计费规则：**\n- 与样片分开计费，固定按 `1080p` 计费\n- 输出时长取源样片记录的实际产出时长，缺少实际值时使用源任务记录的有效输出时长\n- 计费时长：样片没有视频输入时为输出时长；有视频输入时（含 Reference-to-Video、Video Edit、Video Extend）为 `输出时长 + max(输入视频时长, 输出时长)`。两种情况都向上取整到 0.1 秒\n- 样片关闭了内容过滤（`content_filter: false`）时，正式视频同样按 +10%（`1.1x`）计费\n- 转换失败会退回本次费用，样片的费用不退",
+        "operationId": "createSeedance25DraftToVideo",
+        "tags": [
+          "视频生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "转为 1080p 正式视频（MP4）",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
+                  }
+                },
+                "mov": {
+                  "summary": "转为 1080p 正式视频（MOV）",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "转正式任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误，或源任务不是可转换的样片",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "传入了不允许的字段",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "源任务不是样片",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "源任务不存在或不属于当前账号",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "找不到源任务",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "样片尚未完成或缺少转换所需信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "样片未完成",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "缺少转换所需信息",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "样片已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "已超过 draft_expires_at",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "源服务或源任务信息暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_channel_unavailable": {
+                    "summary": "源服务不可用",
+                    "value": {
+                      "error": {
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "暂时无法读取源任务信息",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "source_task_id"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "视频生成模型名称",
+            "enum": [
+              "seedance-2.5-draft-to-video"
+            ],
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "source_task_id": {
+            "type": "string",
+            "description": "已完成的 Seedance 2.5 样片任务的 Task ID\n\n**获取方式：** 创建样片（`draft: true`）请求返回的 `id` 字段\n\n**要求：**\n1. 任务必须属于当前账号\n2. 任务模型为 Seedance 2.5 的五个生成模型之一\n3. 任务创建时传了 `draft: true`\n4. 任务状态为 `completed`\n5. 当前时间早于该任务查询结果中的 `draft_expires_at`",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "output_format": {
+            "type": "string",
+            "description": "输出容器格式，默认为 `mp4`\n\n**可选值：**\n- `mp4`：默认容器格式。本接口固定输出 1080p 视频，采用 10bit 位深和 H.265/HEVC 编码。播放环境需支持 10bit HEVC；仅支持 H.264 的播放器可能无法播放\n- `mov`：H.264 + yuv444p 色度采样 + PCM 音频，色彩保真度更高，适合调色、抠像、合成等后期流程。浏览器内嵌播放可能不支持，请下载后使用 VLC / mpv / ffplay 播放。不额外收费\n\n不继承样片的输出格式，需要 `mov` 时请在这里指定",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "任务完成后的 HTTPS 回调地址\n\n**回调时机：**\n- 任务完成（completed）或失败（failed）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持 HTTPS 协议\n- 禁止回调到内网 IP 地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x 等）\n- URL 长度不超过 `2048` 字符\n\n**回调机制：**\n- 超时时间：`10` 秒\n- 失败后最多重试 `3` 次（分别在失败后 `1`/`2`/`4` 秒重试）\n- 回调响应体格式与任务查询接口返回格式一致\n- 返回 2xx 状态码视为成功，其他状态码触发重试",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "任务的具体类型"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "任务进度百分比 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "任务状态",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "视频任务详细信息"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "任务的输出类型",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用量和计费信息"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "任务是否可以取消。Seedance 2.5 不支持用户取消任务，固定返回 `false`。",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "预估完成时间（秒）",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "创建响应中的时长字段（秒）。本接口在创建时当前返回 `0`，不代表实际产出时长。请参考源样片时长；若任务完成后的[任务查询](/cn/api-manual/task-management/get-task-detail)返回顶层 `video_duration`，以该值为准。",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "使用量和计费信息",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "计费规则",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "预估消耗积分数",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "用户组类别",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "错误代码标识符"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "视频生成",
+      "description": "AI视频生成相关接口"
+    }
+  ]
+}

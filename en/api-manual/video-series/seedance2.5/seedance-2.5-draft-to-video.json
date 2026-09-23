@@ -1,0 +1,489 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Seedance 2.5 Draft-to-Video API",
+    "description": "Convert a completed Seedance 2.5 draft into a 1080p final video with the same content",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Seedance 2.5 Draft-to-Video",
+        "description": "- Convert a completed Seedance 2.5 draft (a task created with `draft: true`) into a 1080p final video with the same content\n- Only four fields are accepted: `model`, `source_task_id`, `output_format`, and `callback_url`. The prompt, assets, duration, aspect ratio, seed, and audio settings are all reused from the draft. Do not send them again; any other field returns a 400 parameter error\n- Submit the conversion request before the draft's `draft_expires_at`. The default validity period is 24 hours after the draft completes; use the actual `draft_expires_at` returned by the task query as the deadline\n- Expiration is checked both when the request is accepted and before generation is submitted. If the draft expires while queued, the conversion task fails and its charge is refunded. Allow time for queuing\n- The same draft can be converted multiple times before it expires; each conversion is billed separately\n- Asynchronous processing mode: use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail). The query response includes `source_task_id`\n- Generated video links are valid for 24 hours; save them promptly\n\n**Billing rules:**\n- Billed separately from the draft, always at the `1080p` rate\n- The output duration is the actual output duration recorded for the source draft. If that value is unavailable, the effective output duration recorded for the source task is used\n- Billable duration: without video input, the output duration; with video input (including Reference-to-Video, Video Edit, and Video Extend), `output duration + max(input video duration, output duration)`. Both are rounded up to the next 0.1 second\n- If content filtering was disabled for the draft (`content_filter: false`), the final video is also billed at +10% (`1.1x`)\n- If conversion fails, the conversion charge is refunded; the draft charge is not refunded",
+        "operationId": "createSeedance25DraftToVideo",
+        "tags": [
+          "Video Generation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Convert to a 1080p final video (MP4)",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123"
+                  }
+                },
+                "mov": {
+                  "summary": "Convert to a 1080p final video (MOV)",
+                  "value": {
+                    "model": "seedance-2.5-draft-to-video",
+                    "source_task_id": "task-unified-1774857405-abc123",
+                    "output_format": "mov"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Final video conversion task created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters, or the source task is not an eligible draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_parameter": {
+                    "summary": "An unsupported field was provided",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "prompt is not allowed for seedance-2.5-draft-to-video: the final video reuses the draft's prompt, assets, duration, ratio, seed and audio settings",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_source_task": {
+                    "summary": "The source task is not a draft",
+                    "value": {
+                      "error": {
+                        "code": "invalid_source_task",
+                        "message": "source_task_id must reference a completed Seedance 2.5 draft (draft=true) task",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated, token invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota, top-up required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model seedance-2.5-draft-to-video",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The source task does not exist or does not belong to the current account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_found": {
+                    "summary": "Source task not found",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_found",
+                        "message": "Source task not found",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The draft is not complete or is missing information required for conversion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_task_not_ready": {
+                    "summary": "The draft is not complete",
+                    "value": {
+                      "error": {
+                        "code": "source_task_not_ready",
+                        "message": "The draft task has not completed yet; query it until status is completed",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Missing information required for conversion",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "The draft task is missing the metadata required for conversion",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The draft has expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "draft_task_expired": {
+                    "summary": "The draft_expires_at deadline has passed",
+                    "value": {
+                      "error": {
+                        "code": "draft_task_expired",
+                        "message": "The draft expired at 2026-09-23T17:19:36Z and can no longer be converted",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The source service or source task information is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "source_channel_unavailable": {
+                    "summary": "Source service unavailable",
+                    "value": {
+                      "error": {
+                        "code": "source_channel_unavailable",
+                        "message": "The service that generated this draft is currently unavailable; please retry later",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_task_metadata_unavailable": {
+                    "summary": "Source task information temporarily unavailable",
+                    "value": {
+                      "error": {
+                        "code": "source_task_metadata_unavailable",
+                        "message": "Source task is temporarily unavailable",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "source_task_id"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Video generation model name",
+            "enum": [
+              "seedance-2.5-draft-to-video"
+            ],
+            "default": "seedance-2.5-draft-to-video",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "source_task_id": {
+            "type": "string",
+            "description": "Task ID of a completed Seedance 2.5 draft\n\n**Where to find it:** The `id` field returned when creating a draft (`draft: true`)\n\n**Requirements:**\n1. The task must belong to the current account\n2. The task must use one of the five Seedance 2.5 generation models\n3. The task must have been created with `draft: true`\n4. The task status must be `completed`\n5. The current time must be earlier than `draft_expires_at` in the task query response",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Output container format, defaults to `mp4`\n\n**Options:**\n- `mp4`: Default container format. This endpoint outputs 1080p video with 10-bit color depth and H.265/HEVC encoding. Playback requires support for 10-bit HEVC; H.264-only players may not play it\n- `mov`: H.264 + yuv444p chroma sampling + PCM audio for higher color fidelity, recommended for color grading, keying and compositing workflows. Browser inline playback may not support it; download and play with VLC / mpv / ffplay. No extra charge\n\nThe draft's output format is not inherited. Specify `mov` here if required",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "HTTPS callback URL for task completion\n\n**Callback timing:**\n- Triggered when the task is completed or failed\n- Sent after billing confirmation is complete\n\n**Security restrictions:**\n- Only HTTPS protocol is supported\n- Callbacks to private IP addresses are prohibited (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- URL length must not exceed `2048` characters\n\n**Callback mechanism:**\n- Timeout: `10` seconds\n- Up to `3` retries after failure (at `1`/`2`/`4` seconds after failure respectively)\n- Callback response body format is consistent with the task query endpoint response format\n- A 2xx status code is considered successful; other status codes trigger retries",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Task creation timestamp",
+            "example": 1761313744
+          },
+          "id": {
+            "type": "string",
+            "description": "Task ID",
+            "example": "task-unified-1774857405-abc123"
+          },
+          "model": {
+            "type": "string",
+            "description": "Actual model name used",
+            "example": "seedance-2.5-draft-to-video"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Specific type of the task"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Task progress percentage (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Task status",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Video task details"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Output type of the task",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Usage and billing information"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Whether the task can be cancelled. Seedance 2.5 does not support user cancellation; this field always returns `false`.",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Estimated completion time (seconds)",
+            "minimum": 0,
+            "example": 165
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Duration field in the task creation response (seconds). This endpoint currently returns `0` at creation; it is not the actual output duration. Refer to the source draft duration. If the [task query](/en/api-manual/task-management/get-task-detail) returns a top-level `video_duration` after completion, use that value.",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Usage and billing information",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Billing rule",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Estimated credits consumed",
+            "minimum": 0,
+            "example": 50
+          },
+          "user_group": {
+            "type": "string",
+            "description": "User group category",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code identifier"
+              },
+              "message": {
+                "type": "string",
+                "description": "Error description message"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##All endpoints require Bearer Token authentication##\n\n**Get API Key:**\n\nVisit the [API Key Management Page](https://evolink.ai/dashboard/keys) to obtain your API Key\n\n**Add to request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Video Generation",
+      "description": "AI video generation endpoints"
+    }
+  ]
+}
