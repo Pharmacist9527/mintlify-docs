@@ -338,9 +338,9 @@ a yellow Persian cat --ar 2:3 more description ← text after parameters
 All seven V8.2 models are asynchronous and billed per call.
 
 1. **Submit** — `POST /v1/images/generations` returns immediately with a task `id`, `status: processing` and `usage.credits_reserved`. The upstream job is created in the background.
-2. **Poll** — `GET /v1/tasks/{task_id}` ([Query Task Status](/en/api-manual/task-management/get-task-detail)). The upstream reports an average of about 40 seconds for generation and edits; poll every 3–5 seconds with a client-side cap of about 20 minutes, and do not resubmit the same prompt while a task is still `processing`.
+2. **Poll** — `GET /v1/tasks/{task_id}` ([Query Task Status](/en/api-manual/task-management/get-task-detail)). The upstream reports an average of about 40 seconds for generation and edits; poll every 3–5 seconds with a client-side cap of about 20 minutes, and do not resubmit the same prompt while a task is still `processing`. The upstream limits concurrency per organization account; when the limit is exceeded, this platform backs off and resubmits automatically, so on your side the task only takes longer rather than failing.
 3. **Read the result** — when `status` is `completed`, `results` holds the image URLs: 4 for `fast`, 24 for `draft`. `usage.cost` shows the final charge.
-4. **Save the images** — result links are valid for **30 days**. Download or re-host anything you need to keep.
+4. **Save the images** — result links are signed OSS URLs valid for **30 days**; the signature only covers `GET`, so probing with `HEAD` returns `403`. Download or re-host anything you need to keep.
 5. **Optional callback** — pass `callback_url` (HTTPS, public host) to be notified on `completed` / `failed`. Callbacks are retried 3 times with backoff; treat them as a hint and confirm with the task query.
 
 | Status | Meaning | Final? |
@@ -348,9 +348,9 @@ All seven V8.2 models are asynchronous and billed per call.
 | `pending` | Accepted, waiting for the upstream queue | No |
 | `processing` | Rendering | No |
 | `completed` | Images ready in `results` | Yes |
-| `failed` | Upstream error, parameter rejection, moderation or fetch failure; the message is in `error` and reserved credits are refunded | Yes |
+| `failed` | Upstream error, parameter rejection, moderation or fetch failure; the message is in `error` and reserved credits are refunded — except when moderation blocked every image, see below | Yes |
 
-Failed tasks are refunded in full, including upstream parameter rejections (`--oref`, out-of-range `--q`, too-long description) and image fetch failures. The one exception is content moderation, see below. Error codes and retry guidance are listed on the [Error Codes](/en/api-manual/task-management/error-codes) page.
+Failed tasks are refunded in full, including requests rejected at creation, upstream parameter rejections (`--oref`, out-of-range `--q`, too-long description) and image fetch failures. The one exception: if upstream content moderation blocks **all** images of a task, the task ends as `failed` and the credits are **not** refunded, because the upstream has already billed it. If only some images are blocked, the task is `completed` and the blocked slots hold an empty URL. Error codes and retry guidance are listed on the [Error Codes](/en/api-manual/task-management/error-codes) page.
 
 ### Derived Tasks
 
@@ -384,5 +384,5 @@ There is no upscale endpoint on V8.2. Generate with `quality: "hd"` for native 2
 ## Content Moderation Notice
 
 <Note>
-Midjourney has a built-in content moderation system. Each image is moderated individually: if some of the generated images are filtered, their slots are returned empty while the remaining images are delivered normally, and credits consumed for that request will not be refunded. Please ensure your prompts comply with content guidelines.
+Midjourney has a built-in content moderation system. Each image is moderated individually: if some of the generated images are filtered, the task is still `completed`, their slots are returned empty and the remaining images are delivered normally; if **all** images are filtered, the task ends as `failed`. In both cases the credits consumed for that request are not refunded, because the upstream has already billed it. Please ensure your prompts comply with content guidelines.
 </Note>

@@ -338,9 +338,9 @@ a yellow Persian cat --ar 2:3 more description ← texte après les paramètres
 Les sept modèles V8.2 sont asynchrones et facturés à l'appel.
 
 1. **Soumettre** — `POST /v1/images/generations` répond immédiatement avec un `id` de tâche, `status: processing` et `usage.credits_reserved`. Le job fournisseur est créé en arrière-plan.
-2. **Interroger** — `GET /v1/tasks/{task_id}` ([Interroger l'état d'une tâche](/fr/api-manual/task-management/get-task-detail)). Le fournisseur indique une durée moyenne d'environ 40 secondes pour la génération et les éditions ; interrogez toutes les 3 à 5 secondes avec un plafond côté client d'environ 20 minutes, et ne resoumettez pas le même prompt tant qu'une tâche est encore en `processing`.
+2. **Interroger** — `GET /v1/tasks/{task_id}` ([Interroger l'état d'une tâche](/fr/api-manual/task-management/get-task-detail)). Le fournisseur indique une durée moyenne d'environ 40 secondes pour la génération et les éditions ; interrogez toutes les 3 à 5 secondes avec un plafond côté client d'environ 20 minutes, et ne resoumettez pas le même prompt tant qu'une tâche est encore en `processing`. Le fournisseur limite la concurrence par compte d'organisation ; en cas de dépassement, cette plateforme temporise et resoumet automatiquement, de sorte que, de votre côté, la tâche est seulement plus longue et n'échoue pas.
 3. **Lire le résultat** — lorsque `status` vaut `completed`, `results` contient les URL des images : 4 pour `fast`, 24 pour `draft`. `usage.cost` indique le montant final facturé.
-4. **Sauvegarder les images** — les liens de résultat sont valides **30 jours**. Téléchargez ou réhébergez tout ce que vous souhaitez conserver.
+4. **Sauvegarder les images** — les liens de résultat sont des URL OSS signées valides **30 jours** ; la signature ne couvre que `GET`, une requête `HEAD` renvoie donc `403`. Téléchargez ou réhébergez tout ce que vous souhaitez conserver.
 5. **Callback facultatif** — passez `callback_url` (HTTPS, hôte public) pour être notifié lors de `completed` / `failed`. Les callbacks sont réessayés 3 fois avec backoff ; considérez-les comme une indication et confirmez par l'interrogation de la tâche.
 
 | Statut | Signification | Final ? |
@@ -348,9 +348,9 @@ Les sept modèles V8.2 sont asynchrones et facturés à l'appel.
 | `pending` | Acceptée, en attente de la file du fournisseur | Non |
 | `processing` | Rendu en cours | Non |
 | `completed` | Images prêtes dans `results` | Oui |
-| `failed` | Erreur du fournisseur, rejet de paramètre, modération ou échec de récupération ; le message figure dans `error` et les crédits réservés sont remboursés | Oui |
+| `failed` | Erreur du fournisseur, rejet de paramètre, modération ou échec de récupération ; le message figure dans `error` et les crédits réservés sont remboursés — sauf si la modération a bloqué toutes les images, voir ci-dessous | Oui |
 
-Les tâches échouées sont intégralement remboursées, y compris les rejets de paramètres par le fournisseur (`--oref`, `--q` hors plage, description trop longue) et les échecs de récupération d'image. La seule exception est la modération de contenu, voir ci-dessous. Les codes d'erreur et les conseils de nouvelle tentative sont listés sur la page [Codes d'erreur](/fr/api-manual/task-management/error-codes).
+Les tâches échouées sont intégralement remboursées, y compris les requêtes rejetées à la création, les rejets de paramètres par le fournisseur (`--oref`, `--q` hors plage, description trop longue) et les échecs de récupération d'image. Seule exception : si la modération de contenu du fournisseur bloque **toutes** les images d'une tâche, celle-ci se termine en `failed` et les crédits ne sont **pas** remboursés, car le fournisseur l'a déjà facturée. Si seules certaines images sont bloquées, la tâche est `completed` et les emplacements bloqués contiennent une URL vide. Les codes d'erreur et les conseils de nouvelle tentative sont listés sur la page [Codes d'erreur](/fr/api-manual/task-management/error-codes).
 
 ### Tâches dérivées
 
@@ -384,5 +384,5 @@ Il n'y a pas de point de terminaison d'upscale sur V8.2. Générez plutôt avec 
 ## Avis de modération de contenu
 
 <Note>
-Midjourney dispose d'un système de modération de contenu intégré. Chaque image est modérée individuellement : si certaines images générées sont filtrées, leurs emplacements sont renvoyés vides tandis que les autres images sont livrées normalement, et les crédits consommés pour cette requête ne sont pas remboursés. Veuillez vous assurer que vos prompts respectent les directives de contenu.
+Midjourney dispose d'un système de modération de contenu intégré. Chaque image est modérée individuellement : si certaines images générées sont filtrées, la tâche reste `completed`, leurs emplacements sont renvoyés vides et les autres images sont livrées normalement ; si **toutes** les images sont filtrées, la tâche se termine en `failed`. Dans les deux cas, les crédits consommés pour cette requête ne sont pas remboursés, car le fournisseur l'a déjà facturée. Veuillez vous assurer que vos prompts respectent les directives de contenu.
 </Note>

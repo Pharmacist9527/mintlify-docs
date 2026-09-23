@@ -338,9 +338,9 @@ a yellow Persian cat --ar 2:3 more description ← Text nach Parametern
 Alle sieben V8.2-Modelle sind asynchron und werden pro Aufruf abgerechnet.
 
 1. **Absenden** — `POST /v1/images/generations` antwortet sofort mit einer Aufgaben-`id`, `status: processing` und `usage.credits_reserved`. Der Upstream-Job wird im Hintergrund erstellt.
-2. **Abfragen** — `GET /v1/tasks/{task_id}` ([Aufgabenstatus abfragen](/de/api-manual/task-management/get-task-detail)). Der Upstream gibt für Generierung und Bearbeitungen eine durchschnittliche Dauer von etwa 40 Sekunden an; fragen Sie alle 3–5 Sekunden ab, mit einer clientseitigen Obergrenze von etwa 20 Minuten, und senden Sie denselben Prompt nicht erneut, solange eine Aufgabe noch `processing` ist.
+2. **Abfragen** — `GET /v1/tasks/{task_id}` ([Aufgabenstatus abfragen](/de/api-manual/task-management/get-task-detail)). Der Upstream gibt für Generierung und Bearbeitungen eine durchschnittliche Dauer von etwa 40 Sekunden an; fragen Sie alle 3–5 Sekunden ab, mit einer clientseitigen Obergrenze von etwa 20 Minuten, und senden Sie denselben Prompt nicht erneut, solange eine Aufgabe noch `processing` ist. Der Upstream begrenzt die Parallelität pro Organisationskonto; wird die Grenze überschritten, wartet diese Plattform automatisch und reicht die Aufgabe erneut ein – für Sie dauert die Aufgabe dann nur länger, sie schlägt nicht fehl.
 3. **Ergebnis lesen** — wenn `status` gleich `completed` ist, enthält `results` die Bild-URLs: 4 bei `fast`, 24 bei `draft`. `usage.cost` zeigt die endgültige Belastung.
-4. **Bilder speichern** — Ergebnislinks sind **30 Tage** gültig. Laden Sie alles herunter oder hosten Sie es neu, was Sie behalten möchten.
+4. **Bilder speichern** — Ergebnislinks sind signierte OSS-URLs, die **30 Tage** gültig sind; die Signatur gilt nur für `GET`, eine `HEAD`-Anfrage liefert daher `403`. Laden Sie alles herunter oder hosten Sie es neu, was Sie behalten möchten.
 5. **Optionaler Callback** — übergeben Sie `callback_url` (HTTPS, öffentlicher Host), um bei `completed` / `failed` benachrichtigt zu werden. Callbacks werden 3-mal mit Backoff wiederholt; betrachten Sie sie als Hinweis und bestätigen Sie den Status über die Aufgabenabfrage.
 
 | Status | Bedeutung | Endgültig? |
@@ -348,9 +348,9 @@ Alle sieben V8.2-Modelle sind asynchron und werden pro Aufruf abgerechnet.
 | `pending` | Angenommen, wartet auf die Upstream-Warteschlange | Nein |
 | `processing` | Wird gerendert | Nein |
 | `completed` | Bilder in `results` bereit | Ja |
-| `failed` | Upstream-Fehler, Parameterablehnung, Moderation oder fehlgeschlagener Download; die Meldung steht in `error` und reservierte Credits werden erstattet | Ja |
+| `failed` | Upstream-Fehler, Parameterablehnung, Moderation oder fehlgeschlagener Download; die Meldung steht in `error` und reservierte Credits werden erstattet – außer wenn die Moderation alle Bilder blockiert hat, siehe unten | Ja |
 
-Fehlgeschlagene Aufgaben werden vollständig erstattet, einschließlich Parameterablehnungen durch den Upstream (`--oref`, `--q` außerhalb des Bereichs, zu lange Beschreibung) und fehlgeschlagener Bild-Downloads. Die einzige Ausnahme ist die Inhaltsmoderation, siehe unten. Fehlercodes und Hinweise zu Wiederholungsversuchen finden Sie auf der Seite [Fehlercodes](/de/api-manual/task-management/error-codes).
+Fehlgeschlagene Aufgaben werden vollständig erstattet, einschließlich bei der Erstellung abgelehnter Anfragen, Parameterablehnungen durch den Upstream (`--oref`, `--q` außerhalb des Bereichs, zu lange Beschreibung) und fehlgeschlagener Bild-Downloads. Die einzige Ausnahme: Blockiert die Inhaltsmoderation des Upstreams **alle** Bilder einer Aufgabe, endet die Aufgabe als `failed` und die Credits werden **nicht** erstattet, da der Upstream sie bereits abgerechnet hat. Werden nur einige Bilder blockiert, ist die Aufgabe `completed` und die blockierten Plätze enthalten eine leere URL. Fehlercodes und Hinweise zu Wiederholungsversuchen finden Sie auf der Seite [Fehlercodes](/de/api-manual/task-management/error-codes).
 
 ### Abgeleitete Aufgaben
 
@@ -384,5 +384,5 @@ Auf V8.2 gibt es keinen Upscale-Endpunkt. Generieren Sie stattdessen mit `qualit
 ## Hinweis zur Inhaltsmoderation
 
 <Note>
-Midjourney verfügt über ein integriertes Moderationssystem. Jedes Bild wird einzeln moderiert: Werden einige der generierten Bilder gefiltert, kommen ihre Plätze leer zurück, während die übrigen Bilder normal geliefert werden; die für diese Anfrage verbrauchten Credits werden nicht erstattet. Bitte achten Sie darauf, dass Ihre Prompts den Inhaltsrichtlinien entsprechen.
+Midjourney verfügt über ein integriertes Moderationssystem. Jedes Bild wird einzeln moderiert: Werden einige der generierten Bilder gefiltert, bleibt die Aufgabe `completed`, ihre Plätze kommen leer zurück und die übrigen Bilder werden normal geliefert; werden **alle** Bilder gefiltert, endet die Aufgabe als `failed`. In beiden Fällen werden die für diese Anfrage verbrauchten Credits nicht erstattet, da der Upstream sie bereits abgerechnet hat. Bitte achten Sie darauf, dass Ihre Prompts den Inhaltsrichtlinien entsprechen.
 </Note>
