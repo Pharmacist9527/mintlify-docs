@@ -28,6 +28,22 @@ mint dev
 
 View your local preview at `http://localhost:3000`.
 
+## Link checks
+
+Run `python3 scripts/check_links.py` before publishing. It checks navigation,
+redirect targets, MDX links, OpenAPI file references, and links inside OpenAPI
+descriptions. Use root-relative documentation paths such as
+`/cn/api-manual/language-series/gpt/responses/responses-reference`: relative
+paths such as `./responses-reference` can resolve differently inside parameter
+descriptions. Mintlify adds the deployment's `/docs` prefix automatically.
+
+Use `--output /tmp/link-audit.json` for the full results, or
+`--include-archived` to also inspect retired documents. Missing OpenAPI schema
+references are reported separately as warnings. This offline check does not
+validate HTTP responses or rendered anchor IDs; also verify the deployed site
+and use `mint broken-links --check-anchors` for MDX checks. Confirm image
+warnings against the rendered CDN URL, since the source asset URL can differ.
+
 ## Publishing changes
 
 Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
