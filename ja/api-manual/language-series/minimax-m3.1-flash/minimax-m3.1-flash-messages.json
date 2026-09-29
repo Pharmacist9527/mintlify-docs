@@ -1,0 +1,1004 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MiniMax-M3.1-Flash Anthropic 互換インターフェース",
+    "description": "MiniMax-M3.1-Flash を Anthropic Messages プロトコルで呼び出すための完全な API リファレンス。\n\n**プレビュー版モデル**：MiniMax-M3.1-Flash はプレビュー版です。動作やパラメータは変更される可能性があります。\n\n**互換性に関する説明**：\n- パス：`/v1/messages`（Anthropic 標準パス）\n- リクエスト / レスポンス構造は Anthropic Messages API と一致\n- 対応フィールド：`model` `messages`（必須）`system` `max_tokens` `temperature` `top_p` `stream` `thinking` `output_config` `tools` `tool_choice` `metadata`\n\n**モデル能力**：\n- 位置づけ：日常的なコーディングやエージェントワークフロー向けの MiniMax の高速モデル\n- コンテキストウィンドウ：**1,000,000 tokens**（1M）\n- 最大出力：**524,288 tokens**（512K）、推奨は **131,072 tokens**（128K）まで\n- 思考：常に有効で、無効にできません。思考の深さは `output_config.effort` で設定します（デフォルトは `max`）。思考内容は `content[type=thinking]` block で返却\n- マルチモーダル入力：テキスト、画像、動画の content block に対応",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "MiniMax-M3.1-Flash Messages インターフェース（Anthropic 互換）",
+        "description": "**プレビュー版モデル**：MiniMax-M3.1-Flash はプレビュー版です。動作やパラメータは変更される可能性があります。\n\n- Anthropic Messages プロトコルを使用して MiniMax-M3.1-Flash モデルを呼び出します\n- リクエスト / レスポンス構造は Anthropic API と整合します\n- **マルチモーダル対話**：`content` はテキスト、画像、動画の content block に対応\n- **システムプロンプト**：トップレベルの `system` フィールドで渡します\n- **思考**：常に有効。`output_config.effort` で思考の深さを設定します。レスポンスの `content` は `thinking` block で始まり、その後に `text` / `tool_use` block が続きます\n- **ストリーミング出力**：SSE イベントストリーム\n- **ツール呼び出し**：Anthropic `tool_use` / `tool_result` フローに対応\n\n**思考と出力トークン上限**：\n- 思考は無効にできません。思考トークンは出力トークンとして課金され、`max_tokens` に含まれ、`usage.output_tokens` にも計上されます\n- `max_tokens` を指定しない場合、EvoLink は **32768** を使用します\n- `max_tokens` が小さく effort が高いと、思考だけで上限を使い切ることがあります。その場合、レスポンスは `stop_reason: \"max_tokens\"` で終了し、`text` block は含まれません。`max_tokens` は 32768 以上に設定し、簡単なタスクでは `output_config.effort` を下げてください\n- マルチターンのツール呼び出しでは、`thinking` block を含む assistant の `content` 全体を原文のまま返送してください\n\n**互換ルール**：\n\n| リクエスト | EvoLink の処理 |\n| --- | --- |\n| `thinking.type: \"disabled\"` | `thinking` を削除。`output_config.effort` が未指定の場合は `low` を設定 |\n| `thinking.type: \"enabled\"` + `budget_tokens` | adaptive 思考に変換。`output_config.effort` が未指定の場合は `budget_tokens` から effort を決定：≤ 2048 → `low`、≤ 4096 → `medium`、≤ 8192 → `high`、≤ 16384 → `xhigh`、それより大きい場合 → `max` |\n| `output_config.effort: \"none\"` / `\"minimal\"` | `low` に変更 |\n| `service_tier` | 削除。リクエストは常に標準ティアで処理されます |\n\n`thinking` や `output_config.effort` にどの値を指定しても思考は実行され、そのトークンは出力として課金されます。\n\n**無視されるパラメータ**：`top_k`、`stop_sequences`。",
+        "operationId": "createMessageMiniMaxM31Flash",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小限の実行可能なリクエスト",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "こんにちは、世界"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system プロンプト + マルチターンあり",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "system": "あなたは経験豊富な技術エディターです。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "MiniMax-M3.1-Flash を三文で説明してください。"
+                      }
+                    ]
+                  }
+                },
+                "effort": {
+                  "summary": "思考の深さを設定（output_config.effort）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "一文で：日本の首都は？"
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "画像理解（マルチモーダル content block）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "この画像には何が写っていますか？"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "video_understanding": {
+                  "summary": "動画理解（マルチモーダル content block）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "この動画で起きていることを説明してください。"
+                          },
+                          {
+                            "type": "video",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/video.mp4",
+                              "fps": 1
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "ツール呼び出し（Anthropic tool_use スタイル）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "サンフランシスコの天気を調べて教えて"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "指定した地点の現在の天気を照会します",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "都市と州 / 国、例：San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "tool_result": {
+                  "summary": "ツールの結果を返送（マルチターンのツール呼び出し）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "サンフランシスコの天気を調べて教えて"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": [
+                          {
+                            "type": "thinking",
+                            "thinking": "ユーザーはサンフランシスコの現在の天気を知りたいので、get_weather ツールを呼び出します。",
+                            "signature": "066a381bdc3c0ded310e27c9a46d16e8"
+                          },
+                          {
+                            "type": "text",
+                            "text": "わかりました、サンフランシスコの天気を調べますね。"
+                          },
+                          {
+                            "type": "tool_use",
+                            "id": "toolu_01abc123xyz",
+                            "name": "get_weather",
+                            "input": {
+                              "location": "San Francisco, US"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_01abc123xyz",
+                            "content": "{\"location\": \"San Francisco, US\", \"weather\": \"霧\", \"temperature\": \"16°C\"}"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "指定した地点の現在の天気を照会します",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "都市と州 / 国、例：San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "ストリーミング出力（SSE）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "春についての短い詩を書いて"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "メッセージオブジェクト",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_adaptive": {
+                    "summary": "デフォルト（thinking block の後に text block）",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "ユーザーが尋ねているのは日本の首都で、これは基礎的な地理の知識の質問です。答えは東京で、そのまま提示すればよいです。",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "日本の首都は**東京**です。"
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 7,
+                        "output_tokens": 77,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "ツール呼び出しがトリガー（stop_reason=tool_use）",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e8",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "ユーザーはサンフランシスコの現在の天気を知りたいので、get_weather ツールを呼び出します。",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e8"
+                        },
+                        {
+                          "type": "text",
+                          "text": "わかりました、サンフランシスコの天気を調べますね。"
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "location": "San Francisco, US"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 35,
+                        "output_tokens": 92,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "max_tokens": {
+                    "summary": "思考中に出力上限に到達（stop_reason=max_tokens）",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e9",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "ユーザーは三つのソートアルゴリズムの詳しい比較を求めています。まず時間計算量から見ていきます。クイックソートは平均 O(n log n) ですが、ピボットの選び方が悪いと O(n^2) に劣化します。一方、マージソートは",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e9"
+                        }
+                      ],
+                      "stop_reason": "max_tokens",
+                      "usage": {
+                        "input_tokens": 25,
+                        "output_tokens": 1024,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "認証エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "権限エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "モデルまたはリソースが存在しません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "ゲートウェイエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル\n\n**説明**：`MiniMax-M3.1-Flash` はプレビュー版モデルのため、動作が変更される可能性があります",
+            "enum": [
+              "MiniMax-M3.1-Flash"
+            ],
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "生成内容の長さの上限（Token 数）。思考を含みます\n\n**説明**：\n- 上限は **524,288**（512K）、推奨は **131,072**（128K）まで\n- 省略した場合、EvoLink は **32768** を使用します\n- 思考トークンもこの上限に含まれます。値が小さく `output_config.effort` が高いと、思考だけで上限を使い切り、レスポンスが `stop_reason: \"max_tokens\"` で終了して `text` block が含まれないことがあります\n- 32768 以上を指定し、簡単なタスクでは `output_config.effort` を下げてください",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 32768
+          },
+          "messages": {
+            "type": "array",
+            "description": "対話メッセージのリスト。user / assistant をターンごとに交互に並べます\n\n**説明**：\n- 少なくとも 1 件のメッセージを含む必要があります\n- 最後のメッセージは通常 `role=user` です",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "システムプロンプト。AI の役割と振る舞いを設定するために使用します\n\n**説明**：\n- 文字列または文字列の配列に対応\n- トップレベルの `system` フィールドで渡します",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "content block 配列形式のシステムプロンプト。text ブロックには cache_control を付与できます",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度\n\n**説明**：\n- 範囲 `[0, 2]`\n- デフォルト 1；値が高いほど発散的に、低いほど確定的になります",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核サンプリングのしきい値\n\n**説明**：\n- 範囲 `[0, 1]`、MiniMax-M3.1-Flash のデフォルトは 0.95\n- temperature と top_p を同時に調整しないことを推奨します",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE ストリーミングで返すかどうか\n\n- `true`：Server-Sent Events のストリーミング返却\n- `false`：完全なレスポンスを待ってから一括で返します（デフォルト）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "思考の設定（任意）\n\nMiniMax-M3.1-Flash は常に思考するため、このフィールドは省略できます。思考の深さは `output_config.effort` で設定してください\n\n**説明**：\n- レスポンスの `content` は `type=\"thinking\"` block で始まります（出力トークンとして課金されます）\n- マルチターン対話、特にツール呼び出しを伴う場合は、thinking ブロックを原文のまま返送してください",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "adaptive",
+                  "disabled",
+                  "enabled"
+                ],
+                "description": "- `adaptive`：思考を有効にします（このフィールドを省略した場合と同じ）\n- `disabled`：思考は**無効になりません**。EvoLink は `thinking` を削除し、`output_config.effort` が未指定の場合は `low` を設定します\n- `enabled`：Anthropic の旧来の指定方法で、`budget_tokens` と併用します。EvoLink は adaptive 思考に変換し、`output_config.effort` が未指定の場合は `budget_tokens` から effort を決定します\n\nいずれの場合も思考は実行され、出力トークンとして課金されます",
+                "default": "adaptive"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "`type: \"enabled\"` の場合のみ使用します。思考トークンの厳密な上限ではなく、`output_config.effort` が未指定の場合に EvoLink が effort レベルに変換します\n\n- ≤ 2048 → `low`\n- ≤ 4096 → `medium`\n- ≤ 8192 → `high`\n- ≤ 16384 → `xhigh`\n- それより大きい場合 → `max`",
+                "minimum": 1
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "出力設定。`effort` で思考の深さを設定します",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "思考の深さ\n\n- `low`：思考が最も浅く、応答が最も速く、出力トークンが最も少ない\n- `medium` / `high` / `xhigh`：この順に思考が深くなります\n- `max`（デフォルト）：思考が最も深く、応答が最も遅く、出力トークンが最も多い\n\n**説明**：\n- 省略時は `max` になります。簡単なタスクでは低いレベルを指定すると、レイテンシと出力トークンを削減できます\n- 思考トークンは出力トークンとして課金され、`max_tokens` に含まれます\n- `none` と `minimal` を指定しても思考は無効になりません。EvoLink が `low` に変更します",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "max",
+                "example": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツール定義リスト\n\n**説明**：\n- Anthropic の tool 定義仕様に従います\n- `input_schema` は JSON Schema オブジェクトを使用します",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "ツール選択戦略。auto と none のみ対応します",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`：モデルがツールを呼び出すかを自動的に決定します（tools を指定した場合のデフォルト）\n- `none`：ツール呼び出しを禁止します"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "リクエストメタデータ",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "エンドユーザーを表す一意の識別子。ユーザー単位での監視や不正使用の検出に利用できます（ハッシュ化した ID の使用を推奨）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "user_system",
+              "group",
+              "sample_message_user",
+              "sample_message_ai"
+            ],
+            "description": "メッセージ送信側の役割。MiniMax-M3.1-Flash は user / assistant を交互に並べたメッセージを使用します\n\n- `user`：ユーザーメッセージ（`tool_result` block の返送にも使用）\n- `assistant`：アシスタントの過去の返信（`text` / `thinking` / `tool_use` blocks を含むことがあります）\n\n注意：**ここでは `system` を受け付けません**：システムプロンプトはトップレベルの `system` フィールドで渡してください。"
+          },
+          "content": {
+            "description": "メッセージ内容\n\n**説明**：\n- プレーンテキストの場合は文字列を直接渡します\n- 構造化された内容の場合は content block 配列（`text` / `image` / `video` / `tool_use` / `tool_result` / `thinking`）を渡します",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "メッセージ content block\n\n**対応する type**：\n- `text`：テキスト内容\n- `image`：画像入力\n- `video`：動画入力\n- `tool_use`：前のターンの assistant ツール呼び出しを返送\n- `tool_result`：ツール実行結果\n- `thinking`：前のターンの assistant 思考内容を返送\n- `mid_conv_system`：対話の途中に挿入するシステム指示",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "tool_use",
+              "tool_result",
+              "thinking",
+              "mid_conv_system"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト内容"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaSource",
+            "description": "画像または動画のソース。type=`image` または type=`video` の場合に使用します"
+          },
+          "id": {
+            "type": "string",
+            "description": "ツール呼び出し ID（tool_use の場合は必須）"
+          },
+          "name": {
+            "type": "string",
+            "description": "ツール名（tool_use の場合は必須）"
+          },
+          "input": {
+            "type": "object",
+            "description": "ツールの入力パラメータ（tool_use の場合、JSON オブジェクト）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "対応するツール呼び出し ID（tool_result の場合は必須、tool_use.id に対応）"
+          },
+          "content": {
+            "description": "ツール実行結果（tool_result）。文字列または content block 配列",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "返送する assistant の思考内容（type=`thinking` の場合に使用）。マルチターン対話、特にツール呼び出しを伴う場合は、assistant の thinking ブロックを原文のまま返送してください"
+          },
+          "signature": {
+            "type": "string",
+            "description": "返送する thinking 内容の署名。マルチターン継続時には原文のまま返送する必要があります"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "ツール名\n\n**説明**：\n- `a-zA-Z0-9_-` のみ許可されます\n- 最大 64 文字"
+          },
+          "description": {
+            "type": "string",
+            "description": "ツールの機能説明。モデルがいつ呼び出すべきかを判断するのに役立ちます"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "ツール入力パラメータの JSON Schema オブジェクト\n\n**説明**：\n- `type` は `object` である必要があります\n- `properties` と `required` を宣言すべきです"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "プロンプトキャッシュマーカー",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "キャッシュマーカーの種類"
+          }
+        }
+      },
+      "MediaSource": {
+        "type": "object",
+        "description": "画像または動画 content block のメディアソース\n\n- 画像は JPEG / PNG / GIF / WEBP に対応、1 枚あたり最大 10 MB\n- 動画は MP4 / AVI / MOV / MKV に対応、URL / Base64 は最大 50 MB",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "url"
+            ],
+            "description": "メディアソースの種類"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "base64 入力の場合は必須。例：`image/png` または `video/mp4`"
+          },
+          "data": {
+            "type": "string",
+            "description": "base64 エンコードされたメディアのバイト列"
+          },
+          "url": {
+            "type": "string",
+            "description": "画像または動画の公開 URL"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "low",
+              "default",
+              "high"
+            ],
+            "default": "default",
+            "description": "理解の精細度。デフォルトは default。解像度が高いほど消費トークンが多くなります"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0.2,
+            "maximum": 5,
+            "default": 1,
+            "description": "動画のフレーム抽出レート。デフォルト 1、範囲 [0.2, 5]。値が高いほど画面の変化に敏感になり、消費トークンが多くなります"
+          },
+          "max_long_side_pixel": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "画像または動画フレームの最長辺のピクセル上限"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic スタイルのメッセージレスポンス",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "メッセージの一意の ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "レスポンスオブジェクトの種類"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル",
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "content": {
+            "type": "array",
+            "description": "レスポンス content block リスト\n\n**含まれる可能性のある block type**：\n- `thinking`：推論過程（MiniMax-M3.1-Flash では常に返され、`text` / `tool_use` より前に置かれます）\n- `text`：最終的な回答テキスト\n- `tool_use`：モデルが発行したツール呼び出し",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止理由\n\n- `end_turn`：自然終了\n- `max_tokens`：max_tokens の上限（思考を含む）に到達。思考中に上限を使い切った場合、`text` block は含まれません\n- `tool_use`：モデルがツール呼び出しをトリガー",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "レスポンス内の content block",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` の場合の推論過程テキスト"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` の場合の完全性署名。マルチターン文脈の検証に使用します"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール呼び出し ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` の場合にモデルが生成した JSON 入力パラメータ"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用統計（Anthropic 規格）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "入力 token 数（キャッシュ未命中部分）",
+            "example": 7
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力 token 数（thinking を含む）",
+            "example": 77
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュ作成に使用された入力 token 数",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュから読み取られた入力 token 数",
+            "example": 0
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "エラーの種類（例：invalid_request_error / authentication_error / billing_error など）"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラー説明"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "リクエスト追跡 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API は Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)にアクセスして API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**備考**：EvoLink は `/v1/messages` に対して一律で Bearer Token 認証を採用しています。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages プロトコルのエンドポイント"
+    }
+  ]
+}

@@ -1,0 +1,1004 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MiniMax-M3.1-Flash Anthropic 호환 인터페이스",
+    "description": "MiniMax-M3.1-Flash를 Anthropic Messages 프로토콜로 호출하는 전체 API 레퍼런스입니다.\n\n**프리뷰 모델**: MiniMax-M3.1-Flash는 프리뷰 버전으로, 동작과 파라미터가 변경될 수 있습니다.\n\n**호환 설명**:\n- 경로: `/v1/messages`(Anthropic 표준 경로)\n- 요청 / 응답 구조가 Anthropic Messages API와 일치\n- 지원 필드: `model` `messages`(필수) `system` `max_tokens` `temperature` `top_p` `stream` `thinking` `output_config` `tools` `tool_choice` `metadata`\n\n**모델 능력**:\n- 포지셔닝: 일상적인 코딩과 에이전트 워크플로를 위한 MiniMax의 고속 모델\n- 컨텍스트 윈도우: **1,000,000 tokens**(1M)\n- 최대 출력: **524,288 tokens**(512K), 권장 최대 **131,072 tokens**(128K)\n- 사고: 항상 켜져 있으며 끌 수 없습니다. 사고 깊이는 `output_config.effort`로 설정합니다(기본값 `max`). 사고 내용은 `content[type=thinking]` block으로 반환됩니다\n- 멀티모달 입력: 텍스트, 이미지, 비디오 콘텐츠 블록 지원",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션 (권장)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "MiniMax-M3.1-Flash Messages 인터페이스(Anthropic 호환)",
+        "description": "**프리뷰 모델**: MiniMax-M3.1-Flash는 프리뷰 버전으로, 동작과 파라미터가 변경될 수 있습니다.\n\n- Anthropic Messages 프로토콜을 사용하여 MiniMax-M3.1-Flash 모델을 호출합니다\n- 요청 / 응답 구조가 Anthropic API와 정렬됨\n- **멀티모달 대화**: `content`는 텍스트, 이미지, 비디오 콘텐츠 블록을 지원\n- **시스템 프롬프트**: 최상위 `system` 필드를 통해 전달\n- **사고**: 항상 켜져 있으며, 사고 깊이는 `output_config.effort`로 설정합니다. 응답 `content`는 `thinking` 블록으로 시작하고, 그 뒤에 `text` / `tool_use` 블록이 이어집니다\n- **스트리밍 출력**: SSE 이벤트 스트림\n- **도구 호출**: Anthropic `tool_use` / `tool_result` 흐름과 호환\n\n**사고와 출력 token 상한**:\n- 사고는 끌 수 없습니다. 사고 token은 출력 token으로 과금되고 `max_tokens`에 포함되며, `usage.output_tokens`에도 집계됩니다\n- `max_tokens`를 설정하지 않으면 EvoLink는 **32768**을 사용합니다\n- `max_tokens`가 작은데 사고 깊이가 높으면 사고가 상한을 모두 소진할 수 있습니다. 이 경우 응답은 `stop_reason: \"max_tokens\"`로 끝나고 `text` 블록이 없습니다. `max_tokens`는 32768 이상으로 유지하고, 간단한 작업에는 `output_config.effort`를 낮추세요\n- 멀티턴 도구 호출에서는 `thinking` 블록을 포함한 assistant의 `content` 전체를 원본 그대로 되돌려 보내세요\n\n**호환 규칙**:\n\n| 요청 | EvoLink 처리 |\n| --- | --- |\n| `thinking.type: \"disabled\"` | `thinking`을 제거합니다. `output_config.effort`가 설정되지 않았다면 `low`로 설정합니다 |\n| `thinking.type: \"enabled\"` + `budget_tokens` | adaptive 사고로 변환합니다. `output_config.effort`가 설정되지 않았다면 `budget_tokens`에 따라 사고 깊이를 정합니다: ≤ 2048 → `low`, ≤ 4096 → `medium`, ≤ 8192 → `high`, ≤ 16384 → `xhigh`, 그보다 크면 → `max` |\n| `output_config.effort: \"none\"` / `\"minimal\"` | `low`로 변경 |\n| `service_tier` | 제거합니다. 요청은 항상 표준 서비스 등급을 사용합니다 |\n\n`thinking`이나 `output_config.effort`에 어떤 값을 보내더라도 사고는 그대로 실행되며, 사고 token은 출력으로 과금됩니다.\n\n**무시되는 파라미터**: `top_k`, `stop_sequences`.",
+        "operationId": "createMessageMiniMaxM31Flash",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "최소 실행 가능 요청",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "안녕하세요, 세계"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system 프롬프트 + 멀티턴 포함",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "system": "당신은 경험이 풍부한 기술 편집자입니다.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "MiniMax-M3.1-Flash를 세 문장으로 설명하세요."
+                      }
+                    ]
+                  }
+                },
+                "effort": {
+                  "summary": "사고 깊이 설정(output_config.effort)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "한 문장으로: 일본의 수도는?"
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "이미지 이해(멀티모달 콘텐츠 블록)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "이 이미지에는 무엇이 있나요?"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "video_understanding": {
+                  "summary": "비디오 이해(멀티모달 콘텐츠 블록)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "이 비디오에서 어떤 일이 일어나는지 설명해 주세요."
+                          },
+                          {
+                            "type": "video",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/video.mp4",
+                              "fps": 1
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "도구 호출(Anthropic tool_use 스타일)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "샌프란시스코의 날씨를 조회하여 알려 주세요"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "지정한 위치의 현재 날씨를 조회합니다",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "도시와 주 / 국가, 예: San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "tool_result": {
+                  "summary": "도구 결과 되돌려 보내기(멀티턴 도구 호출)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "샌프란시스코의 날씨를 조회하여 알려 주세요"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": [
+                          {
+                            "type": "thinking",
+                            "thinking": "사용자가 샌프란시스코의 현재 날씨를 알고 싶어 합니다. get_weather 도구를 호출하겠습니다.",
+                            "signature": "066a381bdc3c0ded310e27c9a46d16e8"
+                          },
+                          {
+                            "type": "text",
+                            "text": "네, 샌프란시스코의 날씨 상황을 조회해 드리겠습니다."
+                          },
+                          {
+                            "type": "tool_use",
+                            "id": "toolu_01abc123xyz",
+                            "name": "get_weather",
+                            "input": {
+                              "location": "San Francisco, US"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_01abc123xyz",
+                            "content": "{\"location\": \"San Francisco, US\", \"weather\": \"안개\", \"temperature\": \"16°C\"}"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "지정한 위치의 현재 날씨를 조회합니다",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "도시와 주 / 국가, 예: San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "스트리밍 출력(SSE)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "봄에 관한 짧은 시를 써 주세요"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "메시지 객체",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_adaptive": {
+                    "summary": "기본값(thinking 블록 다음에 text 블록)",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "사용자가 묻는 것은 일본의 수도로, 이는 기초 지리 지식 질문입니다. 답은 도쿄이므로 바로 제시하면 됩니다.",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "일본의 수도는 **도쿄**입니다."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 7,
+                        "output_tokens": 77,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "도구 호출 트리거(stop_reason=tool_use)",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e8",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "사용자가 샌프란시스코의 현재 날씨를 알고 싶어 합니다. get_weather 도구를 호출하겠습니다.",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e8"
+                        },
+                        {
+                          "type": "text",
+                          "text": "네, 샌프란시스코의 날씨 상황을 조회해 드리겠습니다."
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "location": "San Francisco, US"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 35,
+                        "output_tokens": 92,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "max_tokens": {
+                    "summary": "사고 중 출력 상한 소진(stop_reason=max_tokens)",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e9",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "사용자가 세 가지 정렬 알고리즘을 자세히 비교해 달라고 합니다. 먼저 시간 복잡도부터 보면, 퀵 정렬은 평균 O(n log n)이지만 피벗을 잘못 고르면 O(n^2)까지 나빠지고, 병합 정렬은",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e9"
+                        }
+                      ],
+                      "stop_reason": "max_tokens",
+                      "usage": {
+                        "input_tokens": 25,
+                        "output_tokens": 1024,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청 파라미터",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량 부족",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "모델 또는 리소스를 찾을 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "속도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "서버 내부 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "게이트웨이 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스를 일시적으로 사용할 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "호출할 모델\n\n**설명**: `MiniMax-M3.1-Flash`는 프리뷰 모델이며 동작이 변경될 수 있습니다",
+            "enum": [
+              "MiniMax-M3.1-Flash"
+            ],
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "생성 내용 길이의 상한 지정(Token 수, 사고 포함)\n\n**설명**:\n- 최대 **524,288**(512K), 권장 최대 **131,072**(128K)\n- 생략하면 EvoLink는 **32768**을 사용합니다\n- 사고 token도 이 상한에 포함됩니다. 값이 작은데 `output_config.effort`가 높으면 사고가 상한을 소진할 수 있으며, 이 경우 응답은 `stop_reason: \"max_tokens\"`로 끝나고 `text` 블록이 없습니다\n- 32768 이상으로 설정하고, 간단한 작업에는 `output_config.effort`를 낮추세요",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 32768
+          },
+          "messages": {
+            "type": "array",
+            "description": "대화 메시지 목록, 턴마다 user / assistant 교대\n\n**설명**:\n- 최소 1개의 메시지를 포함해야 함\n- 마지막 메시지는 일반적으로 `role=user`",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "시스템 프롬프트, AI 역할과 동작을 설정하는 데 사용\n\n**설명**:\n- 문자열 또는 문자열 배열 지원\n- 최상위 `system` 필드로 전달",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "콘텐츠 블록 배열 형식의 시스템 프롬프트. text 블록은 cache_control을 가질 수 있음",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "샘플링 온도\n\n**설명**:\n- 범위 `[0, 2]`\n- 기본값 1; 값이 높을수록 발산적이고, 낮을수록 확정적",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "핵 샘플링 임계값\n\n**설명**:\n- 범위 `[0, 1]`, MiniMax-M3.1-Flash 기본값 0.95\n- temperature와 top_p를 동시에 조정하지 않는 것을 권장",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE 스트리밍으로 반환할지 여부\n\n- `true`: Server-Sent Events 스트리밍 반환\n- `false`: 완전한 응답 후 한 번에 반환(기본값)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "사고 설정(선택 사항)\n\nMiniMax-M3.1-Flash는 항상 사고하므로 이 필드는 생략해도 됩니다. 사고 깊이는 `output_config.effort`로 설정하세요\n\n**설명**:\n- 응답 `content`는 `type=\"thinking\"` 블록으로 시작합니다(출력 token으로 과금)\n- 멀티턴 대화, 특히 도구 호출이 있을 때는 thinking 블록을 원본 그대로 되돌려 보내세요",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "adaptive",
+                  "disabled",
+                  "enabled"
+                ],
+                "description": "- `adaptive`: 사고 켜짐(필드를 생략한 것과 동일)\n- `disabled`: 사고를 끄지 **않습니다**. EvoLink는 `thinking`을 제거하고, `output_config.effort`가 설정되지 않았다면 `low`로 설정합니다\n- `enabled`: `budget_tokens`와 함께 쓰는 Anthropic의 기존 방식입니다. EvoLink는 이를 adaptive 사고로 변환하며, `output_config.effort`가 설정되지 않았다면 `budget_tokens`에 따라 사고 깊이를 정합니다\n\n어떤 경우든 사고는 실행되며 출력 token으로 과금됩니다",
+                "default": "adaptive"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "`type: \"enabled\"`와 함께 쓸 때만 사용됩니다. 사고량의 엄격한 상한이 아니며, `output_config.effort`가 설정되지 않았다면 EvoLink가 이 값을 사고 깊이 수준으로 변환합니다\n\n- ≤ 2048 → `low`\n- ≤ 4096 → `medium`\n- ≤ 8192 → `high`\n- ≤ 16384 → `xhigh`\n- 그보다 크면 → `max`",
+                "minimum": 1
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "출력 설정. `effort`로 사고 깊이를 설정합니다",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "사고 깊이\n\n- `low`: 가장 얕은 사고, 가장 빠른 응답, 가장 적은 출력 token\n- `medium` / `high` / `xhigh`: 단계적으로 더 깊은 사고\n- `max`(기본값): 가장 깊은 사고, 가장 느린 응답, 가장 많은 출력 token\n\n**설명**:\n- 생략하면 기본값 `max`가 적용됩니다. 간단한 작업에서는 더 낮은 수준을 사용하면 지연 시간과 출력 token을 줄일 수 있습니다\n- 사고 token은 출력 token으로 과금되며 `max_tokens`에 포함됩니다\n- `none`과 `minimal`은 사고를 끄지 않습니다. EvoLink가 `low`로 변경합니다",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "max",
+                "example": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "도구 정의 목록\n\n**설명**:\n- Anthropic tool 정의 규범을 따름\n- `input_schema`는 JSON Schema 객체를 사용",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "도구 선택 전략. auto와 none만 지원",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`: 모델이 도구 호출 여부를 자동으로 결정(tools 제공 시 기본값)\n- `none`: 도구 호출 금지"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "요청 메타데이터",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "종단 사용자를 나타내는 고유 식별자로, 사용자 단위 모니터링 및 남용 탐지에 사용할 수 있습니다(해시 처리된 ID 사용 권장)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "user_system",
+              "group",
+              "sample_message_user",
+              "sample_message_ai"
+            ],
+            "description": "메시지 발신 측 역할. MiniMax-M3.1-Flash는 user / assistant 교대 메시지를 사용\n\n- `user`: 사용자 메시지(`tool_result` block을 되돌려 보내는 데에도 사용)\n- `assistant`: 어시스턴트 과거 응답(`text` / `thinking` / `tool_use` blocks 포함 가능)\n\n**`system`은 허용되지 않음**: 시스템 프롬프트는 최상위 `system` 필드를 사용하세요."
+          },
+          "content": {
+            "description": "메시지 내용\n\n**설명**:\n- 순수 텍스트일 경우 문자열을 직접 전달\n- 구조화된 경우 content block 배열을 전달(`text` / `image` / `video` / `tool_use` / `tool_result` / `thinking`)",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "메시지 콘텐츠 블록\n\n**지원 type**:\n- `text`: 텍스트 내용\n- `image`: 이미지 입력\n- `video`: 비디오 입력\n- `tool_use`: 이전 턴 assistant 도구 호출을 되돌려 보냄\n- `tool_result`: 도구 실행 결과\n- `thinking`: 이전 턴 assistant 사고 내용을 되돌려 보냄\n- `mid_conv_system`: 대화 중간에 삽입하는 시스템 지시",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "tool_use",
+              "tool_result",
+              "thinking",
+              "mid_conv_system"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text`일 때의 텍스트 내용"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaSource",
+            "description": "이미지 또는 비디오 소스, type=`image` 또는 type=`video`일 때 사용"
+          },
+          "id": {
+            "type": "string",
+            "description": "도구 호출 ID(tool_use 시 필수)"
+          },
+          "name": {
+            "type": "string",
+            "description": "도구 이름(tool_use 시 필수)"
+          },
+          "input": {
+            "type": "object",
+            "description": "도구 입력 파라미터(tool_use 시, JSON 객체)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "대응하는 도구 호출 ID(tool_result 시 필수, tool_use.id에 매핑)"
+          },
+          "content": {
+            "description": "도구 실행 결과(tool_result), 문자열 또는 content block 배열",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "되돌려 보내는 assistant 사고 과정 내용(type=`thinking`일 때 사용). 멀티턴 대화, 특히 도구 호출이 있을 때는 assistant의 thinking 블록을 원본 그대로 되돌려 보내세요"
+          },
+          "signature": {
+            "type": "string",
+            "description": "되돌려 보내는 thinking 내용 서명, 멀티턴 이어쓰기 시 원본 그대로 되돌려 보내야 함"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "도구 이름\n\n**설명**:\n- `a-zA-Z0-9_-`만 허용\n- 최대 64자"
+          },
+          "description": {
+            "type": "string",
+            "description": "도구 기능 설명, 모델이 언제 호출할지 판단하도록 도움"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "도구 입력 파라미터의 JSON Schema 객체\n\n**설명**:\n- `type`은 반드시 `object`여야 함\n- `properties`와 `required`를 선언해야 함"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "프롬프트 캐싱 마커",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "캐시 마커 유형"
+          }
+        }
+      },
+      "MediaSource": {
+        "type": "object",
+        "description": "이미지 또는 비디오 콘텐츠 블록의 미디어 소스\n\n- 이미지는 JPEG / PNG / GIF / WEBP 지원, 한 장당 최대 10 MB\n- 비디오는 MP4 / AVI / MOV / MKV 지원, URL / Base64 최대 50 MB",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "url"
+            ],
+            "description": "미디어 소스 유형"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "base64 입력 시 필수, 예: `image/png` 또는 `video/mp4`"
+          },
+          "data": {
+            "type": "string",
+            "description": "base64로 인코딩된 미디어 바이트"
+          },
+          "url": {
+            "type": "string",
+            "description": "이미지 또는 비디오의 공개 URL"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "low",
+              "default",
+              "high"
+            ],
+            "default": "default",
+            "description": "이해 정밀도, 기본값 default. 해상도가 높을수록 token 소비가 많아짐"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0.2,
+            "maximum": 5,
+            "default": 1,
+            "description": "비디오 프레임 추출 빈도, 기본값 1, 범위 [0.2, 5]. 값이 높을수록 화면 변화에 더 민감하고 token 소비가 많아짐"
+          },
+          "max_long_side_pixel": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "이미지 또는 비디오 프레임 최장변 픽셀 제약"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic 스타일의 메시지 응답",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "메시지 고유 ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "응답 객체 유형"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "실제 사용된 모델",
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "content": {
+            "type": "array",
+            "description": "응답 콘텐츠 블록 목록\n\n**포함될 수 있는 block type**:\n- `thinking`: 추론 과정(MiniMax-M3.1-Flash에서는 항상 반환되며 `text` / `tool_use`보다 앞에 위치)\n- `text`: 최종 답변 텍스트\n- `tool_use`: 모델이 시작한 도구 호출",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "정지 사유\n\n- `end_turn`: 자연스러운 종료\n- `max_tokens`: max_tokens 상한 도달(사고 포함). 사고 중에 상한을 모두 소진한 경우 `text` 블록이 없습니다\n- `tool_use`: 모델이 도구 호출을 트리거",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "응답 내의 콘텐츠 블록",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text`일 때의 텍스트"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking`일 때의 추론 과정 텍스트"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking`일 때의 무결성 서명, 멀티턴 컨텍스트 검증에 사용"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use`일 때의 도구 호출 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use`일 때의 도구 이름"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use`일 때 모델이 생성한 JSON 입력 파라미터"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 사용 통계(Anthropic 규범)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "입력 token 수(캐시 미적중 부분)",
+            "example": 7
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "출력 token 수(thinking 포함)",
+            "example": 77
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "캐시 생성된 입력 token 수",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "캐시에 적중한 입력 token 수",
+            "example": 0
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "오류 유형(예: invalid_request_error / authentication_error / billing_error 등)"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "요청 추적 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##모든 인터페이스는 Bearer Token 인증이 필요합니다##\n\n**API Key 발급**:\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에 방문하여 API Key를 발급받으세요\n\n**요청 헤더에 추가**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**참고**: EvoLink는 `/v1/messages`에 대해 Bearer Token 인증을 통일적으로 사용합니다."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages 프로토콜 인터페이스"
+    }
+  ]
+}

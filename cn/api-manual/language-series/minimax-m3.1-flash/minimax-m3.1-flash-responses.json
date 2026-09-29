@@ -1,0 +1,1050 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MiniMax-M3.1-Flash 完整参数文档 (Responses API)",
+    "description": "MiniMax-M3.1-Flash Responses 接口的完整 API 参考。\n\n**预览版模型**：MiniMax-M3.1-Flash 目前为预览版，行为和参数可能会发生变化。\n\n**模型能力**：\n- 定位：MiniMax 面向日常编程与 Agent 工作流的快速模型\n- 上下文窗口：**1,000,000 tokens**（1M）\n- 最大输出：**524,288 tokens**（512K），推荐不超过 **131,072 tokens**（128K）\n- 思考模式：始终开启且无法关闭，通过 `reasoning.effort` 设置思考深度（默认 `max`）；思考内容以 `reasoning` 输出项返回\n- 多模态输入：支持文本、图像、视频\n- 工具调用：支持 Function Calling\n\n**无状态**：接口不保存任何会话，多轮对话需要客户端每次在 `input` 中携带完整历史。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "对话生成",
+      "description": "AI 对话生成相关接口"
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "tags": [
+          "对话生成"
+        ],
+        "summary": "MiniMax-M3.1-Flash Responses 接口（OpenAI 兼容）",
+        "description": "**预览版模型**：MiniMax-M3.1-Flash 目前为预览版，行为和参数可能会发生变化。\n\n- 使用 OpenAI Responses 协议调用 MiniMax-M3.1-Flash\n- **输入形态**：`input` 可以是一段纯文本，也可以是输入项数组（消息、函数调用、函数结果、思考）\n- **多模态输入**：用户消息支持 `input_image` 和 `input_video` 内容块\n- **系统指令**：通过 `instructions` 下达，等价于首条 system 消息\n- **思考模式**：始终开启，通过 `reasoning.effort` 设置思考深度。`output` 数组以 `reasoning` 项（`reasoning_text`）开头，随后是 `message` 项（`output_text`）\n- **流式输出**：SSE 事件；回答文本通过 `response.output_text.delta` 事件返回，生成以 `response.completed`（或 `response.incomplete` / `response.failed`）结束\n- **工具调用**：支持 Function Calling\n\n**思考与输出 token 上限**：\n- 思考无法关闭。推理 token 按输出 token 计费，计入 `max_output_tokens`，并在 `usage.output_tokens_details.reasoning_tokens` 中统计\n- 未设置 `max_output_tokens` 时，EvoLink 默认使用 **32768**\n- 上限较小而思考深度较高时，思考可能占满整个上限：响应以 `status: \"incomplete\"`（`incomplete_details.reason: \"max_output_tokens\"`）结束，且没有 `message` 项。建议将上限保持在 32768 及以上，简单任务可调低 `reasoning.effort`\n- 多轮工具调用时，请将上一轮响应的 `output` 项（包括 `reasoning` 和 `function_call` 项）原样加入 `input`，再追加你的 `function_call_output` 项\n\n**兼容规则**：\n\n| 请求 | EvoLink 处理方式 |\n| --- | --- |\n| `reasoning.effort: \"none\"` / `\"minimal\"` | 改为 `low`；思考仍会进行，并按输出计费 |\n| `service_tier` | 移除；请求始终按标准服务层级处理 |\n| `store` / `previous_response_id` | 不生效；响应不会被保存，请在 `input` 中携带完整历史 |\n| `tool_choice` | 仅支持 `none` 和 `auto` |\n| `text.format.type` | 仅支持 `text` |",
+        "operationId": "createResponseMiniMaxM31Flash",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "simple_text": {
+                  "summary": "单轮文本对话",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": "用一句话介绍杭州。"
+                  }
+                },
+                "with_instructions": {
+                  "summary": "使用系统指令",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "instructions": "你是一位严谨的技术文档工程师，回答保持简洁。",
+                    "input": "解释什么是上下文缓存。"
+                  }
+                },
+                "multi_turn": {
+                  "summary": "多轮对话（输入项数组）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "帮我想三个产品名字。"
+                      },
+                      {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": "云栖、启明、翎风。"
+                      },
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "第二个再给我五个近义词。"
+                      }
+                    ]
+                  }
+                },
+                "reasoning_effort": {
+                  "summary": "设置思考深度（reasoning.effort）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": "找出这个函数里的 bug：def add(a, b): return a - b",
+                    "reasoning": {
+                      "effort": "medium"
+                    },
+                    "max_output_tokens": 32768
+                  }
+                },
+                "image_understanding": {
+                  "summary": "图像理解 - 公网图片 URL",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "input_text",
+                            "text": "描述这张图片的内容"
+                          },
+                          {
+                            "type": "input_image",
+                            "image_url": "https://example.com/photo.jpg"
+                          }
+                        ]
+                      }
+                    ],
+                    "max_output_tokens": 32768
+                  }
+                },
+                "video_understanding": {
+                  "summary": "视频理解（input_video）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "input_text",
+                            "text": "描述一下这段视频里发生了什么。"
+                          },
+                          {
+                            "type": "input_video",
+                            "video_url": {
+                              "url": "https://example.com/video.mp4",
+                              "fps": 1
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "max_output_tokens": 32768
+                  }
+                },
+                "function_calling": {
+                  "summary": "Function Calling 工具调用",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": "杭州现在天气怎么样？",
+                    "tools": [
+                      {
+                        "type": "function",
+                        "name": "get_weather",
+                        "description": "查询指定城市的实时天气",
+                        "parameters": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "城市名称"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": "auto"
+                  }
+                },
+                "function_call_output": {
+                  "summary": "回传函数执行结果（多轮工具调用）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": [
+                      {
+                        "type": "message",
+                        "role": "user",
+                        "content": "杭州现在天气怎么样？"
+                      },
+                      {
+                        "id": "resp_066b36619b147e32_rs",
+                        "type": "reasoning",
+                        "status": "completed",
+                        "summary": [],
+                        "content": [
+                          {
+                            "type": "reasoning_text",
+                            "text": "用户想查询杭州当前的天气，调用 get_weather。"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "resp_066b36619b147e32_fc_0",
+                        "type": "function_call",
+                        "status": "completed",
+                        "call_id": "call_function_7k2m9x4q1w_1",
+                        "name": "get_weather",
+                        "arguments": "{\"city\": \"杭州\"}"
+                      },
+                      {
+                        "type": "function_call_output",
+                        "call_id": "call_function_7k2m9x4q1w_1",
+                        "output": "晴，22°C"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "function",
+                        "name": "get_weather",
+                        "description": "查询指定城市的实时天气",
+                        "parameters": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "城市名称"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "流式输出",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "input": "写一首关于秋天的短诗。",
+                    "stream": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "正常完成（reasoning 项 + message 项）",
+                    "value": {
+                      "id": "resp_066b36619b147e31",
+                      "object": "response",
+                      "created_at": 1790000000,
+                      "model": "MiniMax-M3.1-Flash",
+                      "status": "completed",
+                      "output": [
+                        {
+                          "id": "resp_066b36619b147e31_rs",
+                          "type": "reasoning",
+                          "status": "completed",
+                          "summary": [],
+                          "content": [
+                            {
+                              "type": "reasoning_text",
+                              "text": "用户想要一句话介绍，需要覆盖地理与人文两个要点。"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "resp_066b36619b147e31_msg",
+                          "type": "message",
+                          "status": "completed",
+                          "role": "assistant",
+                          "content": [
+                            {
+                              "type": "output_text",
+                              "text": "杭州是浙江省省会，以西湖山水与数字经济闻名。",
+                              "annotations": []
+                            }
+                          ]
+                        }
+                      ],
+                      "output_text": "杭州是浙江省省会，以西湖山水与数字经济闻名。",
+                      "error": null,
+                      "incomplete_details": null,
+                      "usage": {
+                        "input_tokens": 14,
+                        "input_tokens_details": {
+                          "cached_tokens": 0
+                        },
+                        "output_tokens": 62,
+                        "output_tokens_details": {
+                          "reasoning_tokens": 38
+                        },
+                        "total_tokens": 76
+                      },
+                      "parallel_tool_calls": true,
+                      "store": false,
+                      "truncation": "disabled"
+                    }
+                  },
+                  "function_call": {
+                    "summary": "函数调用（reasoning 项 + function_call 项）",
+                    "value": {
+                      "id": "resp_066b36619b147e32",
+                      "object": "response",
+                      "created_at": 1790000060,
+                      "model": "MiniMax-M3.1-Flash",
+                      "status": "completed",
+                      "output": [
+                        {
+                          "id": "resp_066b36619b147e32_rs",
+                          "type": "reasoning",
+                          "status": "completed",
+                          "summary": [],
+                          "content": [
+                            {
+                              "type": "reasoning_text",
+                              "text": "用户想查询杭州当前的天气，调用 get_weather。"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "resp_066b36619b147e32_fc_0",
+                          "type": "function_call",
+                          "status": "completed",
+                          "call_id": "call_function_7k2m9x4q1w_1",
+                          "name": "get_weather",
+                          "arguments": "{\"city\": \"杭州\"}"
+                        }
+                      ],
+                      "error": null,
+                      "incomplete_details": null,
+                      "usage": {
+                        "input_tokens": 172,
+                        "input_tokens_details": {
+                          "cached_tokens": 0
+                        },
+                        "output_tokens": 45,
+                        "output_tokens_details": {
+                          "reasoning_tokens": 27
+                        },
+                        "total_tokens": 217
+                      },
+                      "parallel_tool_calls": true,
+                      "store": false,
+                      "truncation": "disabled"
+                    }
+                  },
+                  "incomplete": {
+                    "summary": "思考占满输出上限（status=incomplete）",
+                    "value": {
+                      "id": "resp_066b36619b147e33",
+                      "object": "response",
+                      "created_at": 1790000120,
+                      "model": "MiniMax-M3.1-Flash",
+                      "status": "incomplete",
+                      "output": [
+                        {
+                          "id": "resp_066b36619b147e33_rs",
+                          "type": "reasoning",
+                          "status": "completed",
+                          "summary": [],
+                          "content": [
+                            {
+                              "type": "reasoning_text",
+                              "text": "用户想要详细对比三种排序算法。先从时间复杂度说起：快速排序平均为 O(n log n)，但基准元素选得不好时会退化到 O(n^2)，而归并排序"
+                            }
+                          ]
+                        }
+                      ],
+                      "output_text": "",
+                      "error": null,
+                      "incomplete_details": {
+                        "reason": "max_output_tokens"
+                      },
+                      "usage": {
+                        "input_tokens": 25,
+                        "input_tokens_details": {
+                          "cached_tokens": 0
+                        },
+                        "output_tokens": 1024,
+                        "output_tokens_details": {
+                          "reasoning_tokens": 1024
+                        },
+                        "total_tokens": 1049
+                      },
+                      "parallel_tool_calls": true,
+                      "store": false,
+                      "truncation": "disabled"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token 无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "Insufficient quota",
+                    "type": "insufficient_quota_error"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问该模型",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "Access denied for this model",
+                    "type": "permission_error",
+                    "param": "model"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "Specified model not found",
+                    "type": "not_found_error",
+                    "param": "model"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体过大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "Request body too large",
+                    "type": "request_too_large_error",
+                    "param": "messages"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 500,
+                    "message": "Internal server error",
+                    "type": "internal_server_error"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "网关错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "Bad gateway",
+                    "type": "bad_gateway_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "Service temporarily unavailable",
+                    "type": "service_unavailable_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "模型 ID\n\n**说明**：`MiniMax-M3.1-Flash` 为预览版模型，行为可能会发生变化",
+            "enum": [
+              "MiniMax-M3.1-Flash"
+            ],
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "input": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "模型输入\n\n- **字符串形态**：整段文本按一条 `user` 消息处理\n- **数组形态**：输入项列表，支持 `message`、`function_call`、`function_call_output`、`reasoning` 四种类型\n\n**多模态输入**：`message` 项的 `content` 数组中可以混合 `input_text`、`input_image` 与 `input_video` 块。\n\n**多轮对话**：接口无状态，续接对话必须把完整历史放进数组。多轮工具调用时，请将上一轮响应的 `output` 项（包括 `reasoning` 项）原样加入。",
+            "items": {
+              "$ref": "#/components/schemas/InputItem"
+            },
+            "example": "用一句话介绍杭州。"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "系统级指令，等价于插入在最前面的一条 system 消息，用于设定角色、语气与输出约束。",
+            "example": "你是一位严谨的技术文档工程师，回答保持简洁。"
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否流式返回\n\n- `false`（默认）：一次性返回完整响应对象\n- `true`：以 SSE 事件推送；回答文本通过 `response.output_text.delta` 事件返回，生成以 `response.completed`（或 `response.incomplete` / `response.failed`）结束",
+            "default": false,
+            "example": false
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "本次生成的最大输出 token 数（含推理 token）\n\n**说明**：\n- 上限 **524,288**（512K），推荐不超过 **131,072**（128K）\n- 不传时 EvoLink 默认使用 **32768**\n- 取值较小而 `reasoning.effort` 较高时，思考可能占满上限，响应以 `status: \"incomplete\"` 结束，且没有 `message` 项\n- 建议设置为 32768 及以上，简单任务可调低 `reasoning.effort`",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 32768
+          },
+          "temperature": {
+            "type": "number",
+            "description": "采样温度，越高输出越随机。取值范围 `(0, 1]`，默认 1",
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核采样阈值。取值范围 `(0, 1]`，默认 0.95。与 `temperature` 建议只调其一",
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "思考设置。MiniMax-M3.1-Flash 始终思考，不传 `reasoning` 时同样如此。思考内容以 `reasoning` 输出项返回，其 token 按输出 token 计费",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "思考深度\n\n- `low`：思考最浅，响应最快，输出 token 最少\n- `medium` / `high` / `xhigh`：思考逐级加深\n- `max`（默认）：思考最深，响应最慢，输出 token 最多\n\n**说明**：\n- 不传时默认为 `max`；简单任务使用较低档位可降低延迟、减少输出 token\n- 推理 token 计入 `max_output_tokens`\n- `none` 和 `minimal` 不会关闭思考：EvoLink 会将其改为 `low`",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "max",
+                "example": "medium"
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "description": "文本输出格式配置。",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "输出格式。仅支持 `text`（自由文本）",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ],
+                    "default": "text",
+                    "description": "输出格式类型"
+                  }
+                }
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "可供模型调用的工具列表。仅支持函数工具，由客户端执行函数，并把结果以 `function_call_output` 回传",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "string",
+            "description": "工具调用策略\n\n- `none`：禁止调用工具\n- `auto`（默认）：由模型决定是否调用工具\n\n不支持其他取值",
+            "enum": [
+              "none",
+              "auto"
+            ],
+            "default": "auto",
+            "example": "auto"
+          },
+          "store": {
+            "type": "boolean",
+            "description": "不生效。响应不会被保存"
+          },
+          "previous_response_id": {
+            "type": "string",
+            "description": "不生效。不支持从已保存的响应续接，请在 `input` 中携带完整历史"
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "title": "输入项",
+        "description": "`input` 数组中的单个输入项。`type` 决定该项的语义。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "输入项类型\n\n- `message`：一条对话消息\n- `function_call`：历史中模型发起的函数调用\n- `function_call_output`：函数执行结果\n- `reasoning`：历史思考内容；请将上一轮响应 `output` 中的该项原样回传",
+            "enum": [
+              "message",
+              "function_call",
+              "function_call_output",
+              "reasoning"
+            ],
+            "example": "message"
+          },
+          "role": {
+            "type": "string",
+            "description": "消息角色，仅 `type: message` 使用",
+            "enum": [
+              "user",
+              "assistant",
+              "system",
+              "developer"
+            ],
+            "example": "user"
+          },
+          "content": {
+            "description": "消息内容，仅 `type: message` 使用。可以是纯文本，也可以是内容块数组（`input_text` / `input_image` / `input_video`；历史 assistant 文本使用 `output_text`）",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          },
+          "call_id": {
+            "type": "string",
+            "description": "函数调用标识，`function_call` 与 `function_call_output` 通过它配对。"
+          },
+          "name": {
+            "type": "string",
+            "description": "被调用的函数名，仅 `type: function_call` 使用。"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "函数调用参数，JSON 字符串，仅 `type: function_call` 使用。"
+          },
+          "output": {
+            "type": "string",
+            "description": "函数执行结果，仅 `type: function_call_output` 使用。"
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "description": "多模态内容片段，通过 `type` 声明类型，仅填写与该类型匹配的字段",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "input_text",
+              "output_text",
+              "input_image",
+              "input_video"
+            ],
+            "description": "内容类型\n\n- `input_text`：文本输入\n- `output_text`：历史 assistant 回复中的文本\n- `input_image`：图片输入\n- `input_video`：视频输入"
+          },
+          "text": {
+            "type": "string",
+            "description": "当 `type` 为 `input_text` / `output_text` 时的文本内容"
+          },
+          "image_url": {
+            "description": "图片输入（当 `type` 为 `input_image` 时）：图片 URL 或 `data:` 开头的 base64 data URL，可直接传字符串，也可传含 `url` 的对象。单张图片最大 10 MB，支持 JPEG / PNG / GIF / WEBP",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "图片 URL，或 `data:` 开头的 base64 data URL"
+                  },
+                  "detail": {
+                    "type": "string",
+                    "description": "控制图片解析分辨率\n\n- `low`：低精度，消耗 token 更少\n- `default`：默认精度\n- `high`：高精度，识别更细节但消耗 token 更多",
+                    "enum": [
+                      "low",
+                      "default",
+                      "high"
+                    ],
+                    "default": "default"
+                  }
+                }
+              }
+            ]
+          },
+          "video_url": {
+            "description": "视频输入（当 `type` 为 `input_video` 时）：视频 URL 或 `data:` 开头的 base64 data URL，可直接传字符串，也可传含 `url` 的对象。URL / Base64 视频最大 50 MB，支持 MP4 / AVI / MOV / MKV",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "视频 URL，或 `data:` 开头的 base64 data URL"
+                  },
+                  "fps": {
+                    "type": "number",
+                    "description": "视频抽帧频率，默认 1，范围 [0.2, 5]\n\n- 取值越高：对画面变化越敏感，token 花费高、速度慢\n- 取值越低：token 花费少、速度快，但对画面变化迟钝",
+                    "minimum": 0.2,
+                    "maximum": 5,
+                    "default": 1
+                  },
+                  "detail": {
+                    "type": "string",
+                    "description": "控制视频抽帧分辨率",
+                    "enum": [
+                      "low",
+                      "default",
+                      "high"
+                    ],
+                    "default": "default"
+                  },
+                  "max_long_side_pixel": {
+                    "type": "integer",
+                    "description": "视频单帧最长边像素限制",
+                    "minimum": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "title": "工具定义",
+        "required": [
+          "type",
+          "name"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "工具类型，仅支持 `function`",
+            "enum": [
+              "function"
+            ],
+            "example": "function"
+          },
+          "name": {
+            "type": "string",
+            "description": "要调用的函数名称\n\n**说明**：\n- 必须由 a-z、A-Z、0-9 字符组成，或包含下划线和连字符\n- 最大长度为 64 个字符",
+            "maxLength": 64,
+            "example": "get_weather"
+          },
+          "description": {
+            "type": "string",
+            "description": "工具用途说明，写清楚有助于模型判断何时调用。",
+            "example": "查询指定城市的实时天气"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "参数定义，JSON Schema 格式。",
+            "example": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "城市名称"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "description": "Responses 接口的响应对象。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "本次响应的唯一标识",
+            "example": "resp_066b36619b147e31"
+          },
+          "object": {
+            "type": "string",
+            "description": "对象类型，固定为 `response`",
+            "example": "response"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "创建时间，Unix 时间戳（秒）",
+            "example": 1790000000
+          },
+          "model": {
+            "type": "string",
+            "description": "实际生成本次响应的模型 ID",
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "status": {
+            "type": "string",
+            "description": "响应状态\n\n- `completed`：正常完成\n- `incomplete`：被截断（例如达到输出 token 上限），详见 `incomplete_details`\n- `failed`：生成失败，详见 `error`",
+            "enum": [
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "example": "completed"
+          },
+          "output": {
+            "type": "array",
+            "description": "输出项列表，按生成顺序排列。各类型的字段：\n\n- `reasoning`：思考过程，含 `id`、`status`、`summary`、`content`（`reasoning_text` 块列表）；MiniMax-M3.1-Flash 始终返回该项\n- `message`：最终回答，含 `id`、`status`、`role`、`content`（`output_text` 块列表）\n- `function_call`：模型发起的函数调用，含 `id`、`status`、`call_id`、`name`、`arguments`，需客户端执行后以 `function_call_output` 回传",
+            "items": {
+              "type": "object"
+            }
+          },
+          "output_text": {
+            "type": "string",
+            "description": "便捷字段：拼接后的全部回答文本"
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "失败原因，成功时为 `null`"
+          },
+          "incomplete_details": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "截断原因，未截断时为 `null`。达到输出 token 上限时，`reason` 为 `max_output_tokens`"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token 使用统计信息（含缓存与推理分项）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "输入 token 总数（含缓存命中与未命中）",
+            "example": 14
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "输入 token 详细分项",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "命中提示词缓存的输入 token 数（`input_tokens` 的子集）",
+                "example": 0
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "输出 token 数量（含思考部分）",
+            "example": 62
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "输出 token 详细分项",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "思考模式产生的推理 token 数量（计入输出，按输出价计费）",
+                "example": 38
+              }
+            }
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "总 token 数量 = input_tokens + output_tokens",
+            "example": 76
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 状态错误代码"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": "string",
+                "description": "相关参数名称"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1004 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MiniMax-M3.1-Flash Anthropic-kompatible Schnittstelle",
+    "description": "Vollständige API-Referenz für den Aufruf von MiniMax-M3.1-Flash über das Anthropic Messages-Protokoll.\n\n**Vorschaumodell**: MiniMax-M3.1-Flash ist eine Vorschauversion. Verhalten und Parameter können sich noch ändern.\n\n**Kompatibilitätshinweise**:\n- Pfad: `/v1/messages` (Anthropic-Standardpfad)\n- Anfrage- / Antwortstruktur richtet sich nach der Anthropic Messages API\n- Unterstützte Felder: `model` `messages` (erforderlich) `system` `max_tokens` `temperature` `top_p` `stream` `thinking` `output_config` `tools` `tool_choice` `metadata`\n\n**Modellfähigkeiten**:\n- Positionierung: Schnelles Modell von MiniMax für alltägliches Programmieren und Agenten-Workflows\n- Kontextfenster: **1.000.000 Tokens** (1M)\n- Maximale Ausgabe: **524.288 Tokens** (512K), empfohlen bis zu **131.072 Tokens** (128K)\n- Denkmodus: Immer aktiv und nicht abschaltbar; die Denktiefe wird über `output_config.effort` festgelegt (Standard `max`). Der Denkinhalt wird in `content[type=thinking]`-Blöcken zurückgegeben\n- Multimodale Eingabe: Unterstützt Text-, Bild- und Videoinhaltsblöcke",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktion (empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "MiniMax-M3.1-Flash Messages-Schnittstelle (Anthropic-kompatibel)",
+        "description": "**Vorschaumodell**: MiniMax-M3.1-Flash ist eine Vorschauversion. Verhalten und Parameter können sich noch ändern.\n\n- Verwenden Sie das Anthropic Messages-Protokoll, um das MiniMax-M3.1-Flash Modell aufzurufen\n- Anfrage- / Antwortstruktur richtet sich nach der Anthropic API\n- **Multimodales Gespräch**: `content` unterstützt Text-, Bild- und Videoinhaltsblöcke\n- **System-Prompts**: Werden über das Feld `system` der obersten Ebene übergeben\n- **Denkmodus**: Immer aktiv; die Denktiefe wird über `output_config.effort` festgelegt. Das Antwort-`content` beginnt mit `thinking`-Blöcken, gefolgt von `text`- / `tool_use`-Blöcken\n- **Streaming-Ausgabe**: SSE-Event-Stream\n- **Werkzeugaufrufe**: Kompatibel mit dem Anthropic `tool_use` / `tool_result`-Ablauf\n\n**Denken und Ausgabe-Token-Limit**:\n- Das Denken lässt sich nicht abschalten. Denk-Tokens werden als Ausgabe-Tokens berechnet, zählen zu `max_tokens` und sind in `usage.output_tokens` enthalten\n- Ist `max_tokens` nicht gesetzt, verwendet EvoLink **32768**\n- Bei einem kleinen `max_tokens` und einer hohen Denkstufe kann das Denken das gesamte Limit aufbrauchen: Die Antwort endet dann mit `stop_reason: \"max_tokens\"` und ohne `text`-Block. Setzen Sie `max_tokens` auf 32768 oder höher und senken Sie `output_config.effort` bei einfachen Aufgaben\n- Senden Sie bei Werkzeugaufrufen über mehrere Runden das vollständige `content` des Assistenten einschließlich der `thinking`-Blöcke unverändert zurück\n\n**Kompatibilitätsregeln**:\n\n| Anfrage | Verarbeitung durch EvoLink |\n| --- | --- |\n| `thinking.type: \"disabled\"` | `thinking` wird entfernt; fehlt `output_config.effort`, wird es auf `low` gesetzt |\n| `thinking.type: \"enabled\"` + `budget_tokens` | Wird in adaptives Denken umgewandelt; ist `output_config.effort` nicht gesetzt, wird die Denkstufe aus `budget_tokens` abgeleitet: ≤ 2048 → `low`, ≤ 4096 → `medium`, ≤ 8192 → `high`, ≤ 16384 → `xhigh`, größer → `max` |\n| `output_config.effort: \"none\"` / `\"minimal\"` | Wird in `low` umgewandelt |\n| `service_tier` | Wird entfernt; Anfragen verwenden immer die Standard-Service-Stufe |\n\nUnabhängig davon, welchen Wert Sie für `thinking` oder `output_config.effort` senden, findet das Denken trotzdem statt, und seine Tokens werden als Ausgabe berechnet.\n\n**Ignorierte Parameter**: `top_k`, `stop_sequences`.",
+        "operationId": "createMessageMiniMaxM31Flash",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Minimale lauffähige Anfrage",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hallo, Welt"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Mit System-Prompt + Mehrrunden",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "system": "Du bist ein erfahrener technischer Redakteur.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Beschreibe MiniMax-M3.1-Flash in drei Sätzen."
+                      }
+                    ]
+                  }
+                },
+                "effort": {
+                  "summary": "Denktiefe festlegen (output_config.effort)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "In einem Satz: Was ist die Hauptstadt von Japan?"
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "Bildverständnis (multimodale Inhaltsblöcke)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Was ist auf diesem Bild zu sehen?"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "video_understanding": {
+                  "summary": "Videoverständnis (multimodale Inhaltsblöcke)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Beschreibe, was in diesem Video passiert."
+                          },
+                          {
+                            "type": "video",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/video.mp4",
+                              "fps": 1
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "Werkzeugaufruf (Anthropic tool_use-Stil)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Prüfe das Wetter in San Francisco und sage es mir"
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "Aktuelles Wetter für einen angegebenen Ort abfragen",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "Stadt und Bundesland/Land, z. B.: San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "tool_result": {
+                  "summary": "Werkzeugergebnis zurücksenden (Werkzeugaufrufe über mehrere Runden)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Prüfe das Wetter in San Francisco und sage es mir"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": [
+                          {
+                            "type": "thinking",
+                            "thinking": "Der Benutzer möchte das aktuelle Wetter in San Francisco wissen. Ich rufe das Werkzeug get_weather auf.",
+                            "signature": "066a381bdc3c0ded310e27c9a46d16e8"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Klar, ich schaue für dich das Wetter in San Francisco nach."
+                          },
+                          {
+                            "type": "tool_use",
+                            "id": "toolu_01abc123xyz",
+                            "name": "get_weather",
+                            "input": {
+                              "location": "San Francisco, US"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_01abc123xyz",
+                            "content": "{\"location\": \"San Francisco, US\", \"weather\": \"Neblig\", \"temperature\": \"16 °C\"}"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "Aktuelles Wetter für einen angegebenen Ort abfragen",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "location": {
+                              "type": "string",
+                              "description": "Stadt und Bundesland/Land, z. B.: San Francisco, US"
+                            }
+                          },
+                          "required": [
+                            "location"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "Streaming-Ausgabe (SSE)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 32768,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Schreibe ein kurzes Gedicht über den Frühling"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message-Objekt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "thinking_adaptive": {
+                    "summary": "Standard (Thinking-Block, danach Text-Block)",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e7",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "Der Benutzer fragt nach der Hauptstadt von Japan, was eine grundlegende Geografiefrage ist. Die Antwort lautet Tokio, ich kann sie direkt geben.",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e7"
+                        },
+                        {
+                          "type": "text",
+                          "text": "Die Hauptstadt von Japan ist **Tokio**."
+                        }
+                      ],
+                      "stop_reason": "end_turn",
+                      "usage": {
+                        "input_tokens": 7,
+                        "output_tokens": 77,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "Werkzeugaufruf ausgelöst (stop_reason=tool_use)",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e8",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "Der Benutzer möchte das aktuelle Wetter in San Francisco wissen. Ich rufe das Werkzeug get_weather auf.",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e8"
+                        },
+                        {
+                          "type": "text",
+                          "text": "Klar, ich schaue für dich das Wetter in San Francisco nach."
+                        },
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_01abc123xyz",
+                          "name": "get_weather",
+                          "input": {
+                            "location": "San Francisco, US"
+                          }
+                        }
+                      ],
+                      "stop_reason": "tool_use",
+                      "usage": {
+                        "input_tokens": 35,
+                        "output_tokens": 92,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  },
+                  "max_tokens": {
+                    "summary": "Ausgabelimit beim Denken aufgebraucht (stop_reason=max_tokens)",
+                    "value": {
+                      "id": "066a381bdc3c0ded310e27c9a46d16e9",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "thinking",
+                          "thinking": "Der Benutzer möchte einen ausführlichen Vergleich von drei Sortieralgorithmen. Ich beginne mit der Zeitkomplexität: Quicksort liegt im Durchschnitt bei O(n log n), verschlechtert sich bei ungünstig gewähltem Pivot aber auf O(n^2), während Mergesort",
+                          "signature": "066a381bdc3c0ded310e27c9a46d16e9"
+                        }
+                      ],
+                      "stop_reason": "max_tokens",
+                      "usage": {
+                        "input_tokens": 25,
+                        "output_tokens": 1024,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Anfrageparameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentifizierungsfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Kontingent unzureichend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Berechtigungsfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Modell oder Ressource nicht gefunden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Interner Serverfehler",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Aufzurufendes Modell\n\n**Hinweis**: `MiniMax-M3.1-Flash` ist ein Vorschaumodell; sein Verhalten kann sich ändern",
+            "enum": [
+              "MiniMax-M3.1-Flash"
+            ],
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Obergrenze für die Länge des generierten Inhalts (in Tokens), einschließlich Denken\n\n**Hinweise**:\n- Maximal **524.288** (512K); empfohlen bis zu **131.072** (128K)\n- Ohne Angabe verwendet EvoLink **32768**\n- Denk-Tokens zählen zu dieser Grenze. Bei einem kleinen Wert und einem hohen `output_config.effort` kann das Denken die Grenze aufbrauchen; die Antwort endet dann mit `stop_reason: \"max_tokens\"` und ohne `text`-Block\n- Verwenden Sie 32768 oder mehr und senken Sie `output_config.effort` bei einfachen Aufgaben",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 32768
+          },
+          "messages": {
+            "type": "array",
+            "description": "Liste der Konversationsnachrichten, abwechselnd user- / assistant-Runden\n\n**Hinweise**:\n- Muss mindestens 1 Nachricht enthalten\n- Die letzte Nachricht ist typischerweise `role=user`",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "System-Prompt, dient zum Festlegen der Rolle und des Verhaltens der KI\n\n**Hinweise**:\n- Unterstützt eine Zeichenkette oder ein Array von Zeichenketten\n- Wird über das `system`-Feld der obersten Ebene übergeben",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "System-Prompt im Format eines Inhaltsblock-Arrays. Textblöcke können cache_control enthalten",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "cache_control": {
+                      "$ref": "#/components/schemas/CacheControl"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Sampling-Temperatur\n\n**Hinweise**:\n- Bereich: `[0, 2]`\n- Standard 1; höhere Werte erzeugen divergentere Ausgaben, niedrigere Werte erzeugen deterministischere Ausgaben",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus-Sampling-Schwellenwert\n\n**Hinweise**:\n- Bereich: `[0, 1]`, MiniMax-M3.1-Flash Standard 0,95\n- Es wird empfohlen, temperature und top_p nicht gleichzeitig anzupassen",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Ob über SSE-Streaming zurückgegeben wird\n\n- `true`: Server-Sent Events Streaming-Antwort\n- `false`: Wartet auf die vollständige Antwort, bevor sie zurückgegeben wird (Standard)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Einstellungen für das Denken (optional)\n\nMiniMax-M3.1-Flash denkt immer, daher kann dieses Feld weggelassen werden. Die Denktiefe legen Sie mit `output_config.effort` fest\n\n**Hinweise**:\n- Das Antwort-`content` beginnt mit `type=\"thinking\"`-Blöcken (werden als Ausgabe-Tokens berechnet)\n- Senden Sie Thinking-Blöcke in Mehrrundengesprächen, insbesondere bei Werkzeugaufrufen, unverändert zurück",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "adaptive",
+                  "disabled",
+                  "enabled"
+                ],
+                "description": "- `adaptive`: Denken aktiv (gleichbedeutend mit dem Weglassen des Felds)\n- `disabled`: Schaltet das Denken **nicht** ab. EvoLink entfernt `thinking` und setzt `output_config.effort` auf `low`, sofern kein Wert angegeben ist\n- `enabled`: Älterer Anthropic-Stil, wird zusammen mit `budget_tokens` verwendet. EvoLink wandelt es in adaptives Denken um; ist `output_config.effort` nicht gesetzt, wird die Denkstufe aus `budget_tokens` abgeleitet\n\nDas Denken findet in jedem Fall statt und wird als Ausgabe-Tokens berechnet",
+                "default": "adaptive"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "Wird nur mit `type: \"enabled\"` verwendet. Dies ist keine harte Obergrenze für das Denken: Ist `output_config.effort` nicht gesetzt, wandelt EvoLink den Wert in eine Denkstufe um\n\n- ≤ 2048 → `low`\n- ≤ 4096 → `medium`\n- ≤ 8192 → `high`\n- ≤ 16384 → `xhigh`\n- Größer → `max`",
+                "minimum": 1
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "Ausgabekonfiguration. Die Denktiefe legen Sie mit `effort` fest",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "Denktiefe\n\n- `low`: Geringste Denktiefe, schnellste Antwort, geringster Verbrauch an Ausgabe-Tokens\n- `medium` / `high` / `xhigh`: Zunehmend tieferes Denken\n- `max` (Standard): Größte Denktiefe, langsamste Antwort, höchster Verbrauch an Ausgabe-Tokens\n\n**Hinweise**:\n- Ohne Angabe wird `max` verwendet; bei einfachen Aufgaben senkt eine niedrigere Stufe Latenz und Ausgabe-Tokens\n- Denk-Tokens werden als Ausgabe-Tokens berechnet und zählen zu `max_tokens`\n- `none` und `minimal` schalten das Denken nicht ab: EvoLink wandelt sie in `low` um",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "max",
+                "example": "medium"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Liste der Werkzeugdefinitionen\n\n**Hinweise**:\n- Folgt der Anthropic-Werkzeugdefinitionsspezifikation\n- `input_schema` verwendet ein JSON-Schema-Objekt",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "Strategie zur Werkzeugauswahl. Es werden nur auto und none unterstützt",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none"
+                ],
+                "description": "- `auto`: Das Modell entscheidet automatisch, ob ein Werkzeug aufgerufen wird (Standard, wenn Werkzeuge bereitgestellt werden)\n- `none`: Werkzeugaufrufe verbieten"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Anfrage-Metadaten",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "Eindeutige Kennung, die den Endbenutzer repräsentiert, kann zur Überwachung und Missbrauchserkennung pro Benutzer verwendet werden (die Verwendung einer gehashten ID wird empfohlen)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "user_system",
+              "group",
+              "sample_message_user",
+              "sample_message_ai"
+            ],
+            "description": "Rolle des Nachrichtenabsenders. MiniMax-M3.1-Flash verwendet abwechselnde user- / assistant-Nachrichten\n\n- `user`: Benutzernachricht (wird auch zum Zurückgeben von `tool_result`-Blöcken verwendet)\n- `assistant`: Historische Assistentenantwort (kann `text` / `thinking` / `tool_use`-Blöcke enthalten)\n\nHinweis: **`system` wird hier nicht akzeptiert**: System-Prompts sollten über das `system`-Feld der obersten Ebene übergeben werden."
+          },
+          "content": {
+            "description": "Nachrichteninhalt\n\n**Hinweise**:\n- Für reinen Text übergeben Sie direkt eine Zeichenkette\n- Für strukturierte Inhalte übergeben Sie ein Inhaltsblock-Array (`text` / `image` / `video` / `tool_use` / `tool_result` / `thinking`)",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "Nachrichteninhaltsblock\n\n**Unterstützte Typen**:\n- `text`: Textinhalt\n- `image`: Bildeingabe\n- `video`: Videoeingabe\n- `tool_use`: Vorherigen Assistenten-Werkzeugaufruf zurückgeben\n- `tool_result`: Ergebnis der Werkzeugausführung\n- `thinking`: Vorherigen Assistenten-Denkinhalt zurückgeben\n- `mid_conv_system`: Systemanweisung mitten im Gespräch",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "tool_use",
+              "tool_result",
+              "thinking",
+              "mid_conv_system"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Textinhalt, wenn type=`text`"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaSource",
+            "description": "Bild- oder Videoquelle, wird verwendet, wenn type=`image` oder type=`video`"
+          },
+          "id": {
+            "type": "string",
+            "description": "Werkzeugaufruf-ID (erforderlich für tool_use)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Werkzeugname (erforderlich für tool_use)"
+          },
+          "input": {
+            "type": "object",
+            "description": "Werkzeug-Eingabeparameter (JSON-Objekt für tool_use)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "Zugehörige Werkzeugaufruf-ID (erforderlich für tool_result, wird tool_use.id zugeordnet)"
+          },
+          "content": {
+            "description": "Ergebnis der Werkzeugausführung (tool_result), Zeichenkette oder Inhaltsblock-Array",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Zurückzugebender Inhalt des Assistenten-Denkprozesses (wird verwendet, wenn type=`thinking`). Geben Sie in Mehrrundengesprächen, insbesondere bei Werkzeugaufrufen, die Thinking-Blöcke des Assistenten unverändert zurück"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Signatur für den zurückgegebenen Denkinhalt; muss zur Fortsetzung über mehrere Runden unverändert zurückgegeben werden"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Werkzeugname\n\n**Hinweise**:\n- Nur `a-zA-Z0-9_-` erlaubt\n- Maximal 64 Zeichen"
+          },
+          "description": {
+            "type": "string",
+            "description": "Werkzeugbeschreibung, hilft dem Modell zu bestimmen, wann es aufgerufen wird"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "JSON-Schema-Objekt für die Werkzeug-Eingabeparameter\n\n**Hinweise**:\n- `type` muss `object` sein\n- Sollte `properties` und `required` deklarieren"
+          },
+          "cache_control": {
+            "$ref": "#/components/schemas/CacheControl"
+          }
+        }
+      },
+      "CacheControl": {
+        "type": "object",
+        "description": "Prompt-Caching-Markierung",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ephemeral"
+            ],
+            "description": "Typ der Cache-Markierung"
+          }
+        }
+      },
+      "MediaSource": {
+        "type": "object",
+        "description": "Medienquelle für Bild- oder Videoinhaltsblöcke\n\n- Bilder unterstützen JPEG / PNG / GIF / WEBP, maximal 10 MB pro Bild\n- Videos unterstützen MP4 / AVI / MOV / MKV, maximal 50 MB für URL / Base64",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "url"
+            ],
+            "description": "Typ der Medienquelle"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "Erforderlich für base64-Eingabe, z. B. `image/png` oder `video/mp4`"
+          },
+          "data": {
+            "type": "string",
+            "description": "Base64-codierte Medienbytes"
+          },
+          "url": {
+            "type": "string",
+            "description": "Öffentliche URL des Bildes oder Videos"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "low",
+              "default",
+              "high"
+            ],
+            "default": "default",
+            "description": "Verständnispräzision, Standardwert default. Höhere Auflösung verbraucht mehr Tokens"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0.2,
+            "maximum": 5,
+            "default": 1,
+            "description": "Frame-Extraktionsrate des Videos, Standard 1, Bereich [0.2, 5]. Höhere Werte sind empfindlicher gegenüber visuellen Änderungen und verbrauchen mehr Tokens"
+          },
+          "max_long_side_pixel": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximale Pixelbeschränkung für die längste Seite von Bildern oder Video-Frames"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Nachrichtenantwort im Anthropic-Stil",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutige Nachrichten-ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "Typ des Antwortobjekts"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "Tatsächlich verwendetes Modell",
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "content": {
+            "type": "array",
+            "description": "Liste der Antwortinhaltsblöcke\n\n**Mögliche Blocktypen**:\n- `thinking`: Reasoning-Prozess (wird bei MiniMax-M3.1-Flash immer zurückgegeben, vor `text` / `tool_use`)\n- `text`: Endgültiger Antworttext\n- `tool_use`: Vom Modell initiierter Werkzeugaufruf",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "Stoppgrund\n\n- `end_turn`: Natürlicher Abschluss\n- `max_tokens`: max_tokens-Limit erreicht (einschließlich Denken); wurde das Limit beim Denken aufgebraucht, gibt es keinen `text`-Block\n- `tool_use`: Modell hat einen Werkzeugaufruf ausgelöst",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "Inhaltsblock in der Antwort",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Text, wenn type=`text`"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Reasoning-Prozesstext, wenn type=`thinking`"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Integritätssignatur, wenn type=`thinking`, wird zur Kontextprüfung über mehrere Runden verwendet"
+          },
+          "id": {
+            "type": "string",
+            "description": "Werkzeugaufruf-ID, wenn type=`tool_use`"
+          },
+          "name": {
+            "type": "string",
+            "description": "Werkzeugname, wenn type=`tool_use`"
+          },
+          "input": {
+            "type": "object",
+            "description": "Vom Modell generierte JSON-Eingabeparameter, wenn type=`tool_use`"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token-Nutzungsstatistik (Anthropic-Spezifikation)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Eingabe-Tokens (nicht zwischengespeicherter Anteil)",
+            "example": 7
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Anzahl der Ausgabe-Tokens (einschließlich Nachdenken)",
+            "example": 77
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "Für die Cache-Erstellung verwendete Eingabe-Tokens",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Aus dem Cache gelesene Eingabe-Tokens",
+            "example": 0
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Fehlertyp (z. B. invalid_request_error / authentication_error / billing_error usw.)"
+              },
+              "message": {
+                "type": "string",
+                "description": "Fehlerbeschreibung"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Anfrage-Tracking-ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle APIs erfordern eine Bearer-Token-Authentifizierung##\n\n**API-Key erhalten:**\n\nBesuchen Sie die [API-Key-Verwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Key zu erhalten\n\n**Zum Anfrage-Header hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**Hinweis**: EvoLink verwendet für `/v1/messages` einheitlich die Bearer-Token-Authentifizierung."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Endpunkte des Anthropic Messages-Protokolls"
+    }
+  ]
+}
