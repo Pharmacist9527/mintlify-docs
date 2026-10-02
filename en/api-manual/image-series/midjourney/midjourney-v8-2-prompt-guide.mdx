@@ -207,7 +207,7 @@ Which routes take the field: image generation accepts `draft` / `fast`; remix, c
 <Note>
 Unlike V7, V8.2 `draft` mode is **not** half price — it uses the same multiplier as `fast`. Draft returns 24 small sketches in one run; pick the ones you like and re-run them at full quality. Draft cannot be combined with `hd` quality or `--tile` (`--oref` is not supported on V8.2 at all).
 
-**Turbo is not available on V8.2.** The upstream channel documents V8 as not supporting turbo mode, so `speed: "turbo"` is rejected with `400` on every V8.2 endpoint (as on V8.1).
+**Turbo is not available on V8.2.** The upstream channel documents V8 as not supporting turbo mode, so `speed: "turbo"` is rejected with `400` on every V8.2 endpoint.
 </Note>
 
 ---
@@ -293,7 +293,7 @@ The upstream channel has also opened an **instruction-based edit** endpoint for 
 These rules apply to image prompts, `--sref` URLs and the `image_urls` field of retexture / upload-paint / remove-bg.
 
 - **Public HTTP(S) URL only.** Base64 and data URLs are not accepted for input images. The URL itself must be at most 1024 characters.
-- **The upstream fetches the image synchronously when the task is created and gives up after about 10 seconds** (measured on this platform). If it cannot download the file in time, the request fails with `400` and no task is created. Image hosts outside mainland China (imgur, ibb, raw.githubusercontent, pinimg, picsum and similar) fail almost every time in practice. Host images on a fast CDN or upload them first with the [File Upload API](/en/api-manual/file-series/upload-url) and use the returned URL.
+- **The upstream fetches the image when it creates the task and gives up after about 10 seconds** (measured on this platform). If it cannot download the file in time, the task fails with `image_processing_error` and the reserved credits are refunded in full. Image hosts outside mainland China (imgur, ibb, raw.githubusercontent, pinimg, picsum and similar) fail almost every time in practice. Host images on a fast CDN or upload them first with the [File Upload API](/en/api-manual/file-series/upload-url) and use the returned URL.
 - Supported formats: `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg` (`mj-v8.2-remove-bg` accepts `.png`, `.jpg`, `.jpeg` only). At most 20 MB per file and 16k pixels per side; very large files can miss the fetch budget even from a reachable host.
 - `mj-v8.2-remove-bg` does not accept the signed result links returned by Midjourney tasks on this platform (URLs containing `Expires` / `Signature`). Re-host the image or use an unsigned URL. Retexture and upload-paint accept those links.
 - Image prompts and `--sref` URLs are also accepted at `draft` speed (verified on this platform); only `--tile` is rejected together with `draft`.
@@ -358,17 +358,17 @@ Variation, remix and canvas edit take a completed `mj-v8.2` series task of the s
 
 - Source tasks are rendered by Midjourney's V7 engine upstream for these derived operations, so the result may differ slightly in style from the source image. Pricing is unchanged. V8.1 sources are not accepted.
 - `image_number` selects the source image: `0`–`3` for a `fast` source task, `0`–`23` for a `draft` source task (all 24 sketches can be used as a source for variation, remix and edit).
-- Results of `mj-v8.2-upload-paint`, `mj-v8.2-retexture` and `mj-v8.2-remove-bg` **cannot** be used as a source for variation, remix or edit; the upstream only allows upscaling them, which this route does not expose. Use an image-generation, variation, remix or edit task as the source instead.
+- Results of `mj-v8.2-upload-paint`, `mj-v8.2-retexture` and `mj-v8.2-remove-bg` **cannot** be used as a source for variation, remix or edit: the upstream does not accept them (upload-paint and retexture results can only be upscaled, which this route does not expose), so this platform rejects such requests at submission with `400` and nothing is charged. Use an image-generation, variation, remix or edit task as the source instead.
 
 ---
 
 ## FAQ
 
 **Do I need to change my prompts when moving from V8.1?**
-No. Change the `model` value; prompts, `model_params` and prices are unchanged. Only `--oref` / `--ow` no longer work, and `--q` accepts `2` and `3` in addition to `1` and `4`.
+Usually not. Change the `model` value; `model_params` and prices are unchanged. Differences to check: `--oref` / `--ow` no longer work; `--stop` and `--cref` (with `--cw`), which V8.1 silently dropped, are now passed through and rejected by the upstream (the task fails and is refunded); `--weird` and `--tile` now take effect; Draft mode now accepts image prompts and `--sref`; and `--q` accepts `2` and `3` in addition to `1` and `4`.
 
-**Why does my image prompt fail with a 400 before any task is created?**
-The upstream could not download the image within its fetch budget. Move the file to a fast, publicly reachable host or use the File Upload API, then retry.
+**Why does my image-prompt task fail within seconds?**
+The upstream could not download the image within its fetch budget, so the task failed (`image_processing_error`) and the reserved credits were refunded. Move the file to a fast, publicly reachable host or use the File Upload API, then retry.
 
 **Is there a turbo speed?**
 No. The upstream documents V8 as not supporting turbo, so V8.2 offers `draft` and `fast` only, like V8.1.

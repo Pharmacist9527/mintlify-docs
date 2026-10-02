@@ -207,7 +207,7 @@ Routes concernées : la génération d’image accepte `draft` / `fast` ; remix,
 <Note>
 Contrairement à V7, le mode `draft` de V8.2 n'est **pas** à moitié prix — il utilise le même multiplicateur que `fast`. Le mode draft renvoie 24 petites esquisses en une seule exécution ; choisissez celles que vous préférez et relancez-les en pleine qualité. Le mode draft ne peut pas être combiné avec la qualité `hd` ni `--tile` (`--oref` n'est pas du tout pris en charge sur V8.2).
 
-**Turbo n'est pas disponible sur V8.2.** Le canal fournisseur documente V8 comme ne prenant pas en charge le mode turbo ; `speed: "turbo"` est donc rejeté avec `400` sur tous les points de terminaison V8.2 (comme sur V8.1).
+**Turbo n'est pas disponible sur V8.2.** Le canal fournisseur documente V8 comme ne prenant pas en charge le mode turbo ; `speed: "turbo"` est donc rejeté avec `400` sur tous les points de terminaison V8.2.
 </Note>
 
 ---
@@ -293,7 +293,7 @@ Le canal fournisseur a également ouvert un point de terminaison d'**édition pa
 Ces règles s'appliquent aux prompts image, aux URL `--sref` et au champ `image_urls` de retexture / upload-paint / remove-bg.
 
 - **URL HTTP(S) publique uniquement.** Les données Base64 et les URL data ne sont pas acceptées pour les images en entrée. L'URL elle-même ne doit pas dépasser 1024 caractères.
-- **Le fournisseur télécharge l'image de manière synchrone lors de la création de la tâche et abandonne après environ 10 secondes** (mesuré sur cette plateforme). S'il ne parvient pas à télécharger le fichier à temps, la requête échoue avec `400` et aucune tâche n'est créée. Les hébergeurs d'images situés hors de Chine continentale (imgur, ibb, raw.githubusercontent, pinimg, picsum et similaires) échouent presque systématiquement en pratique. Hébergez les images sur un CDN rapide ou téléversez-les d'abord avec l'[API de téléversement de fichiers](/fr/api-manual/file-series/upload-url) et utilisez l'URL renvoyée.
+- **Le fournisseur télécharge l'image lors de la création de la tâche et abandonne après environ 10 secondes** (mesuré sur cette plateforme). S'il ne parvient pas à télécharger le fichier à temps, la tâche échoue avec `image_processing_error` et les crédits réservés sont intégralement remboursés. Les hébergeurs d'images situés hors de Chine continentale (imgur, ibb, raw.githubusercontent, pinimg, picsum et similaires) échouent presque systématiquement en pratique. Hébergez les images sur un CDN rapide ou téléversez-les d'abord avec l'[API de téléversement de fichiers](/fr/api-manual/file-series/upload-url) et utilisez l'URL renvoyée.
 - Formats pris en charge : `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg` (`mj-v8.2-remove-bg` n'accepte que `.png`, `.jpg`, `.jpeg`). Au maximum 20 Mo par fichier et 16k pixels par côté ; les fichiers très volumineux peuvent dépasser le délai de récupération même depuis un hôte accessible.
 - `mj-v8.2-remove-bg` n'accepte pas les liens de résultat signés renvoyés par les tâches Midjourney sur cette plateforme (URL contenant `Expires` / `Signature`). Réhébergez l'image ou utilisez une URL non signée. Retexture et upload-paint acceptent ces liens.
 - Les prompts image et les URL `--sref` sont aussi acceptés en vitesse `draft` (vérifié sur cette plateforme) ; seul `--tile` est rejeté avec `draft`.
@@ -358,17 +358,17 @@ La variation, le remix et l'édition sur canevas prennent comme source une tâch
 
 - Pour ces opérations dérivées, les tâches sources sont rendues chez le fournisseur par le moteur V7 de Midjourney ; le résultat peut donc différer légèrement en style de l'image source. La tarification est inchangée. Les sources V8.1 ne sont pas acceptées.
 - `image_number` sélectionne l'image source : `0`–`3` pour une tâche source `fast`, `0`–`23` pour une tâche source `draft` (les 24 esquisses peuvent toutes servir de source à une variation, un remix ou une édition).
-- Les résultats de `mj-v8.2-upload-paint`, `mj-v8.2-retexture` et `mj-v8.2-remove-bg` ne peuvent **pas** servir de source à une variation, un remix ou une édition ; le fournisseur n'autorise que leur upscale, que cette interface n'expose pas. Utilisez plutôt une tâche de génération d'images, de variation, de remix ou d'édition comme source.
+- Les résultats de `mj-v8.2-upload-paint`, `mj-v8.2-retexture` et `mj-v8.2-remove-bg` ne peuvent **pas** servir de source à une variation, un remix ou une édition : le fournisseur ne les accepte pas comme source (les résultats d'upload paint et de retexture ne peuvent qu'être upscalés, ce que cette interface n'expose pas) ; cette plateforme rejette donc ces requêtes dès la soumission avec `400`, sans rien facturer. Utilisez plutôt une tâche de génération d'images, de variation, de remix ou d'édition comme source.
 
 ---
 
 ## FAQ
 
 **Dois-je modifier mes prompts en passant de V8.1 ?**
-Non. Changez la valeur de `model` ; les prompts, `model_params` et les prix sont inchangés. Seuls `--oref` / `--ow` ne fonctionnent plus, et `--q` accepte `2` et `3` en plus de `1` et `4`.
+En général, non. Changez la valeur de `model` ; `model_params` et les prix sont inchangés. Différences à vérifier : `--oref` / `--ow` ne fonctionnent plus ; `--stop` et `--cref` (avec `--cw`), que V8.1 supprimait silencieusement, sont désormais transmis et rejetés par le fournisseur (la tâche échoue et est remboursée) ; `--weird` et `--tile` prennent désormais effet ; le mode Draft accepte désormais les prompts image et `--sref` ; `--q` accepte `2` et `3` en plus de `1` et `4`.
 
-**Pourquoi mon prompt image échoue-t-il avec un 400 avant même qu'une tâche soit créée ?**
-Le fournisseur n'a pas pu télécharger l'image dans le délai imparti. Déplacez le fichier vers un hôte rapide et accessible publiquement, ou utilisez l'API de téléversement de fichiers, puis réessayez.
+**Pourquoi ma tâche avec prompt image échoue-t-elle en quelques secondes ?**
+Le fournisseur n'a pas pu télécharger l'image dans le délai imparti ; la tâche a donc échoué (`image_processing_error`) et les crédits réservés ont été remboursés. Déplacez le fichier vers un hôte rapide et accessible publiquement, ou utilisez l'API de téléversement de fichiers, puis réessayez.
 
 **Existe-t-il une vitesse turbo ?**
 Non. Le fournisseur documente V8 comme ne prenant pas en charge turbo ; V8.2 ne propose donc que `draft` et `fast`, comme V8.1.
