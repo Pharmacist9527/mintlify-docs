@@ -1,0 +1,388 @@
+---
+title: "Midjourney V8.2 Prompt-Parameter-Handbuch"
+icon: "book-open"
+description: "Alle verfügbaren Parameter für das Midjourney V8.2-Modell in Prompts, einschließlich Wertebereiche, Standardwerte, Abhängigkeiten, Konflikte, Regeln für Eingabebilder, Längenbegrenzungen und Aufgaben-Workflow"
+---
+
+## Parameterübersicht
+
+| Parameter | Schreibweise | Typ | Wertebereich | Standard | Beschreibung |
+|-----------|-------------|-----|-------------|----------|-------------|
+| Seitenverhältnis | `--ar W:H` | Ganzzahlverhältnis | Beliebiges positives Ganzzahlverhältnis, keine Dezimalzahlen | 1:1 | Bildseitenverhältnis |
+| Chaos | `--c N` | int | 0 - 100 | 0 | Vielfalt der generierten Ergebnisse |
+| Seed | `--seed N` | int | 0 - 4294967295 | Zufällig | Seed fixieren für reproduzierbare Ergebnisse |
+| Stilisierung | `--s N` | int | 0 - 1000 | 100 | Künstlerische Stilintensität |
+| Experimentell | `--exp N` | int | 0 - 100 | 0 | Ästhetischer Effekt, stapelbar mit Stilisierung |
+| Qualität (Detailstufe) | `--quality N` / `--q N` | int | 1 - 4 | 1 | Detailstufe des Bildes; 4 ist der Hochqualitätsmodus. Kein Aufpreis. V8.1 akzeptiert nur 1 / 4 |
+| Raw-Modus | `--raw` | Schalter | — | Aus | Standard-Verschönerung deaktivieren |
+| Negativ-Prompt | `--no item1, item2` | Text | — | — | Elemente, die im Bild nicht vorkommen sollen |
+| Bildgewicht | `--iw N` | float | 0 - 3 | 1 | Einfluss des Bildprompts |
+| Stilreferenz | `--sref [URL]` | URL | — | — | Visuellen Stil abgleichen |
+| Stilgewicht | `--sw N` | int | 0 - 1000 | 100 | Stärke der Stilreferenz |
+| Personalisierung | `--p [code]` | Code | — | — | Vom Upstream-Kanal erstellte Moodboard-ID, wird unverändert durchgereicht |
+| Kachel | `--tile` | Schalter | — | Aus | Nahtlos wiederholbare Muster erzeugen |
+| Weird | `--weird N` / `--w N` | int | 0 - 3000 | 0 | Unkonventionelle, experimentelle Ästhetik |
+
+<Note>
+Zwei Einstellungen werden **nicht** in den Prompt geschrieben, sondern über die API gesteuert (im Prompt haben sie keine Wirkung, die Parameter werden entfernt):
+
+- **Geschwindigkeit** (`draft` / `fast`) → `model_params.speed`
+- **Ausgabequalität** (`standard` / `hd`) → Top-Level-Parameter `quality`
+
+`--v` / `--version` ist auf V8.2 festgelegt und `--niji` wird nicht unterstützt. Siehe unten [Geschwindigkeitsmodi](#geschwindigkeitsmodi) und [Ausgabequalität](#ausgabequalität).
+</Note>
+
+---
+
+## Grundlegende Parameter
+
+### Seitenverhältnis `--ar`
+
+Legt das Bildseitenverhältnis fest. Es werden nur Ganzzahlverhältnisse unterstützt; Dezimalzahlen werden abgelehnt (schreiben Sie `139:100`, nicht `1.39:1`). Extreme Verhältnisse sind experimentell und können unvorhersehbare Ergebnisse erzeugen.
+
+```
+eine Katze --ar 16:9
+```
+
+Gängige Werte: `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `2:3`. Die Pixelgröße finden Sie unter [Ausgabequalität](#ausgabequalität).
+
+### Chaos `--chaos` / `--c`
+
+Steuert die Vielfalt der generierten Ergebnisse. Höhere Werte erzeugen größere Unterschiede zwischen den 4 Bildern.
+
+```
+eine Katze --c 50
+```
+
+| Bereich | Effekt |
+|---------|--------|
+| 0 | 4 Bilder sind weitgehend einheitlich (Standard) |
+| 1-30 | Feine Unterschiede |
+| 30-70 | Mäßige Vielfalt |
+| 70-100 | Deutliche Unterschiede, geeignet für kreative Erkundung |
+
+### Stilisierung `--stylize` / `--s`
+
+Passt die Balance zwischen Realismus und künstlerischem Stil an.
+
+```
+eine Katze --s 500
+```
+
+| Bereich | Effekt |
+|---------|--------|
+| 0-250 | Realistischer Stil, dem Prompt treu |
+| 250-750 | Ausgewogen |
+| 750-1000 | Starker künstlerischer Ausdruck, kräftige Farben und Komposition |
+
+### Experimentell `--exp`
+
+Ähnlich wie `--stylize`, aber stapelbar, erzeugt detailliertere, dynamischere und kreativere Bilder.
+
+```
+eine Katze --exp 25
+```
+
+- Empfohlene Werte: 5, 10, 25, 50, 100
+- Spürbare Effektänderungen von 5-50, abnehmende Wirkung von 50-100
+- Über 25-50 kann es die Wirkung von `--stylize` und `--p` überschreiben; verwenden Sie bei Kombination niedrigere Werte
+
+### Qualität `--quality` / `--q`
+
+Legt die Detailstufe des Bildes fest. Bereich 1 - 4, Standard 1; `4` ist der Hochqualitätsmodus. Das Parameter wird unverändert an den Upstream durchgereicht und **ändert den Preis nicht**.
+
+```
+eine Katze --q 3
+```
+
+- V8.2 akzeptiert `1` / `2` / `3` / `4`; V8.1 akzeptiert nur `1` / `4`. Werte außerhalb des Bereichs werden abgelehnt: Die Aufgabe schlägt mit einem Parameterfehler fehl, der `--quality` und die zulässigen Werte nennt, und reservierte Credits werden erstattet
+- Höhere Werte benötigen mehr Zeit zum Rendern
+- Nur für den Bildgenerierungs-Endpunkt; abgeleitete Aufgaben (Variation, Remix, Bearbeitung usw.) übernehmen das Quellbild
+
+### Raw-Modus `--raw`
+
+Deaktiviert die Standard-Verschönerung für eine strengere Einhaltung der Prompt-Details. Geeignet für Fotorealismus oder präzise Kontrollszenarien.
+
+```
+Produktfoto --raw
+```
+
+### Negativ-Prompt `--no`
+
+Listet Elemente auf, die im Bild nicht erscheinen sollen. Mehrere Elemente werden durch Kommas getrennt. Dies entspricht einer Gewichtung dieser Elemente mit -0,5. „kein Obst" oder „ohne Obst" in der Beschreibung zu schreiben funktioniert nicht — Midjourney behandelt diese Wörter als Inhalt —, verwenden Sie daher stattdessen das Parameter.
+
+```
+still life gouache painting --no fruit, flowers
+```
+
+### Seed `--seed`
+
+Fixiert den anfänglichen Zufallszustand für Vergleichstests.
+
+```
+eine Katze --seed 23453422
+```
+
+- Bereich: 0 - 4294967295
+- Der Seed fixiert nur den Ausgangszustand; er garantiert keine identische Ausgabe, und jede Änderung an Prompt, Parametern oder Modellversion verändert das Ergebnis
+- Verwenden Sie beim Testen einen festen Seed und in der Produktion einen zufälligen Seed für mehr Vielfalt
+
+---
+
+## Bildreferenz-Parameter
+
+### Bildprompt
+
+Platzieren Sie Bild-URLs am **Anfang** des Prompts, um den generierten Inhalt zu beeinflussen.
+
+```
+https://cdn.evolink.ai/model-cards/midjourney-v8-2/midjourney-v8-2-og-v1.jpg Textbeschreibung --iw 1.5
+```
+
+**Gültige Kombinationsregeln:**
+
+| Kombination | Gültig? |
+|-------------|---------|
+| 1 Bild + kein Text | Ungültig (erzeugt Fehler) |
+| 1 Bild + Textbeschreibung | Gültig |
+| 2+ Bilder + kein Text | Gültig |
+| 2+ Bilder + Textbeschreibung | Gültig |
+
+- Maximal 20 Bildprompts
+- Unterstützte Formate: `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg`; höchstens 20 MB pro Datei und 16k Pixel pro Seite
+- Reine Bildprompts (ohne Text) sind inkompatibel mit `--stylize` und `--weird`
+- Funktioniert auch bei `draft`-Geschwindigkeit (auf dieser Plattform verifiziert); nur `--tile` kann nicht mit `draft` kombiniert werden
+- URLs müssen innerhalb weniger Sekunden öffentlich erreichbar sein, siehe [Anforderungen an Eingabebilder](#anforderungen-an-eingabebilder)
+
+### Bildgewicht `--iw`
+
+Steuert den Einfluss des Bildprompts auf das Ergebnis. Bereich 0 - 3, Standard 1. Höhere Werte erzeugen Ergebnisse näher am Referenzbild.
+
+```
+https://cdn.evolink.ai/model-cards/midjourney-v8-2/midjourney-v8-2-og-v1.jpg Aquarelllandschaft --iw 2.0
+```
+
+### Stilreferenz `--sref`
+
+Gleicht den visuellen Stil (Farben, Texturen, Beleuchtung) des Referenzbilds ab, ohne den Inhalt zu kopieren. **Muss mit einem Textprompt verwendet werden**.
+
+```
+eine Katze --sref https://cdn.evolink.ai/model-cards/midjourney-v8-2/midjourney-v8-2-og-v1.jpg
+```
+
+- Mehrere unterstützt: `--sref URL1 URL2`; relative Gewichte können als `--sref URL1::2 URL2::1` angegeben werden (vom Upstream dokumentiert, auf dieser Plattform noch nicht verifiziert)
+- Zufälliger Stil unterstützt: `--sref random` (gibt nach der Generierung einen Zahlencode zurück, wiederverwendbar)
+- Maximal 20 Srefs
+- Beschreiben Sie im Textprompt den Inhalt, keine Anweisungen („eine Katze", nicht „lass das wie die Referenz aussehen")
+
+### Stilgewicht `--sw`
+
+Steuert den Einfluss der Stilreferenz. Bereich 0 - 1000, Standard 100.
+
+```
+eine Katze --sref https://cdn.evolink.ai/model-cards/midjourney-v8-2/midjourney-v8-2-og-v1.jpg --sw 500
+```
+
+### Personalisierung `--p`
+
+`--p` wird unverändert an den Upstream durchgereicht. Es akzeptiert die ID eines Moodboards, das der Upstream-Kanal unter dem Organisationskonto dieser Plattform erstellt hat; diese Plattform stellt noch keine Endpunkte zum Erstellen oder Auflisten von Moodboards bereit, und persönliche Profil-Codes von midjourney.com sind nicht anwendbar. Für einen einheitlichen Stil verwenden Sie stattdessen `--sref` / `--sw` zusammen mit `--seed`. `--p` kann nicht mit `--weird` kombiniert werden.
+
+```
+eine Katze --p abc123
+```
+
+---
+
+## Geschwindigkeitsmodi
+
+Der Geschwindigkeitsmodus wird über das API-Feld `model_params.speed` gesteuert (schreiben Sie nicht `--draft` / `--fast` in den Prompt).
+
+Welche Routen das Feld annehmen: Bildgenerierung akzeptiert `draft` / `fast`; Remix, Leinwand-Bearbeitung, Retexturierung und Upload-Bearbeitung nur `fast`; Variation und Hintergrundentfernung haben kein speed-Feld (bei Variation wird `speed: fast` akzeptiert und ignoriert; jeder andere Wert liefert `400`).
+
+| Modus | Beschreibung | Kosten |
+|-------|-------------|--------|
+| `draft` | Liefert 24 leichtgewichtige 512-px-Skizzenbilder in einem einzigen Durchlauf. Nur für Bildgenerierungs-Endpunkt. | Gleicher Multiplikator wie fast |
+| `fast` | Standardmodus (Standard), 4 Bilder pro Generierung | Standard |
+
+<Note>
+Anders als bei V7 ist der `draft`-Modus von V8.2 **nicht** zum halben Preis – er verwendet denselben Multiplikator wie `fast`. Draft liefert 24 kleine Skizzen in einem Durchlauf; wählen Sie die gewünschten aus und führen Sie sie in voller Qualität erneut aus. Draft kann nicht mit `hd`-Qualität oder `--tile` kombiniert werden (`--oref` wird auf V8.2 grundsätzlich nicht unterstützt).
+
+**Turbo ist auf V8.2 nicht verfügbar.** Der Upstream-Kanal dokumentiert V8 als ohne Turbo-Unterstützung, daher wird `speed: "turbo"` auf jedem V8.2-Endpunkt mit `400` abgelehnt.
+</Note>
+
+---
+
+## Ausgabequalität
+
+Die Ausgabeauflösung wird über den Top-Level-Parameter `quality` gesteuert, **nicht** über ein Prompt-Parameter. Schreiben Sie nicht `--hd` in den Prompt.
+
+| Wert | Auflösung | Kosten |
+|------|-----------|--------|
+| `standard` | Standardauflösung, etwa 1024 px auf der langen Seite bei 1:1 (Standard) | 1x |
+| `hd` | Native 2K-Ausgabe, etwa 2048 x 2048 bei 1:1 | 1,5x |
+
+- Der Qualitätsmultiplikator wird mit dem Geschwindigkeitsmultiplikator **kombiniert (multipliziert)**
+- `hd` ist **inkompatibel** mit `draft`-Geschwindigkeit
+- Auf V8.2 gibt es keinen separaten Upscale-Endpunkt; der Upstream setzt das „Hochskalieren" für V8 als neue Generierung mit `hd` um. Verwenden Sie daher `quality: "hd"`, wenn Sie die 2K-Ausgabe benötigen
+
+---
+
+## Prompt-Längenbegrenzungen
+
+| Endpunkt | Limit | Hinweise |
+|----------|-------|----------|
+| `mj-v8.2` (Bildgenerierung) | **1024 Zeichen Textbeschreibung**, durchgesetzt vom Upstream; die API akzeptiert insgesamt bis zu 2048 Zeichen | Der Upstream zählt nur die Beschreibung, nachdem Bild-URLs und `--Parameter` entfernt wurden. Der zusätzliche Platz ist für URLs und Parameter vorgesehen |
+| `mj-v8.2-remix` / `-edit` / `-retexture` / `-upload-paint` | 8100 Zeichen | Der Prompt wird als Bearbeitungsanweisung gesendet; die 1024-Regel gilt nicht |
+| `mj-v8.2-variation` / `-remove-bg` | — | `prompt` wird ignoriert |
+
+Eine zu lange Beschreibung wird abgelehnt: Die Aufgabe schlägt mit einem Parameterfehler (`invalid_parameters`) fehl und reservierte Credits werden erstattet.
+
+---
+
+## Abhängigkeiten
+
+Die folgenden Parameter erfordern andere Parameter, um wirksam zu werden:
+
+| Parameter | Voraussetzung |
+|-----------|--------------|
+| `--sw` | Erfordert `--sref` |
+| `--iw` | Erfordert Bildprompt |
+| `--sref` | Erfordert Textprompt |
+| Einzelner Bildprompt | Erfordert Textprompt |
+
+---
+
+## Konflikte
+
+| Parameter A | Parameter B | Beschreibung |
+|-------------|-------------|-------------|
+| `draft` Geschwindigkeit | `hd` Qualität | Draft-Modus kann nicht mit HD kombiniert werden |
+| `draft` Geschwindigkeit | `--tile` | Nicht gemeinsam erlaubt |
+| `--weird` | `--p` | Nicht gemeinsam erlaubt |
+| Nur-Bild-Prompt | `--stylize` / `--weird` | Ohne Text inkompatibel |
+| `--exp` > 25 | `--stylize` / `--p` | Hohes `--exp` kann sie unterdrücken; senken Sie `--exp` bei Kombination |
+
+---
+
+## Nicht unterstützte Parameter in V8.2
+
+V8.2 entfernt nur die Parameter, die Versionssperre oder Abrechnung verfälschen würden; **alle anderen Parameter werden unverändert an den Upstream durchgereicht**. Unterstützt der Upstream ein Parameter nicht, schlägt die Aufgabe mit einem Parameterfehler (`invalid_parameters`) fehl und reservierte Credits werden erstattet — nichts wird stillschweigend verworfen.
+
+| Parameter | Behandlung |
+|-----------|------------|
+| `--v` / `--version` / `--niji` | Entfernt — Version ist auf V8.2 festgelegt |
+| `--fast` / `--turbo` / `--draft` / `--relax` | Entfernt — verwenden Sie `model_params.speed` (`draft` / `fast`; Turbo ist auf V8.2 nicht verfügbar) |
+| `--hd` | Entfernt — verwenden Sie den Top-Level-Parameter `quality` |
+| `--bs` / `--batchsize` | Entfernt — Batch-Größe nicht konfigurierbar |
+| `--edit` | Reserviert für den Endpunkt zur anweisungsbasierten Bearbeitung des Upstreams, der auf dieser Plattform noch nicht verfügbar ist; wird vom Upstream auf allen aktuellen Endpunkten abgelehnt |
+| `--oref` / `--ow` | Vom Upstream abgelehnt (auf V8.2 nicht unterstützt) |
+| `--cref` / `--cw` | Vom Upstream abgelehnt (auf V8.2 nicht unterstützt) |
+| `--stop` | Vom Upstream abgelehnt |
+| Multi-Prompt `::` | Vom Upstream abgelehnt |
+| `--sv` | Nur `--sv 6` wird akzeptiert, und nur zusammen mit `--sref` |
+| `--repeat` / `--r`, `{}`-Permutationen, `--stealth` / `--public` | Über API nicht unterstützt |
+
+<Note>
+Der Upstream-Kanal hat außerdem einen Endpunkt für **anweisungsbasierte Bearbeitung** für V8.1 / V8.2 geöffnet (das Midjourney Edit Model: `--edit` mit bis zu 4 Referenzbildern, optionales Neuzeichnen per transparenter Maske). Er ist auf dieser Plattform noch nicht verfügbar und wird derzeit eingeplant. `mj-v8.2-edit` und `mj-v8.2-upload-paint` sind Canvas-Bearbeitungen (`canvas` + `img_pos` + optionale `mask`), und `mj-v8.2-retexture` ist das Werkzeug für die Retexturierung. Wird `--edit` auf einem der aktuellen Endpunkte in den Prompt geschrieben, lehnt der Upstream die Anfrage ab.
+</Note>
+
+---
+
+## Anforderungen an Eingabebilder
+
+Diese Regeln gelten für Bildprompts, `--sref`-URLs und das Feld `image_urls` von Retexturierung / Upload-Bearbeitung / Hintergrund entfernen.
+
+- **Nur öffentliche HTTP(S)-URLs.** Base64 und Data-URLs werden für Eingabebilder nicht akzeptiert. Die URL selbst darf höchstens 1024 Zeichen lang sein.
+- **Der Upstream lädt das Bild beim Erstellen der Aufgabe herunter und bricht nach etwa 10 Sekunden ab** (auf dieser Plattform gemessen). Kann die Datei nicht rechtzeitig heruntergeladen werden, schlägt die Aufgabe mit `image_processing_error` fehl und die reservierten Credits werden vollständig erstattet. Bildhoster außerhalb Festlandchinas (imgur, ibb, raw.githubusercontent, pinimg, picsum und ähnliche) scheitern in der Praxis fast immer. Hosten Sie Bilder auf einem schnellen CDN oder laden Sie sie zuerst mit der [Datei-Upload-API](/de/api-manual/file-series/upload-url) hoch und verwenden Sie die zurückgegebene URL.
+- Unterstützte Formate: `.png`, `.gif`, `.webp`, `.jpg`, `.jpeg` (`mj-v8.2-remove-bg` akzeptiert nur `.png`, `.jpg`, `.jpeg`). Höchstens 20 MB pro Datei und 16k Pixel pro Seite; sehr große Dateien können das Zeitbudget für den Download selbst von einem erreichbaren Host aus überschreiten.
+- `mj-v8.2-remove-bg` akzeptiert nicht die signierten Ergebnislinks, die Midjourney-Aufgaben auf dieser Plattform zurückgeben (URLs mit `Expires` / `Signature`). Hosten Sie das Bild neu oder verwenden Sie eine unsignierte URL. Retexturierung und Upload-Bearbeitung akzeptieren diese Links.
+- Bildprompts und `--sref`-URLs werden auch bei `draft`-Geschwindigkeit akzeptiert (auf dieser Plattform verifiziert); nur `--tile` wird zusammen mit `draft` abgelehnt.
+
+---
+
+## Prompt-Format-Richtlinien
+
+### Grundstruktur
+
+```
+[Bild-URL] Textbeschreibung --param1 Wert1 --param2 Wert2
+```
+
+### Schreibregeln
+
+- Parameter stehen am **Ende** des Textprompts
+- Ein **Leerzeichen** ist vor `--` erforderlich
+- Keine Satzzeichen in Parametern verwenden
+- Nach Parametern darf kein Text folgen
+- Um Wörter im Bild darzustellen, setzen Sie sie in doppelte Anführungszeichen: `a neon sign that says "OPEN" --ar 3:2`
+
+### Beispiele
+
+<CodeGroup>
+```text Richtig
+a yellow Persian cat --ar 1:2 --s 500
+```
+
+```text Falsch
+a yellow Persian cat--ar 2:3          ← fehlendes Leerzeichen vor --
+a yellow Persian cat - - ar 2:3       ← Leerzeichen zwischen --
+a yellow Persian cat --ar 2:3, --s 50 ← Satzzeichen in Parametern
+a yellow Persian cat --ar 2:3 more description ← Text nach Parametern
+```
+</CodeGroup>
+
+---
+
+## Aufgaben-Workflow
+
+Alle sieben V8.2-Modelle sind asynchron und werden pro Aufruf abgerechnet.
+
+1. **Absenden** — `POST /v1/images/generations` antwortet sofort mit einer Aufgaben-`id`, `status: processing` und `usage.credits_reserved`. Der Upstream-Job wird im Hintergrund erstellt.
+2. **Abfragen** — `GET /v1/tasks/{task_id}` ([Aufgabenstatus abfragen](/de/api-manual/task-management/get-task-detail)). Der Upstream gibt für Generierung und Bearbeitungen eine durchschnittliche Dauer von etwa 40 Sekunden an; fragen Sie alle 3–5 Sekunden ab, mit einer clientseitigen Obergrenze von etwa 20 Minuten, und senden Sie denselben Prompt nicht erneut, solange eine Aufgabe noch `processing` ist. Der Upstream begrenzt die Parallelität pro Organisationskonto; wird die Grenze überschritten, wartet diese Plattform automatisch und reicht die Aufgabe erneut ein – für Sie dauert die Aufgabe dann nur länger, sie schlägt nicht fehl.
+3. **Ergebnis lesen** — wenn `status` gleich `completed` ist, enthält `results` die Bild-URLs: 4 bei `fast`, 24 bei `draft`. `usage.cost` zeigt die endgültige Belastung.
+4. **Bilder speichern** — Ergebnislinks sind signierte OSS-URLs, die **30 Tage** gültig sind; die Signatur gilt nur für `GET`, eine `HEAD`-Anfrage liefert daher `403`. Laden Sie alles herunter oder hosten Sie es neu, was Sie behalten möchten.
+5. **Optionaler Callback** — übergeben Sie `callback_url` (HTTPS, öffentlicher Host), um bei `completed` / `failed` benachrichtigt zu werden. Callbacks werden 3-mal mit Backoff wiederholt; betrachten Sie sie als Hinweis und bestätigen Sie den Status über die Aufgabenabfrage.
+
+| Status | Bedeutung | Endgültig? |
+|--------|-----------|------------|
+| `pending` | Angenommen, wartet auf die Upstream-Warteschlange | Nein |
+| `processing` | Wird gerendert | Nein |
+| `completed` | Bilder in `results` bereit | Ja |
+| `failed` | Upstream-Fehler, Parameterablehnung, Moderation oder fehlgeschlagener Download; die Meldung steht in `error` und reservierte Credits werden vollständig erstattet | Ja |
+
+Fehlgeschlagene Aufgaben werden vollständig erstattet, einschließlich bei der Erstellung abgelehnter Anfragen, Parameterablehnungen durch den Upstream (`--oref`, `--q` außerhalb des Bereichs, zu lange Beschreibung), fehlgeschlagener Bild-Downloads sowie Aufgaben, bei denen die Inhaltsmoderation des Upstreams **alle** Bilder blockiert. Solange mindestens ein Bild die Moderation passiert, ist die Aufgabe `completed` und wird normal abgerechnet. Fehlercodes und Hinweise zu Wiederholungsversuchen finden Sie auf der Seite [Fehlercodes](/de/api-manual/task-management/error-codes).
+
+### Abgeleitete Aufgaben
+
+Variation, Remix und Canvas-Bearbeitung verwenden als Quelle eine abgeschlossene Aufgabe der `mj-v8.2`-Serie desselben Kontos (`task_id` + `image_number`). Vom Upstream-Kanal dokumentierte und auf dieser Plattform verifizierte Regeln:
+
+- Quellaufgaben werden für diese abgeleiteten Operationen upstream von Midjourneys V7-Engine gerendert, das Ergebnis kann sich daher stilistisch geringfügig vom Quellbild unterscheiden. Die Preise bleiben unverändert. V8.1-Quellen werden nicht akzeptiert.
+- `image_number` wählt das Quellbild aus: `0`–`3` bei einer `fast`-Quellaufgabe, `0`–`23` bei einer `draft`-Quellaufgabe (alle 24 Skizzen können als Quelle für Variation, Remix und Edit verwendet werden).
+- Ergebnisse von `mj-v8.2-upload-paint`, `mj-v8.2-retexture` und `mj-v8.2-remove-bg` können **nicht** als Quelle für Variation, Remix oder Edit verwendet werden: Der Upstream akzeptiert sie nicht als Quelle (Ergebnisse von Upload-Bearbeitung und Retexturierung lassen sich nur hochskalieren, was diese Route nicht bereitstellt), daher lehnt diese Plattform solche Anfragen bereits beim Absenden mit `400` ab, und es wird nichts berechnet. Verwenden Sie stattdessen eine Bildgenerierungs-, Variations-, Remix- oder Edit-Aufgabe als Quelle.
+
+---
+
+## FAQ
+
+**Muss ich meine Prompts beim Wechsel von V8.1 ändern?**
+In der Regel nicht. Ändern Sie den Wert von `model`; `model_params` und Preise bleiben unverändert. Zu beachtende Unterschiede: `--oref` / `--ow` funktionieren nicht mehr; `--stop` und `--cref` (samt `--cw`), die V8.1 stillschweigend entfernt hat, werden jetzt durchgereicht und vom Upstream abgelehnt (die Aufgabe schlägt fehl und wird erstattet); `--weird` und `--tile` wirken jetzt; im Draft-Modus funktionieren jetzt auch Bildprompts und `--sref`; `--q` akzeptiert zusätzlich zu `1` und `4` auch `2` und `3`.
+
+**Warum schlägt meine Aufgabe mit Bildprompt nach wenigen Sekunden fehl?**
+Der Upstream konnte das Bild nicht innerhalb seines Zeitbudgets herunterladen, daher ist die Aufgabe fehlgeschlagen (`image_processing_error`) und die reservierten Credits wurden erstattet. Verschieben Sie die Datei auf einen schnellen, öffentlich erreichbaren Host oder verwenden Sie die Datei-Upload-API, und versuchen Sie es dann erneut.
+
+**Gibt es eine Turbo-Geschwindigkeit?**
+Nein. Der Upstream dokumentiert V8 als ohne Turbo-Unterstützung, daher bietet V8.2 wie V8.1 nur `draft` und `fast`.
+
+**Ist `--q 4` langsamer oder teurer?**
+Es wird nicht anders abgerechnet. Der Upstream beschreibt `4` als Hochqualitätsmodus, der mehr Zeit zum Rendern benötigt.
+
+**Kann ich ein V8.2-Bild hochskalieren?**
+Auf V8.2 gibt es keinen Upscale-Endpunkt. Generieren Sie stattdessen mit `quality: "hd"` für eine native 2K-Ausgabe.
+
+---
+
+## Hinweis zur Inhaltsmoderation
+
+<Note>
+Midjourney verfügt über ein integriertes Moderationssystem. Jedes Bild wird einzeln moderiert: Werden einige der generierten Bilder gefiltert, bleibt die Aufgabe `completed`, die übrigen Bilder werden geliefert und die Aufgabe wird normal abgerechnet; werden **alle** Bilder gefiltert, endet die Aufgabe als `failed` und die reservierten Credits werden vollständig erstattet. Bitte achten Sie darauf, dass Ihre Prompts den Inhaltsrichtlinien entsprechen.
+</Note>
