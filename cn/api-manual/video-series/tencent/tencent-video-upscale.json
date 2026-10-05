@@ -1,0 +1,537 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "tencent-video-upscale 接口",
+    "description": "使用 Tencent Video Upscale 进行视频画质增强，并放大到 720p、1080p、2K 或 4K",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "视频生成"
+        ],
+        "summary": "tencent-video-upscale 接口",
+        "description": "- Tencent Video Upscale (tencent-video-upscale) 对已有视频做画质增强，并放大到目标清晰度：`720p`、`1080p`、`2k` 或 `4k`\n- 提供 7 种增强风格，覆盖真人实拍、动画、远景小人脸、人脸保真、细节强化和柔和效果\n- 帧率默认沿用原视频（`model_params.max_fps: \"source\"`）；可设 `\"30\"`、`\"60\"`、`\"120\"` 作为上限，只降不升，不会补帧\n- 按视频时长计费，不同清晰度和输出帧率的价格请以 [EvoLink 模型价格](https://evolink.ai/models) 为准\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 任务提交后不可取消\n- 增强后的视频链接有效期为24小时，请尽快保存",
+        "operationId": "createTencentVideoUpscaleTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "default_1080p": {
+                  "summary": "默认（通用真实风格、1080p、沿用原视频帧率）",
+                  "value": {
+                    "model": "tencent-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ]
+                  }
+                },
+                "explicit_defaults": {
+                  "summary": "与上例等价：把默认值全部写出",
+                  "value": {
+                    "model": "tencent-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ],
+                    "mode": "realistic",
+                    "quality": "1080p",
+                    "model_params": {
+                      "max_fps": "source"
+                    }
+                  }
+                },
+                "animation_4k": {
+                  "summary": "动画视频增强到 4K",
+                  "value": {
+                    "model": "tencent-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-animation.mp4"
+                    ],
+                    "mode": "animation",
+                    "quality": "4k"
+                  }
+                },
+                "cap_frame_rate": {
+                  "summary": "高帧率视频限制在 30 帧",
+                  "value": {
+                    "model": "tencent-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-60fps-video.mp4"
+                    ],
+                    "quality": "1080p",
+                    "model_params": {
+                      "max_fps": "30"
+                    }
+                  }
+                },
+                "with_callback": {
+                  "summary": "带回调URL",
+                  "value": {
+                    "model": "tencent-video-upscale",
+                    "video_urls": [
+                      "https://example.com/my-video.mp4"
+                    ],
+                    "mode": "face_fidelity",
+                    "quality": "2k",
+                    "callback_url": "https://your-domain.com/webhooks/video-task-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "视频增强任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_video": {
+                    "summary": "缺少视频URL",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "video_urls is required and must not be empty for tencent-video-upscale",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_mode": {
+                    "summary": "风格取值无效",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "invalid mode \"general\" for tencent-video-upscale; supported: realistic, realistic_distant, animation, animation_distant, face_fidelity, detail_boost, soft",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_max_fps": {
+                    "summary": "帧率上限取值无效",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "invalid model_params.max_fps auto for tencent-video-upscale; supported: \"source\", 30, 60, 120",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "too_long": {
+                    "summary": "视频超过 60 秒",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "video duration 75.2s exceeds the 60s limit",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "source_too_large": {
+                    "summary": "原视频超过 4K",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "source video resolution exceeds 4K (short side 2880px > 2160px)",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "target_too_low": {
+                    "summary": "目标清晰度低于原视频",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "target quality 720p is lower than the source video (short side 1080px); choose a higher quality",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "top_level_fps": {
+                    "summary": "不支持顶层 fps 参数",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "fps is not supported for tencent-video-upscale; use model_params.max_fps (30, 60 or 120) to cap the output frame rate",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "probe_failed": {
+                    "summary": "读取视频信息失败",
+                    "value": {
+                      "error": {
+                        "code": "video_probe_failed",
+                        "message": "Failed to read the video's duration, resolution and frame rate. Please provide a publicly downloadable MP4 or MOV video URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: tencent-video-upscale",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用，请稍后重试或联系客服",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "video_urls"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "视频超分模型名称",
+            "enum": [
+              "tencent-video-upscale"
+            ],
+            "default": "tencent-video-upscale",
+            "example": "tencent-video-upscale"
+          },
+          "video_urls": {
+            "type": "array",
+            "description": "输入视频URL列表\n\n**注意：**\n- 每次请求仅支持 `1` 个视频（多传只取第一个）\n- 视频URL必须可被服务器直接访问（公共URL或预签名URL）\n- 支持的格式：`.mp4`、`.mov`\n- 最长时长：`60` 秒\n- 原视频清晰度最高 4K（短边不超过 `2160` 像素）\n- 提交时服务器会先读取视频的时长、分辨率和帧率，读取失败会返回 `video_probe_failed`",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "example": [
+              "https://example.com/my-video.mp4"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "description": "增强风格，按视频内容选择\n\n**可选项：**\n- `realistic` - 通用真实：真人实拍等常规画面 — **默认值**\n- `realistic_distant` - 真实 · 远景：远景拍摄，针对画面里的小人脸优化\n- `animation` - 通用动画：动画、动漫、卡通内容\n- `animation_distant` - 动画 · 远景：远景角色较多的动画，针对小人脸优化\n- `face_fidelity` - 人脸保真：尽量保留原视频的人脸特征\n- `detail_boost` - 细节强化：纹理和边缘细节更明显\n- `soft` - 柔和：锐化更轻，观感更自然\n\n不区分大小写，无效值会被拒绝",
+            "enum": [
+              "realistic",
+              "realistic_distant",
+              "animation",
+              "animation_distant",
+              "face_fidelity",
+              "detail_boost",
+              "soft"
+            ],
+            "default": "realistic",
+            "example": "realistic"
+          },
+          "quality": {
+            "type": "string",
+            "description": "目标清晰度，按视频短边计算\n\n**可选项：**\n- `720p` - 短边 `720` 像素\n- `1080p` - 短边 `1080` 像素 — **默认值**\n- `2k` - 短边 `1440` 像素\n- `4k` - 短边 `2160` 像素\n\n**注意：**\n- 目标清晰度不能低于原视频，例如 `1080p` 的原视频可选 `1080p`、`2k`、`4k`，选 `720p` 会被拒绝\n- 选择不低于原视频的最低一档，画面基本不放大",
+            "enum": [
+              "720p",
+              "1080p",
+              "2k",
+              "4k"
+            ],
+            "default": "1080p",
+            "example": "1080p"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "模型特定参数",
+            "properties": {
+              "max_fps": {
+                "type": "string",
+                "description": "输出视频的帧率上限。默认 `\"source\"`，即沿用原视频帧率；不传与 `\"source\"` 等价\n\n**可选项：**\n- `\"source\"` - 沿用原视频帧率 — **默认值**\n- `\"30\"` - 输出帧率不超过 30 帧/秒\n- `\"60\"` - 输出帧率不超过 60 帧/秒\n- `\"120\"` - 输出帧率不超过 120 帧/秒\n\n**行为说明：**\n- 原视频帧率不超过上限时保持原帧率，**不会补帧**；超过上限时降到上限\n- 使用 `\"source\"` 或不传时，原视频超过 `120` 帧/秒仍会降到 `120` 帧/秒\n\n**类型说明：**\n- 推荐使用字符串，也兼容整数 `30`、`60`、`120`（例如 `\"60\"` 和 `60` 等价）\n- `\"source\"` 不区分大小写\n- 其他取值（如 `45`、`60.5`、`\"auto\"`）会被拒绝\n- 本模型不接受顶层 `fps` 参数",
+                "enum": [
+                  "source",
+                  "30",
+                  "60",
+                  "120"
+                ],
+                "default": "source",
+                "example": "30"
+              }
+            }
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "任务完成后的HTTPS回调地址\n\n**回调时机：**\n- 任务完成（completed）、失败（failed）或取消（cancelled）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持HTTPS协议\n- 禁止回调到内网IP地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x等）\n- URL长度不超过`2048`字符\n\n**回调机制：**\n- 超时时间：`10`秒\n- 失败后最多重试`3`次（会分别在失败的`1`秒/`2`秒/`4`秒后进行重试）\n- 回调响应体格式与任务查询接口返回的格式一致\n- 回调地址若返回2xx状态码视为成功，其他状态码会触发重试",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "tencent-video-upscale"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "任务的具体类型"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "任务进度百分比 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "任务状态",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "视频任务详细信息"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "任务的输出类型",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用量和计费信息"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "任务是否可以取消（本模型任务提交后不可取消）",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "预估完成时间（秒），实际耗时受排队情况影响，4K、高帧率和长视频会明显更久",
+            "minimum": 0,
+            "example": 120
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "视频时长（秒）",
+            "example": 0
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "使用量和计费信息",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "计费规则。本模型按视频时长（每秒）进行 `per_second` 计费，实际费用请以 [EvoLink 模型价格](https://evolink.ai/models) 为准",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_second"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "预估消耗积分（预授权）。最终消耗积分在任务完成后结算，以账单为准",
+            "minimum": 0,
+            "example": 3.264
+          },
+          "user_group": {
+            "type": "string",
+            "description": "用户组类别",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "错误代码标识符"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key ：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "视频生成",
+      "description": "AI视频生成相关接口"
+    }
+  ]
+}
