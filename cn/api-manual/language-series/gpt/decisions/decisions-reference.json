@@ -1,0 +1,930 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPT Decisions - 完整参数文档",
+    "description": "通过 OpenAI 兼容的 Decisions 接口，让 GPT-6 Luna 对文本和图片给出结构化判断：是非概率、多选一或按等级打分。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/decisions": {
+      "post": {
+        "summary": "GPT-6 Luna Decisions（结构化判断）",
+        "description": "- GPT-6 Luna Decisions（`gpt-6-luna-decisions`）对文本、图片或两者一起做判断，返回三种结构化答案：`predicate` 返回“是”的概率，`choice` 从给定选项里选一个，`score` 按有序等级打出加权分\n- 同步接口，一次请求直接返回全部答案；没有流式，也不需要轮询任务\n- 请求体与 OpenAI Decisions API 一致：使用 OpenAI SDK 时把 `base_url` 指向 EvoLink 即可，本接口同样接受 OpenAI 的模型 ID `gpt-6-luna`\n- 仅按输入 token 计费：输出、缓存读取、缓存写入均不收费。每次请求有最低收费；单次输入超过 272,000 tokens 时，整个请求的输入价为常规价格的 2 倍。当前价格见 [模型价格](https://evolink.ai/pricing)\n- 图片必须是内联的 base64 data URL（`data:image/...;base64,...`），不支持图片网址和 `file_id`；单次请求最多 128 张图片\n- 本接口会拒绝未知字段：不要传 `stream`、`temperature`、`max_tokens` 等 Chat Completions 参数\n- 适合内容分类、工单分流、相关性判断、按规则打分；需要生成文字或自定义 JSON 结构时，请改用 [Responses 接口](/cn/api-manual/language-series/gpt/responses/responses-reference)",
+        "operationId": "createDecision",
+        "tags": [
+          "Decisions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              },
+              "examples": {
+                "predicate": {
+                  "summary": "是非判断",
+                  "value": {
+                    "model": "gpt-6-luna-decisions",
+                    "input": "The package arrived with a broken screen.",
+                    "questions": [
+                      {
+                        "type": "predicate",
+                        "name": "damaged",
+                        "instructions": "Does the customer report a damaged item?"
+                      }
+                    ]
+                  }
+                },
+                "choice": {
+                  "summary": "多选一（分流）",
+                  "value": {
+                    "model": "gpt-6-luna-decisions",
+                    "input": "I was charged twice for my order.",
+                    "questions": [
+                      {
+                        "type": "choice",
+                        "name": "department",
+                        "instructions": "Which department should handle this complaint?",
+                        "choices": [
+                          {
+                            "value": "billing",
+                            "description": "Payments, invoices, and refunds."
+                          },
+                          {
+                            "value": "technical",
+                            "description": "Problems using the product."
+                          },
+                          {
+                            "value": "other",
+                            "description": "Requests outside these categories."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "score": {
+                  "summary": "按等级打分",
+                  "value": {
+                    "model": "gpt-6-luna-decisions",
+                    "input": "Export fails in Safari but works in Chrome.",
+                    "questions": [
+                      {
+                        "type": "score",
+                        "name": "severity",
+                        "instructions": "How severe is this issue?",
+                        "levels": [
+                          {
+                            "label": "Cosmetic",
+                            "description": "Appearance only; no lost functionality."
+                          },
+                          {
+                            "label": "Workaround available",
+                            "description": "A task fails, but another way works."
+                          },
+                          {
+                            "label": "Fully blocked",
+                            "description": "A task fails with no workaround."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "multiple": {
+                  "summary": "一次问多个问题",
+                  "value": {
+                    "model": "gpt-6-luna-decisions",
+                    "input": "I was charged twice for my order and the app crashes when I open the invoice.",
+                    "questions": [
+                      {
+                        "type": "predicate",
+                        "name": "is_billing",
+                        "instructions": "Is this about a billing problem?"
+                      },
+                      {
+                        "type": "choice",
+                        "name": "department",
+                        "instructions": "Which department should handle this complaint?",
+                        "choices": [
+                          {
+                            "value": "billing",
+                            "description": "Payments, invoices, and refunds."
+                          },
+                          {
+                            "value": "technical",
+                            "description": "Problems using the product."
+                          },
+                          {
+                            "value": "other",
+                            "description": "Requests outside these categories."
+                          }
+                        ]
+                      },
+                      {
+                        "type": "score",
+                        "name": "severity",
+                        "instructions": "How severe is this issue?",
+                        "levels": [
+                          {
+                            "label": "Cosmetic",
+                            "description": "Appearance only."
+                          },
+                          {
+                            "label": "Workaround available",
+                            "description": "A task fails, but another way works."
+                          },
+                          {
+                            "label": "Fully blocked",
+                            "description": "A task fails with no workaround."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "image": {
+                  "summary": "判断图片",
+                  "value": {
+                    "model": "gpt-6-luna-decisions",
+                    "input": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "input_text",
+                            "text": "Look at the image."
+                          },
+                          {
+                            "type": "input_image",
+                            "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR42mM4ISdHU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULACXLED1gHZEpAAAAAElFTkSuQmCC"
+                          }
+                        ]
+                      }
+                    ],
+                    "questions": [
+                      {
+                        "type": "predicate",
+                        "name": "is_red",
+                        "instructions": "Is the image mostly red?"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "每个问题一条答案，顺序与请求中的问题一致",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                },
+                "example": {
+                  "model": "gpt-6-luna",
+                  "answers": [
+                    {
+                      "type": "predicate",
+                      "name": "is_billing",
+                      "probability": 1.0
+                    },
+                    {
+                      "type": "choice",
+                      "name": "department",
+                      "choice": "billing",
+                      "probabilities": [
+                        {
+                          "value": "billing",
+                          "probability": 0.98
+                        },
+                        {
+                          "value": "technical",
+                          "probability": 0.01
+                        },
+                        {
+                          "value": "other",
+                          "probability": 0.01
+                        }
+                      ],
+                      "confidence": 0.97
+                    },
+                    {
+                      "type": "score",
+                      "name": "severity",
+                      "score": 1.34,
+                      "probabilities": [
+                        {
+                          "value": 0,
+                          "label": "Cosmetic",
+                          "probability": 0.04
+                        },
+                        {
+                          "value": 1,
+                          "label": "Workaround available",
+                          "probability": 0.58
+                        },
+                        {
+                          "value": 2,
+                          "label": "Fully blocked",
+                          "probability": 0.38
+                        }
+                      ],
+                      "confidence": 0.37
+                    }
+                  ],
+                  "usage": {
+                    "input_tokens": 426,
+                    "input_tokens_details": {
+                      "cached_tokens": 0,
+                      "cache_write_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "reasoning_tokens": 0
+                    },
+                    "total_tokens": 426
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。`param` 会指出出错的字段，常见原因：缺少 `questions`、传了未知字段、图片不是 base64 data URL、消息 `role` 不是 `user`、问题 `name` 重复。把本模型 ID 用在其他接口上也会返回 400（`model_endpoint_mismatch`）。校验失败的请求不计费",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "unknown_parameter": {
+                    "summary": "传了未知字段",
+                    "value": {
+                      "error": {
+                        "message": "Unknown parameter: 'stream'. (request id: 20261007223656995142218QgCDR3TF)",
+                        "type": "invalid_request_error",
+                        "param": "stream",
+                        "code": "unknown_parameter"
+                      }
+                    }
+                  },
+                  "image_not_data_url": {
+                    "summary": "图片传成了网址",
+                    "value": {
+                      "error": {
+                        "message": "Invalid 'input[0].content[1].image_url': string does not match pattern. Expected a string that matches the pattern '^data:'. (request id: 2026100722365642880926evUSStdF)",
+                        "type": "invalid_request_error",
+                        "param": "input[0].content[1].image_url",
+                        "code": "invalid_value"
+                      }
+                    }
+                  },
+                  "missing_questions": {
+                    "summary": "缺少 questions",
+                    "value": {
+                      "error": {
+                        "message": "Missing required parameter: 'questions'. (request id: 20261007223656416678385UfxZWwZD)",
+                        "type": "invalid_request_error",
+                        "param": "questions",
+                        "code": "missing_required_parameter"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权：没有带 API Key，或 API Key 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "API key is required (request id: 202610072235193122631737Nn7cfZ5)",
+                    "param": null,
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "余额不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "该 API Key 设置了模型白名单，且白名单里既没有 `gpt-6-luna-decisions` 也没有 `gpt-6-luna`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "该模型没有开通 Decisions 接口。目前只支持 `gpt-6-luna-decisions`（或 `gpt-6-luna`）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_not_found",
+                    "message": "Model 'gpt-5.5' is not available for the Decisions API (POST /v1/decisions) with this API key. This error is permanent — do not retry with the same model id. Call GET /v1/models: models that support this endpoint are listed with the '-decisions' suffix. (request id: 20261007223657322725427OrY2GeLp)",
+                    "param": null,
+                    "retryable": false,
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DecisionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "input",
+          "questions"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "模型 ID。使用 `gpt-6-luna-decisions`；本接口同样接受 OpenAI 的模型 ID `gpt-6-luna`，两者效果与计费完全相同，用量与账单记录统一记在 `gpt-6-luna-decisions` 名下。\n\n`gpt-6-luna-decisions` 只能用于本接口，用在 Chat Completions、Responses 等其他接口会返回 `400 model_endpoint_mismatch`。",
+            "enum": [
+              "gpt-6-luna-decisions",
+              "gpt-6-luna"
+            ],
+            "example": "gpt-6-luna-decisions"
+          },
+          "input": {
+            "description": "所有问题共用的判断依据：一段文本，或由用户消息组成的数组（消息里可以放文本和内联图片）。",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "I was charged twice for my order."
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/components/schemas/DecisionInputMessage"
+                }
+              }
+            ]
+          },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "description": "要判断的问题，至少 1 个。各问题互相独立，可以混用不同类型；同一次请求里问题的 `name` 不能重复。\n\n| 类型 | 用来做什么 | 主要结果 |\n|---|---|---|\n| `predicate` | 判断一个条件是否成立 | `probability`：成立的概率（0 到 1） |\n| `choice` | 从给定选项里选一个 | `choice`：选中的那一项 |\n| `score` | 按有序等级打分 | `score`：按概率加权的等级分 |\n\n后一个问题依赖前一个问题的答案时，请拆成两次请求。",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PredicateQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/ChoiceQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/ScoreQuestion"
+                }
+              ]
+            }
+          },
+          "safety_identifier": {
+            "type": "string",
+            "description": "可选。你自己的终端用户标识（不透明字符串），原样转给模型服务方，用于滥用检测"
+          }
+        }
+      },
+      "DecisionInputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "只接受 `user`"
+          },
+          "content": {
+            "description": "一段文本，或由文本块和图片块组成的数组",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InputTextPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InputImagePart"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "InputTextPart": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "input_text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "文本内容"
+          }
+        }
+      },
+      "InputImagePart": {
+        "type": "object",
+        "required": [
+          "type",
+          "image_url"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "input_image"
+            ]
+          },
+          "image_url": {
+            "type": "string",
+            "pattern": "^data:",
+            "description": "内联的 base64 data URL，例如 `data:image/png;base64,...`。`http(s)` 图片网址会被拒绝；单次请求最多 128 张图片"
+          }
+        }
+      },
+      "PredicateQuestion": {
+        "type": "object",
+        "required": [
+          "type",
+          "instructions"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "predicate"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "问题的名字，会原样出现在对应的答案里"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "要判断的条件，写成一个是非问句"
+          }
+        }
+      },
+      "ChoiceQuestion": {
+        "type": "object",
+        "required": [
+          "type",
+          "instructions",
+          "choices"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "choice"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "问题的名字，会原样出现在对应的答案里"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "要回答的问题"
+          },
+          "choices": {
+            "type": "array",
+            "minItems": 1,
+            "description": "可选项。各选项的含义要互不重叠；类别可能覆盖不全时，建议加一个 `other` 之类的兜底项",
+            "items": {
+              "type": "object",
+              "required": [
+                "value"
+              ],
+              "properties": {
+                "value": {
+                  "description": "选中该项时返回的值。字符串和布尔值是不同的类型：`true` 和 `\"true\"` 算两个选项",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "description": {
+                  "type": "string",
+                  "description": "什么情况下选这一项"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ScoreQuestion": {
+        "type": "object",
+        "required": [
+          "type",
+          "instructions",
+          "levels"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "score"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "问题的名字，会原样出现在对应的答案里"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "要回答的问题"
+          },
+          "levels": {
+            "type": "array",
+            "minItems": 1,
+            "description": "等级，从低到高排列；等级编号从 0 开始",
+            "items": {
+              "type": "object",
+              "required": [
+                "label"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "等级名称"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "达到该等级的标准"
+                }
+              }
+            }
+          }
+        }
+      },
+      "DecisionResponse": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "实际执行判断的模型",
+            "example": "gpt-6-luna"
+          },
+          "answers": {
+            "type": "array",
+            "description": "每个问题一条答案，顺序与请求中的问题一致。用 `name` 对应问题，用 `type` 区分答案类型",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PredicateAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/ChoiceAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/ScoreAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/RefusalAnswer"
+                }
+              ]
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/DecisionUsage"
+          }
+        }
+      },
+      "PredicateAnswer": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "predicate"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "请求里给这个问题起的名字；没起名时为 `null`"
+          },
+          "probability": {
+            "type": "number",
+            "description": "条件成立的估计概率，0 到 1。请根据自己的业务数据设定判定阈值"
+          }
+        }
+      },
+      "ChoiceAnswer": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "choice"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "请求里给这个问题起的名字；没起名时为 `null`"
+          },
+          "choice": {
+            "description": "选中的那一项，类型与请求里的 `value` 相同",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "probabilities": {
+            "type": "array",
+            "description": "每个选项的概率",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "probability": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "description": "对这次选择的把握程度，0 到 1"
+          }
+        }
+      },
+      "ScoreAnswer": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "score"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "请求里给这个问题起的名字；没起名时为 `null`"
+          },
+          "score": {
+            "type": "number",
+            "description": "各等级编号按概率加权的平均值，所以可能落在两个等级之间。例如三个等级的概率为 0.04 / 0.58 / 0.38 时，分数是 1.34"
+          },
+          "probabilities": {
+            "type": "array",
+            "description": "每个等级的概率",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "description": "等级编号，从 0 开始"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "probability": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "description": "对这次打分的把握程度，0 到 1"
+          }
+        }
+      },
+      "RefusalAnswer": {
+        "type": "object",
+        "description": "模型拒绝回答这个问题。其他问题的答案不受影响，整个请求仍返回 200 并照常计费",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "refusal"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "请求里给这个问题起的名字；没起名时为 `null`"
+          }
+        }
+      },
+      "DecisionUsage": {
+        "type": "object",
+        "description": "Token 用量统计。本接口仅按输入 token 计费：输出、缓存读取、缓存写入均不收费。每次请求有最低收费；单次输入超过 272,000 tokens 时，整个请求的输入价为常规价格的 2 倍。当前价格见 [模型价格](https://evolink.ai/pricing)。",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "计费用的输入 token 数，包含文本、图片，以及每次请求和每个问题的固定开销。参考值：一句话加一个 `predicate` 问题约 160 tokens，一张 1536×1024 的图片约 1,540 tokens",
+            "example": 426
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "description": "输入 token 明细。本接口不单独对缓存计费",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "example": 0
+              },
+              "cache_write_tokens": {
+                "type": "integer",
+                "example": 0
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "本接口不对输出计费",
+            "example": 0
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "example": 0
+              }
+            }
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "总 token 数",
+            "example": 426
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "错误描述。末尾带有 `(request id: ...)`，排查问题时请提供这个 ID"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "param": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "出错的参数路径"
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "错误码"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需 Bearer Token 认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取你的 API Key\n\n**添加到请求头：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Decisions",
+      "description": "结构化判断：分类、分流与打分"
+    }
+  ]
+}
