@@ -1,0 +1,746 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Voice Enrollment Custom Voice API",
+    "description": "Create custom voices for Qwen Audio 3.1 TTS Flash by cloning a recording of a person or designing a voice from a text description. The supplied fields select the mode within the same model.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production environment"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Voice Enrollment: Create a Custom Voice",
+        "description": "- Create custom voices for [Qwen Audio 3.1 TTS Flash](/en/api-manual/audio-series/qwen-audio-tts/qwen-audio-3.1-tts-flash) with model `voice-enrollment`. Two modes share the same model: `audio_url` selects **voice cloning**, while `voice_prompt` + `preview_text` selects **voice design**. Supplying both mode selectors or neither returns `400`\n- Voices created in either mode work only with `qwen-audio-3.1-tts-flash` and only for the account that created them. Voices from the old `qwen-voice-design` model cannot be used with this TTS; create new voices through this endpoint when migrating\n- Voice design also returns preview audio (fixed 24 kHz WAV); voice cloning returns only the voice name\n- Asynchronous processing; use the returned task ID to [query the result](/en/api-manual/task-management/get-task-detail). Cloning takes about 15–30 seconds. Design waits for the full preview text to be synthesized: about 12 seconds for 30 characters and 49 seconds for 200 characters\n- Charged per request, with the same price for cloning and design; failed tasks receive a full refund. Preview audio links are valid for 24 hours; save them promptly\n- Only clone your own voice or a voice you have explicit permission to clone\n\n**Workflow:**\n1. Call this endpoint with `audio_url` (cloning) or `voice_prompt` + `preview_text` (design), plus `preferred_name`\n2. Poll the task result to obtain `result_data.voice` (the voice name)\n3. Call [Qwen Audio 3.1 TTS Flash](/en/api-manual/audio-series/qwen-audio-tts/qwen-audio-3.1-tts-flash) and pass the full name as `voice`\n\n**Task result (when `status` is `completed`):**\n\n| Field | Voice cloning | Voice design |\n|---|---|---|\n| `result_data.voice` | `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}` | `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}` (includes an extra `vd-` segment) |\n| `result_data.voice_type` | `voice_clone` | `voice_design` |\n| `result_data.target_model` | `qwen-audio-3.1-tts-flash` | `qwen-audio-3.1-tts-flash` |\n| `results` / `result_data.preview_audio_url` | Not returned | Preview audio URL (valid for 24 hours), plus `sample_rate: 24000` and `response_format: \"wav\"` |\n\nIf design preview audio is occasionally unavailable, the task still completes (the voice has been created and billed), with `preview_audio_unavailable: true` and `preview_audio_warning` instead.\n\n**Voice lifetime:**\n- Custom voices created by cloning or design expire by default `6 hours` after the creation task completes. Synthesis calls do not extend this lifetime\n- Synthesis after expiry returns `404` (`voice_expired`). Create a new voice with this endpoint and use the new voice for synthesis\n\n**Voice slots:** The upstream account has a cap on custom voices across the Qwen-Audio-TTS series (officially 1000, shared by cloning and design). Creation fails with a full refund when no slots remain.\n\n**Text length is measured in characters:** Chinese characters, English characters, and punctuation each count as 1.",
+        "operationId": "createVoiceEnrollment",
+        "tags": [
+          "Custom Voice Creation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/VoiceCloneRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoiceDesignRequest"
+                  }
+                ]
+              },
+              "examples": {
+                "clone_minimal": {
+                  "summary": "Voice cloning: minimal request",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "audio_url": "https://your-cdn.com/samples/my-voice.wav",
+                    "preferred_name": "myvoice"
+                  }
+                },
+                "clone_full": {
+                  "summary": "Voice cloning: full parameters",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "audio_url": "https://your-cdn.com/samples/my-voice.wav",
+                    "preferred_name": "myvoice",
+                    "language": "zh",
+                    "target_model": "qwen-audio-3.1-tts-flash",
+                    "callback_url": "https://your-domain.com/webhooks/voice-completed"
+                  }
+                },
+                "design_minimal": {
+                  "summary": "Voice design: minimal request",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "voice_prompt": "沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳，吐字清晰",
+                    "preview_text": "各位听众朋友，大家好，欢迎收听晚间新闻。",
+                    "preferred_name": "announcer"
+                  }
+                },
+                "design_full": {
+                  "summary": "Voice design: full parameters",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "voice_prompt": "A calm British female narrator in her thirties, warm and articulate",
+                    "preview_text": "Good evening, and welcome to tonight's programme.",
+                    "preferred_name": "narrator",
+                    "language": "en",
+                    "sample_rate": 24000,
+                    "response_format": "wav",
+                    "target_model": "qwen-audio-3.1-tts-flash",
+                    "callback_url": "https://your-domain.com/webhooks/voice-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Voice creation task accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceEnrollmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "mutually_exclusive": {
+                    "summary": "Both audio_url and voice_prompt supplied",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url and voice_prompt are mutually exclusive: pass audio_url to clone a voice, or voice_prompt to design one",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_mode": {
+                    "summary": "Neither audio_url nor voice_prompt supplied",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url (voice cloning) or voice_prompt (voice design) is required for voice-enrollment",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_preferred_name": {
+                    "summary": "Missing preferred_name",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preferred_name is required for voice-enrollment (e.g. 'announcer', 'narrator')",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_preferred_name": {
+                    "summary": "preferred_name does not meet the rules",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preferred_name must be 1-10 English letters or digits",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "bad_target_model": {
+                    "summary": "target_model is not qwen-audio-3.1-tts-flash",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "target_model 'qwen3-tts-vd' is not supported, valid value: qwen-audio-3.1-tts-flash",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "bad_language": {
+                    "summary": "Unsupported language",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "language must be one of zh, en, ja, ko, de, fr, it, ru, pt, es",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_too_long": {
+                    "summary": "Cloning: audio_url exceeds 2048 characters",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url must not exceed 2048 characters, got 2191",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_not_public": {
+                    "summary": "Cloning: audio_url points to a private address",
+                    "value": {
+                      "error": {
+                        "code": "invalid_media_url",
+                        "message": "invalid parameter \"audio_url\": points to localhost; provide a publicly accessible URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_not_http": {
+                    "summary": "Cloning: audio_url uses FTP or another invalid protocol",
+                    "value": {
+                      "error": {
+                        "code": "invalid_media_url",
+                        "message": "invalid parameter \"audio_url\": must be an absolute HTTP(S) URL",
+                        "type": "invalid_request_error",
+                        "param": "audio_url"
+                      }
+                    }
+                  },
+                  "audio_url_base64": {
+                    "summary": "Cloning: audio_url is a Base64 data URI",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url must be a publicly accessible HTTP(S) URL: must be an absolute HTTP(S) URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "clone_with_design_field": {
+                    "summary": "Design fields supplied for voice cloning",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text is only supported for voice design (voice_prompt)",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "voice_prompt_too_long": {
+                    "summary": "Design: voice_prompt exceeds 500 characters",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "voice_prompt must not exceed 500 characters, got 501",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_preview_text": {
+                    "summary": "Design: missing preview_text",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text is required for voice design",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "preview_text_length": {
+                    "summary": "Design: preview_text is outside 15–200 characters",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text must be 15-200 characters, got 3",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "design_sample_rate": {
+                    "summary": "Design: sample rate is not 24000",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "sample_rate must be 24000 for voice-enrollment",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated, invalid or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient quota; top up required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: voice-enrollment",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## Bearer token authentication is required for all endpoints\n\n**Get an API key:**\n\nVisit [API Key Management](https://evolink.ai/dashboard/keys) to obtain your API key\n\n**Add this request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "VoiceCloneRequest": {
+        "title": "Voice cloning (audio_url)",
+        "type": "object",
+        "description": "Create a voice from a recording of a person. Providing `audio_url` selects voice cloning; omit the design fields `voice_prompt`, `preview_text`, `sample_rate`, and `response_format`. Non-empty design text, a non-zero sample rate, or a non-empty format returns `400`; `sample_rate: 0/null` and `response_format: \"\"/null` are treated as omitted.",
+        "required": [
+          "model",
+          "audio_url",
+          "preferred_name"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "voice-enrollment"
+            ],
+            "default": "voice-enrollment",
+            "example": "voice-enrollment",
+            "description": "Model name"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "example": "https://your-cdn.com/samples/my-voice.wav",
+            "description": "URL of the recording to clone. This field selects **voice cloning** and cannot be supplied together with `voice_prompt`\n\n**URL requirements:**\n- HTTP or HTTPS, publicly accessible without authentication\n- Local or private-network addresses return `400` (`invalid_media_url`)\n- Maximum `2048` characters\n- Non-HTTP(S) protocols such as FTP return `400` (`invalid_media_url`)\n- URLs only, not Base64; a Base64 data URI returns `400` (`invalid_parameter`)\n\n**Audio requirements** (the task may fail if unmet):\n- WAV, MP3, or M4A\n- At most 60 seconds; insufficient voiced content can also fail (a 2-second recording failed in testing)\n- File size at most `10 MB`\n- Sample rate of at least `16 kHz`\n- Must contain clear human speech; silence, music, and other non-speech audio are rejected\n\n**Recording recommendations:**\n- 10–20 seconds, including at least 5 seconds of continuous, clear reading, with pauses no longer than 2 seconds\n- Mono; for stereo recordings, only the first channel is used\n- No background music, noise, or other voices; speak normally, do not sing\n\nIf audio cannot be downloaded or does not meet the requirements, the task fails and credits are fully refunded\n\n**Only clone your own voice or a voice you have explicit permission to clone**",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "preferred_name": {
+            "type": "string",
+            "maxLength": 10,
+            "pattern": "^[a-zA-Z0-9]+$",
+            "example": "myvoice",
+            "description": "Voice name prefix\n\n**Constraints:**\n- 1–10 English letters or digits; underscores and other symbols are not supported\n- Uppercase letters are converted to lowercase\n- Does not need to be unique\n\nFull generated name: `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}` for cloning, or `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}` for design\n\nFor example, `myvoice` produces a cloned name such as `qwen-audio-3.1-tts-flash-myvoice-5996beec833d41f4982158347ba97fae`"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "it",
+              "ru",
+              "pt",
+              "es"
+            ],
+            "example": "zh",
+            "description": "For cloning, the spoken language of the recording helps the model extract the voice more accurately. For design, this sets the voice's language preference; use the same language as `preview_text`\n\nDefaults to `zh` if omitted"
+          },
+          "target_model": {
+            "type": "string",
+            "enum": [
+              "qwen-audio-3.1-tts-flash"
+            ],
+            "default": "qwen-audio-3.1-tts-flash",
+            "example": "qwen-audio-3.1-tts-flash",
+            "description": "TTS model that will use the voice. Only one value is currently supported, and it is used if omitted; other values return `400`\n\n| Value | Description |\n|-----|------|\n| `qwen-audio-3.1-tts-flash` | Qwen Audio 3.1 TTS Flash, non-streaming (default and only value) |"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/CallbackUrl"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "voice_prompt"
+              ],
+              "properties": {
+                "voice_prompt": {
+                  "not": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "preview_text"
+              ],
+              "properties": {
+                "preview_text": {
+                  "not": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "sample_rate"
+              ],
+              "properties": {
+                "sample_rate": {
+                  "not": {
+                    "enum": [
+                      0,
+                      null
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "response_format"
+              ],
+              "properties": {
+                "response_format": {
+                  "not": {
+                    "enum": [
+                      "",
+                      null
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "VoiceDesignRequest": {
+        "title": "Voice design (voice_prompt)",
+        "type": "object",
+        "description": "Create a voice from a text description and synthesize the full `preview_text` as preview audio. Providing `voice_prompt` selects voice design; do not supply `audio_url`.",
+        "required": [
+          "model",
+          "voice_prompt",
+          "preview_text",
+          "preferred_name"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "voice-enrollment"
+            ],
+            "default": "voice-enrollment",
+            "example": "voice-enrollment",
+            "description": "Model name"
+          },
+          "voice_prompt": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳，吐字清晰",
+            "description": "Description of the voice characteristics. This field selects **voice design** and cannot be supplied together with `audio_url`\n\n**Constraints:**\n- Maximum `500` characters; Chinese and English characters each count as 1\n- Chinese or English descriptions are recommended\n\n**Suggested dimensions:** gender, age, pitch, speech rate, emotion, qualities (resonant, crisp, raspy, rounded, sweet, deep), and use case (news, advertising, audiobooks, animated characters, voice assistants)\n\n**Suggested descriptions:**\n- `A calm middle-aged man with a slow pace and a deep, resonant voice, suitable for news or documentary narration`\n- `A gentle, articulate woman around 30 years old, with an even tone, suitable for audiobooks`",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "preview_text": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 200,
+            "example": "各位听众朋友，大家好，欢迎收听晚间新闻。",
+            "description": "Preview text; the **entire** text is synthesized as preview audio\n\n**Constraints:**\n- `15`–`200` characters; Chinese and English characters each count as 1\n- Longer text takes longer: about 12 seconds for 30 characters and 49 seconds for 200 characters\n- Use the same language as `language`",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "sample_rate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              24000,
+              0,
+              null
+            ],
+            "default": 24000,
+            "example": 24000,
+            "description": "Preview audio sample rate (Hz), fixed at `24000`\n\n- Omitted, `0`, or `null` is treated as omitted and uses the default `24000`\n- Other sample rates return `400` (`invalid_parameter`)"
+          },
+          "response_format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "wav",
+              "",
+              null
+            ],
+            "default": "wav",
+            "example": "wav",
+            "description": "Preview audio format, fixed at `wav`\n\n- Omitted, an empty string `\"\"`, or `null` is treated as omitted and uses the default `wav`\n- Other formats return `400` (`invalid_parameter`)"
+          },
+          "preferred_name": {
+            "type": "string",
+            "maxLength": 10,
+            "pattern": "^[a-zA-Z0-9]+$",
+            "example": "myvoice",
+            "description": "Voice name prefix\n\n**Constraints:**\n- 1–10 English letters or digits; underscores and other symbols are not supported\n- Uppercase letters are converted to lowercase\n- Does not need to be unique\n\nFull generated name: `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}` for cloning, or `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}` for design\n\nFor example, `myvoice` produces a cloned name such as `qwen-audio-3.1-tts-flash-myvoice-5996beec833d41f4982158347ba97fae`"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "it",
+              "ru",
+              "pt",
+              "es"
+            ],
+            "example": "zh",
+            "description": "For cloning, the spoken language of the recording helps the model extract the voice more accurately. For design, this sets the voice's language preference; use the same language as `preview_text`\n\nDefaults to `zh` if omitted"
+          },
+          "target_model": {
+            "type": "string",
+            "enum": [
+              "qwen-audio-3.1-tts-flash"
+            ],
+            "default": "qwen-audio-3.1-tts-flash",
+            "example": "qwen-audio-3.1-tts-flash",
+            "description": "TTS model that will use the voice. Only one value is currently supported, and it is used if omitted; other values return `400`\n\n| Value | Description |\n|-----|------|\n| `qwen-audio-3.1-tts-flash` | Qwen Audio 3.1 TTS Flash, non-streaming (default and only value) |"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/CallbackUrl"
+          }
+        },
+        "not": {
+          "required": [
+            "audio_url"
+          ],
+          "properties": {
+            "audio_url": {
+              "not": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+              }
+            }
+          }
+        }
+      },
+      "CallbackUrl": {
+        "type": "string",
+        "description": "HTTPS callback URL for the task result\n\n**Timing:**\n- Triggered when the task completes (`completed`) or fails (`failed`)\n- Sent after billing has been confirmed\n\n**Security requirements:**\n- HTTPS only\n- Private-network IPs are prohibited (127.0.0.1, 10.x.x.x, 172.16–31.x.x, 192.168.x.x, etc.)\n- URL length at most `2048` characters\n\n**Delivery:**\n- Timeout: `10` seconds\n- At most `3` retries after failure, with delays of `1` / `2` / `4` seconds\n- The callback body has the same format as the task query response\n- A 2xx status is success; other statuses trigger retries",
+        "format": "uri",
+        "example": "https://your-domain.com/webhooks/voice-completed"
+      },
+      "VoiceEnrollmentResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Task creation timestamp",
+            "example": 1775123456
+          },
+          "id": {
+            "type": "string",
+            "description": "Task ID",
+            "example": "task-unified-1775123456-abcd1234"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model actually used",
+            "example": "voice-enrollment"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "Specific task object type"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Task progress percentage (0–100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Task status",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "Audio task details"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "Task output type",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AudioUsage",
+            "description": "Usage and billing information"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Whether the task can be canceled; voice creation tasks cannot be canceled",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Estimated completion time in seconds. Conservative estimates: cloning usually takes 15–30 seconds; design takes longer with more preview text, about 12 seconds for 30 characters and 49 seconds for 200 characters",
+            "minimum": 0,
+            "example": 60
+          },
+          "audio_type": {
+            "type": "string",
+            "description": "Request mode: `audio_url` selects `voice_clone`, and `voice_prompt` selects `voice_design`; matches `voice_type` in the task result",
+            "example": "voice_clone",
+            "enum": [
+              "voice_clone",
+              "voice_design"
+            ]
+          }
+        }
+      },
+      "AudioUsage": {
+        "type": "object",
+        "description": "Usage information",
+        "properties": {
+          "credits_reserved": {
+            "type": "number",
+            "description": "Estimated credits. Charged per request, with the same price for cloning and design; fully refunded if the task fails",
+            "minimum": 0,
+            "example": 0.001
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code identifier"
+              },
+              "message": {
+                "type": "string",
+                "description": "Error message"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Custom Voice Creation",
+      "description": "Voice cloning and design; voices are tied to Qwen Audio 3.1 TTS Flash"
+    }
+  ]
+}

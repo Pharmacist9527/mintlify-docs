@@ -1,0 +1,746 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Voice Enrollment 사용자 지정 음성 생성 API",
+    "description": "Qwen Audio 3.1 TTS Flash용 사용자 지정 음성을 만듭니다. 실제 사람의 녹음으로 복제하거나 텍스트 설명으로 설계합니다. 같은 모델에서 입력 필드에 따라 모드가 결정됩니다.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "프로덕션 환경"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Voice Enrollment 사용자 지정 음성 생성",
+        "description": "- 모델 `voice-enrollment`로 [Qwen Audio 3.1 TTS Flash](/ko/api-manual/audio-series/qwen-audio-tts/qwen-audio-3.1-tts-flash)용 사용자 지정 음성을 만듭니다. `audio_url`은 **음성 복제**, `voice_prompt` + `preview_text`는 **음성 설계**입니다. 두 모드 선택 필드를 함께 입력하거나 둘 다 생략하면 `400`\n- 두 모드의 음성은 `qwen-audio-3.1-tts-flash`에서만 사용할 수 있으며 생성 계정만 사용 가능합니다. 이전 `qwen-voice-design` 음성은 호환되지 않습니다. 마이그레이션 시 이 API로 다시 생성하세요\n- 설계는 미리 듣기 오디오(고정 24 kHz WAV)도 반환합니다. 복제는 음성 이름만 반환합니다\n- 비동기 처리입니다. 작업 ID로 [결과를 조회](/ko/api-manual/task-management/get-task-detail)하세요. 복제는 약 15~30초, 설계는 전체 미리 듣기 텍스트의 합성을 기다리며 30자는 약 12초, 200자는 약 49초입니다\n- 건당 과금하며 복제와 설계 가격은 같습니다. 실패 시 전액 환불합니다. 미리 듣기 링크는 24시간 유효하므로 바로 저장하세요\n- 본인의 음성 또는 명시적인 허가를 받은 음성만 복제하세요\n\n**사용 순서:**\n1. `audio_url`(복제) 또는 `voice_prompt` + `preview_text`(설계)와 `preferred_name` 입력\n2. 작업 결과를 폴링해 `result_data.voice`(음성 이름) 받기\n3. [Qwen Audio 3.1 TTS Flash](/ko/api-manual/audio-series/qwen-audio-tts/qwen-audio-3.1-tts-flash)의 `voice`에 전체 이름 입력\n\n**작업 결과(`status`가 `completed`인 경우):**\n\n| 필드 | 음성 복제 | 음성 설계 |\n|---|---|---|\n| `result_data.voice` | `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}` | `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}`(`vd-` 추가) |\n| `result_data.voice_type` | `voice_clone` | `voice_design` |\n| `result_data.target_model` | `qwen-audio-3.1-tts-flash` | `qwen-audio-3.1-tts-flash` |\n| `results` / `result_data.preview_audio_url` | 반환하지 않음 | 미리 듣기 URL(24시간 유효), `sample_rate: 24000` 및 `response_format: \"wav\"`도 반환 |\n\n설계 미리 듣기를 간혹 가져오지 못해도 작업은 완료됩니다(음성 생성 및 과금 완료). 대신 결과에 `preview_audio_unavailable: true`와 `preview_audio_warning`이 포함됩니다.\n\n**음성 유효 기간:**\n- 복제와 설계로 만든 음성은 기본적으로 생성 작업 완료 후 `6시간` 뒤 만료됩니다. 합성 호출로 연장되지 않습니다\n- 만료 후 TTS는 `404`(`voice_expired`). 이 API로 새 음성을 만들고 합성에 사용하세요\n\n**음성 수 한도:** 상위 제공자 계정의 Qwen-Audio-TTS 시리즈 사용자 지정 음성에는 전체 수 한도가 있습니다(공식 1000개, 복제와 설계 공유). 한도를 소진하면 생성은 실패하며 전액 환불합니다.\n\n**텍스트 길이는 문자 수로 계산:** 중국어, 영어 문자와 문장 부호 모두 1자로 계산합니다.",
+        "operationId": "createVoiceEnrollment",
+        "tags": [
+          "사용자 지정 음성 생성"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/VoiceCloneRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoiceDesignRequest"
+                  }
+                ]
+              },
+              "examples": {
+                "clone_minimal": {
+                  "summary": "음성 복제: 최소 요청",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "audio_url": "https://your-cdn.com/samples/my-voice.wav",
+                    "preferred_name": "myvoice"
+                  }
+                },
+                "clone_full": {
+                  "summary": "음성 복제: 전체 매개변수",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "audio_url": "https://your-cdn.com/samples/my-voice.wav",
+                    "preferred_name": "myvoice",
+                    "language": "zh",
+                    "target_model": "qwen-audio-3.1-tts-flash",
+                    "callback_url": "https://your-domain.com/webhooks/voice-completed"
+                  }
+                },
+                "design_minimal": {
+                  "summary": "음성 설계: 최소 요청",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "voice_prompt": "沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳，吐字清晰",
+                    "preview_text": "各位听众朋友，大家好，欢迎收听晚间新闻。",
+                    "preferred_name": "announcer"
+                  }
+                },
+                "design_full": {
+                  "summary": "음성 설계: 전체 매개변수",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "voice_prompt": "A calm British female narrator in her thirties, warm and articulate",
+                    "preview_text": "Good evening, and welcome to tonight's programme.",
+                    "preferred_name": "narrator",
+                    "language": "en",
+                    "sample_rate": 24000,
+                    "response_format": "wav",
+                    "target_model": "qwen-audio-3.1-tts-flash",
+                    "callback_url": "https://your-domain.com/webhooks/voice-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "음성 생성 작업 접수 완료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceEnrollmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청 매개변수",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "mutually_exclusive": {
+                    "summary": "audio_url과 voice_prompt를 동시에 입력",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url and voice_prompt are mutually exclusive: pass audio_url to clone a voice, or voice_prompt to design one",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_mode": {
+                    "summary": "audio_url과 voice_prompt 모두 누락",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url (voice cloning) or voice_prompt (voice design) is required for voice-enrollment",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_preferred_name": {
+                    "summary": "preferred_name 누락",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preferred_name is required for voice-enrollment (e.g. 'announcer', 'narrator')",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_preferred_name": {
+                    "summary": "preferred_name이 규칙에 맞지 않음",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preferred_name must be 1-10 English letters or digits",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "bad_target_model": {
+                    "summary": "target_model이 qwen-audio-3.1-tts-flash가 아님",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "target_model 'qwen3-tts-vd' is not supported, valid value: qwen-audio-3.1-tts-flash",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "bad_language": {
+                    "summary": "지원하지 않는 language",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "language must be one of zh, en, ja, ko, de, fr, it, ru, pt, es",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_too_long": {
+                    "summary": "복제: audio_url이 2048자 초과",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url must not exceed 2048 characters, got 2191",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_not_public": {
+                    "summary": "복제: audio_url이 내부 주소",
+                    "value": {
+                      "error": {
+                        "code": "invalid_media_url",
+                        "message": "invalid parameter \"audio_url\": points to localhost; provide a publicly accessible URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_not_http": {
+                    "summary": "복제: audio_url이 FTP 등 잘못된 프로토콜 사용",
+                    "value": {
+                      "error": {
+                        "code": "invalid_media_url",
+                        "message": "invalid parameter \"audio_url\": must be an absolute HTTP(S) URL",
+                        "type": "invalid_request_error",
+                        "param": "audio_url"
+                      }
+                    }
+                  },
+                  "audio_url_base64": {
+                    "summary": "복제: audio_url이 Base64 data URI",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url must be a publicly accessible HTTP(S) URL: must be an absolute HTTP(S) URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "clone_with_design_field": {
+                    "summary": "음성 복제에 설계용 필드 입력",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text is only supported for voice design (voice_prompt)",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "voice_prompt_too_long": {
+                    "summary": "설계: voice_prompt가 500자 초과",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "voice_prompt must not exceed 500 characters, got 501",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_preview_text": {
+                    "summary": "설계: preview_text 누락",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text is required for voice design",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "preview_text_length": {
+                    "summary": "설계: preview_text가 15~200자 범위를 벗어남",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text must be 15-200 characters, got 3",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "design_sample_rate": {
+                    "summary": "설계: 샘플링 레이트가 24000이 아님",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "sample_rate must be 24000 for voice-enrollment",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않았거나 토큰이 유효하지 않거나 만료됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "할당량 부족, 충전 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "접근 권한 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: voice-enrollment",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "서버 내부 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## 모든 엔드포인트에 Bearer 토큰 인증이 필요합니다\n\n**API 키 받기:**\n\n[API 키 관리](https://evolink.ai/dashboard/keys)에서 API 키를 받으세요\n\n**요청 헤더 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "VoiceCloneRequest": {
+        "title": "음성 복제(audio_url)",
+        "type": "object",
+        "description": "실제 사람의 녹음으로 음성을 만듭니다. `audio_url`로 복제 모드를 선택하며 설계용 `voice_prompt`, `preview_text`, `sample_rate`, `response_format`은 생략하세요. 비어 있지 않은 설계 텍스트, 0이 아닌 샘플링 레이트 또는 비어 있지 않은 형식은 `400`입니다. `sample_rate: 0/null`과 `response_format: \"\"/null`은 생략한 것으로 처리합니다.",
+        "required": [
+          "model",
+          "audio_url",
+          "preferred_name"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "voice-enrollment"
+            ],
+            "default": "voice-enrollment",
+            "example": "voice-enrollment",
+            "description": "모델 이름"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "example": "https://your-cdn.com/samples/my-voice.wav",
+            "description": "복제할 녹음 파일 URL. 이 필드는 **음성 복제**를 선택하며 `voice_prompt`와 동시에 입력할 수 없습니다\n\n**URL 요구 사항:**\n- 인증 없이 공개 접근 가능한 HTTP 또는 HTTPS\n- 로컬 및 내부 주소는 `400`(`invalid_media_url`)\n- 최대 `2048`자\n- FTP 등 HTTP(S)가 아닌 프로토콜은 `400`(`invalid_media_url`)\n- 링크만 지원하며 Base64 data URI는 `400`(`invalid_parameter`)\n\n**오디오 요구 사항**(충족하지 않으면 작업이 실패할 수 있음):\n- WAV, MP3 또는 M4A\n- 최대 60초. 실제 발화가 너무 짧아도 실패합니다(테스트에서 2초 녹음 실패)\n- 파일 크기 최대 `10 MB`\n- 샘플링 레이트 `16 kHz` 이상\n- 명확한 사람의 발화가 있어야 합니다. 무음, 음악 등 발화가 아닌 오디오는 거부됩니다\n\n**녹음 권장 사항:**\n- 10~20초, 그중 5초 이상 연속적이고 명확한 낭독, 정지는 최대 2초\n- 모노. 스테레오는 첫 번째 채널만 사용\n- 배경 음악, 잡음, 다른 사람의 음성 없이 평소처럼 말하고 노래하지 않기\n\n오디오를 다운로드할 수 없거나 요구 사항을 충족하지 못하면 작업이 실패하고 크레딧이 전액 환불됩니다\n\n**본인의 음성 또는 명시적인 허가를 받은 음성만 복제하세요**",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "preferred_name": {
+            "type": "string",
+            "maxLength": 10,
+            "pattern": "^[a-zA-Z0-9]+$",
+            "example": "myvoice",
+            "description": "음성 이름 접두사\n\n**제약 조건:**\n- 영문자 또는 숫자 1~10자. 밑줄 및 다른 기호는 지원하지 않음\n- 대문자는 소문자로 변환\n- 고유할 필요 없음\n\n전체 이름: 복제는 `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}`, 설계는 `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}`\n\n`myvoice` 복제 예: `qwen-audio-3.1-tts-flash-myvoice-5996beec833d41f4982158347ba97fae`"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "it",
+              "ru",
+              "pt",
+              "es"
+            ],
+            "example": "zh",
+            "description": "복제에서는 녹음에 사용된 언어로 음성 특징을 더 정확히 추출합니다. 설계에서는 음성의 언어 성향이며 `preview_text`와 같은 언어를 권장합니다\n\n생략하면 `zh`"
+          },
+          "target_model": {
+            "type": "string",
+            "enum": [
+              "qwen-audio-3.1-tts-flash"
+            ],
+            "default": "qwen-audio-3.1-tts-flash",
+            "example": "qwen-audio-3.1-tts-flash",
+            "description": "음성을 사용할 TTS 모델. 현재 값은 하나이며 생략하면 해당 값을 사용합니다. 다른 값은 `400`\n\n| 값 | 설명 |\n|-----|------|\n| `qwen-audio-3.1-tts-flash` | Qwen Audio 3.1 TTS Flash 비스트리밍(기본값이자 유일한 값) |"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/CallbackUrl"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "voice_prompt"
+              ],
+              "properties": {
+                "voice_prompt": {
+                  "not": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "preview_text"
+              ],
+              "properties": {
+                "preview_text": {
+                  "not": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "sample_rate"
+              ],
+              "properties": {
+                "sample_rate": {
+                  "not": {
+                    "enum": [
+                      0,
+                      null
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "response_format"
+              ],
+              "properties": {
+                "response_format": {
+                  "not": {
+                    "enum": [
+                      "",
+                      null
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "VoiceDesignRequest": {
+        "title": "음성 설계(voice_prompt)",
+        "type": "object",
+        "description": "텍스트 설명으로 음성을 만들고 전체 `preview_text`를 미리 듣기 오디오로 합성합니다. `voice_prompt`는 설계 모드를 선택하므로 `audio_url`은 입력할 수 없습니다.",
+        "required": [
+          "model",
+          "voice_prompt",
+          "preview_text",
+          "preferred_name"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "voice-enrollment"
+            ],
+            "default": "voice-enrollment",
+            "example": "voice-enrollment",
+            "description": "모델 이름"
+          },
+          "voice_prompt": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳，吐字清晰",
+            "description": "음성 특성 설명. 이 필드는 **음성 설계**를 선택하며 `audio_url`과 동시에 입력할 수 없습니다\n\n**제약 조건:**\n- 최대 `500`자. 중국어와 영어 문자는 모두 1자로 계산\n- 중국어 또는 영어 설명 권장\n\n**설명 항목:** 성별, 나이, 음높이, 속도, 감정, 특성(울림, 맑음, 쉰 목소리, 둥근 음색, 달콤함, 깊음), 용도(뉴스, 광고, 오디오북, 애니메이션 캐릭터, 음성 비서)\n\n**권장 설명 예시(영어):**\n- `A calm middle-aged man with a slow pace and a deep, resonant voice, suitable for news or documentary narration`\n- `A gentle, articulate woman around 30 years old, with an even tone, suitable for audiobooks`",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "preview_text": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 200,
+            "example": "各位听众朋友，大家好，欢迎收听晚间新闻。",
+            "description": "미리 듣기 텍스트. **전체**를 오디오로 합성합니다\n\n**제약 조건:**\n- `15` ~ `200`자. 중국어와 영어 문자는 모두 1자로 계산\n- 길수록 오래 걸립니다. 30자는 약 12초, 200자는 약 49초\n- `language`와 같은 언어 권장",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "sample_rate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              24000,
+              0,
+              null
+            ],
+            "default": 24000,
+            "example": 24000,
+            "description": "미리 듣기 샘플링 레이트(Hz), `24000`으로 고정\n\n- 생략, `0` 또는 `null`은 생략한 것으로 처리하며 기본값 `24000` 사용\n- 다른 샘플링 레이트는 `400`(`invalid_parameter`)"
+          },
+          "response_format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "wav",
+              "",
+              null
+            ],
+            "default": "wav",
+            "example": "wav",
+            "description": "미리 듣기 오디오 형식, `wav`로 고정\n\n- 생략, 빈 문자열 `\"\"` 또는 `null`은 생략한 것으로 처리하며 기본값 `wav` 사용\n- 다른 형식은 `400`(`invalid_parameter`)"
+          },
+          "preferred_name": {
+            "type": "string",
+            "maxLength": 10,
+            "pattern": "^[a-zA-Z0-9]+$",
+            "example": "myvoice",
+            "description": "음성 이름 접두사\n\n**제약 조건:**\n- 영문자 또는 숫자 1~10자. 밑줄 및 다른 기호는 지원하지 않음\n- 대문자는 소문자로 변환\n- 고유할 필요 없음\n\n전체 이름: 복제는 `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}`, 설계는 `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}`\n\n`myvoice` 복제 예: `qwen-audio-3.1-tts-flash-myvoice-5996beec833d41f4982158347ba97fae`"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "it",
+              "ru",
+              "pt",
+              "es"
+            ],
+            "example": "zh",
+            "description": "복제에서는 녹음에 사용된 언어로 음성 특징을 더 정확히 추출합니다. 설계에서는 음성의 언어 성향이며 `preview_text`와 같은 언어를 권장합니다\n\n생략하면 `zh`"
+          },
+          "target_model": {
+            "type": "string",
+            "enum": [
+              "qwen-audio-3.1-tts-flash"
+            ],
+            "default": "qwen-audio-3.1-tts-flash",
+            "example": "qwen-audio-3.1-tts-flash",
+            "description": "음성을 사용할 TTS 모델. 현재 값은 하나이며 생략하면 해당 값을 사용합니다. 다른 값은 `400`\n\n| 값 | 설명 |\n|-----|------|\n| `qwen-audio-3.1-tts-flash` | Qwen Audio 3.1 TTS Flash 비스트리밍(기본값이자 유일한 값) |"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/CallbackUrl"
+          }
+        },
+        "not": {
+          "required": [
+            "audio_url"
+          ],
+          "properties": {
+            "audio_url": {
+              "not": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+              }
+            }
+          }
+        }
+      },
+      "CallbackUrl": {
+        "type": "string",
+        "description": "작업 결과를 받을 HTTPS 콜백 URL\n\n**전송 시점:**\n- 작업 완료(`completed`) 또는 실패(`failed`) 시\n- 과금 확정 후 전송\n\n**보안 요구 사항:**\n- HTTPS만 지원\n- 내부 IP 금지(127.0.0.1, 10.x.x.x, 172.16~31.x.x, 192.168.x.x 등)\n- URL 최대 `2048`자\n\n**전달 방식:**\n- 제한 시간: `10`초\n- 실패 후 최대 `3`회 재시도, 각각 `1` / `2` / `4`초 대기\n- 콜백 본문은 작업 조회 API 응답과 같은 형식\n- 2xx는 성공, 다른 상태 코드는 재시도",
+        "format": "uri",
+        "example": "https://your-domain.com/webhooks/voice-completed"
+      },
+      "VoiceEnrollmentResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "작업 생성 타임스탬프",
+            "example": 1775123456
+          },
+          "id": {
+            "type": "string",
+            "description": "작업 ID",
+            "example": "task-unified-1775123456-abcd1234"
+          },
+          "model": {
+            "type": "string",
+            "description": "실제로 사용된 모델 이름",
+            "example": "voice-enrollment"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "작업 객체의 구체적인 유형"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "작업 진행률(0~100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "작업 상태",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "오디오 작업 상세 정보"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "작업 출력 유형",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AudioUsage",
+            "description": "사용량 및 과금 정보"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "작업 취소 가능 여부. 음성 생성 작업은 취소할 수 없습니다",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "예상 완료 시간(초). 보수적인 추정: 복제는 보통 15~30초, 설계는 미리 듣기 텍스트가 길수록 오래 걸리며 30자는 약 12초, 200자는 약 49초",
+            "minimum": 0,
+            "example": 60
+          },
+          "audio_type": {
+            "type": "string",
+            "description": "요청 모드. `audio_url`은 `voice_clone`, `voice_prompt`는 `voice_design`이며 작업 결과의 `voice_type`과 일치합니다",
+            "example": "voice_clone",
+            "enum": [
+              "voice_clone",
+              "voice_design"
+            ]
+          }
+        }
+      },
+      "AudioUsage": {
+        "type": "object",
+        "description": "사용량 정보",
+        "properties": {
+          "credits_reserved": {
+            "type": "number",
+            "description": "예상 크레딧. 요청 건당 과금하며 복제와 설계 가격은 같습니다. 작업 실패 시 전액 환불",
+            "minimum": 0,
+            "example": 0.001
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "오류 코드 식별자"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 메시지"
+              },
+              "type": {
+                "type": "string",
+                "description": "오류 유형"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "사용자 지정 음성 생성",
+      "description": "음성 복제 및 설계. 음성은 Qwen Audio 3.1 TTS Flash에 연결됩니다"
+    }
+  ]
+}
