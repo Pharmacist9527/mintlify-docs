@@ -1,118 +1,87 @@
 ---
 title: "Codex 接入"
 sidebarTitle: "Codex"
-description: "把一段话交给 Codex 让它自己接入，或在 Codex App 里添加插件、在终端运行一句命令；在浏览器登录，不需要 API Key"
+description: "通过统一 CLI 提示词接入 Codex，或在 App 与命令行配置原生 MCP"
 ---
 
-## 让 Codex 帮你接入
+## 完整安装提示词
 
-把下面这段话发给 Codex，它会装好 EvoLink 技能、加上 EvoLink MCP，再带您在浏览器登录。Codex App 和命令行都能用。
+将下面整段发给Codex；命令会在助手实际执行终端的环境运行：
 
 ```text
-帮我在 Codex 里接入 EvoLink，让我能在这里生成图片、视频和音频。
-1. 安装配套技能：运行 `npx skills add Evolink-AI/mcp-plugin -g -y`。 然后运行 `npx skills ls -g -a codex`，按输出验证 evolink-mcp。
-2. 添加 EvoLink MCP 服务：运行 `codex mcp add evolink --url https://mcp.evolink.ai/mcp`，它会在浏览器里开始登录；没打开的话，把它打印的链接发给我。
-3. 我会在浏览器里登录 EvoLink 并点同意。之后先在当前对话调用 EvoLink 的 check_balance 验证连接；只有看不到工具时，再请我重新打开：命令行退出后运行 `codex resume --last`；Codex App 先新开对话，仍看不到再重启 App。
-验证成功后告诉我可以用了。媒体生成默认使用 EvoLink，每次付费任务先报价，等我明确确认后再生成。
+帮我设置 EvoLink，让我可以直接在这里生成图片、视频和音频。
+1. 检查 Node.js 和 npm，需要 Node.js 22 或更新版本。运行 `npm install -g @evolinkai/cli`。
+2. 运行 `evolink auth login`，由我在浏览器里登录 EvoLink 并点同意；没有打开浏览器时，把登录链接发给我。
+3. 运行 `evolink skills install --agent codex`，确认当前助手能发现并读取 `evolink-cli`。需要时新开会话，再验证技能发现。
+4. 运行 `evolink balance --json`，免费验证连接。成功后告诉我可以开始了；失败时说明具体步骤。
+媒体生成默认使用 EvoLink。每次付费任务先报价，等我明确确认后再生成。
 ```
+
+想自己操作或改用远程／本地 MCP，见[安装方式与手动设置](/cn/mcp/setup-methods)。
+
+
+## 推荐：CLI 与技能
+
+将[快速开始的完整提示词](/cn/mcp/quickstart)发送给 Codex。它依次运行：
+
+```bash
+npm install -g @evolinkai/cli
+evolink auth login
+evolink skills install --agent codex
+evolink balance --json
+```
+
+需要 Node.js 22+。由您在浏览器登录 EvoLink 并同意，再确认 Codex 发现 `evolink-cli`。这条路径使用 Codex 的命令能力，不要求出现原生 MCP 工具。命令可能需要宿主批准，按当前权限提示处理。完整媒体流程见[CLI 工作流](/cn/mcp/cli-workflows)。
+
+## 可选：Codex App 原生 MCP
+
+在 App 的 **Customize → Plugins** 里添加自定义 MCP/插件连接（入口名称可能随版本变化）：
+
+1. 名称填 `EvoLink`。
+2. Server URL 填 `https://mcp.evolink.ai/mcp`。
+3. Authentication 选 OAuth；高级客户端信息保持默认。
+4. 创建并连接，在浏览器登录 EvoLink 并同意。
+5. 回到当前对话调用 `check_balance`。缺工具时先新开对话，仍缺再重启 App。
+
+此配置和 CLI 登录分别管理，选适合的路径即可。
+
+## 可选：Codex CLI 原生 MCP
+
+```bash
+codex mcp add evolink --url https://mcp.evolink.ai/mcp
+```
+
+如果已完成浏览器登录，不必再登录一次。仅在未完成登录或提示需要认证时运行：
+
+```bash
+codex mcp login evolink
+```
+
+免费验证时请 Codex 调用 EvoLink 的 `check_balance`，并可用 `codex mcp list` 检查配置。看不到工具时退出 CLI 后运行 `codex resume --last`。
+
+手动配置也可以在 `~/.codex/config.toml` 加此项，再完成登录；不要覆盖已有服务：
+
+```toml
+[mcp_servers.evolink]
+url = "https://mcp.evolink.ai/mcp"
+```
+
+原生 MCP 可搭配[插件或 `evolink-mcp` 技能](/cn/mcp/plugins)。CLI 的随包技能名称则是 `evolink-cli`。
+
+### 自己修改配置文件
+
+1. 打开 `~/.codex/config.toml`；只在受信任的项目使用项目内 `.codex/config.toml`。设置了自定义 Codex 配置目录时，使用该目录里的文件。
+2. 保存本地备份，将上面的 `[mcp_servers.evolink]` 合并进去。已有同名表时更新 `url`，不再添加第二个同名表。
+3. 保存后按需运行 `codex mcp login evolink`，由您完成浏览器登录。用 `codex mcp list` 确认，再新开会话调用 `check_balance`。
+
+路径和配置作用范围见 [Codex 官方 MCP 文档](https://developers.openai.com/codex/mcp)。
+
+## 工具审批与 SSH
+
+付费确认和 Codex 的工具审批是不同步骤。`MCP tool call requires approval` 表示当前宿主策略不允许这次调用；处理权限后再执行已批准任务，不能自动删预算或换调用路径绕过。
+
+SSH 登录需要回调到发起认证的环境；不要套用 EvoLink CLI 的 `--no-browser` 到 `codex mcp login`。使用本机版本帮助和 [Codex 官方 MCP 配置说明](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)中的回调配置。
 
 <Note>
-Codex 默认在沙箱里运行命令。这两条命令要联网下载，还要写工作区外的 `~/.codex` 和 `~/.agents`，所以 Codex 会先请您批准，同意即可。Codex App 这条路我们还没实测，不顺利的话按下面 [Codex App](#codex-app) 的步骤手动添加。
+EvoLink CLI 的 Codex 命令行接入、技能发现和模拟交付已有云端验收；这不代表所有 Codex App 版本的真实图片/视频内嵌显示都已验证。原图与预览排查见[任务与结果](/cn/mcp/tasks)。
 </Note>
-
-## Codex App
-
-<Steps>
-  <Step title="新建插件">
-    在 Codex App 左侧点 **Customize** → **Plugins**，再点右上角的 **Add**，打开 **New Plugin**。
-  </Step>
-  <Step title="填写连接信息">
-    - **Choose icon** 可以不选。
-    - **Name** 填 `evolink`，**Description** 可以不填。
-    - **Connection** 选 **Server URL**，填 `https://mcp.evolink.ai/mcp`。
-    - **Authentication** 选 **OAuth**，**Advanced OAuth settings** 不用改。
-    - 勾选 **I understand and want to continue**，点 **Create**。
-  </Step>
-  <Step title="连接并登录">
-    弹出 **Connect evolink** 后点 **Continue to evolink**，在浏览器登录 EvoLink 并点 **允许并连接**。
-  </Step>
-</Steps>
-
-Codex IDE 插件和 ChatGPT 桌面应用的添加入口我们还没核实。
-
-## 命令行（Codex CLI）
-
-<Steps>
-  <Step title="复制这一句并运行">
-    ```bash
-    codex mcp add evolink --url https://mcp.evolink.ai/mcp
-    ```
-  </Step>
-  <Step title="在浏览器登录并同意">
-    Codex 发现 EvoLink 需要登录，会自动打开 EvoLink 登录页。登录后点 **允许并连接**，终端显示 `Successfully logged in.` 就好了。
-  </Step>
-  <Step title="在当前对话验证连接">
-    请助手调用 EvoLink 的 `check_balance`。成功后即可在当前对话使用。只有看不到工具时，才退出 CLI 并运行 `codex resume --last`；Codex App 先新开对话，仍看不到再重启。运行 `codex mcp list` 可以检查服务状态。
-  </Step>
-</Steps>
-
-想让 Codex 自己装好，把 [CLI](/cn/mcp/cli) 页的那段话发给它。
-
-<Warning>
-不要在这一句后面再接 `codex mcp login evolink`：添加时已经登录过一次，再运行 login 会让您再授权一遍。只有输出提示 "may or may not require login"，或者浏览器没有打开时，才需要单独运行 login。
-</Warning>
-
-<AccordionGroup>
-  <Accordion title="浏览器没有打开，或提示 may or may not require login">
-    ```bash
-    codex mcp login evolink
-    ```
-
-    通过 SSH 使用、电脑上没有浏览器时，加上 `--no-browser`，把打印的链接复制到您自己电脑的浏览器里打开。
-  </Accordion>
-  <Accordion title="提示不认识命令：Codex 版本太旧">
-    需要 Codex 0.77 或更新的版本，请先把 Codex 升级到最新版。
-  </Accordion>
-  <Accordion title="想直接改配置文件">
-    在 `~/.codex/config.toml` 里加上下面两行，再运行 `codex mcp login evolink` 登录：
-
-    ```toml
-    [mcp_servers.evolink]
-    url = "https://mcp.evolink.ai/mcp"
-    ```
-  </Accordion>
-  <Accordion title="在 codex exec 或自动模式里，生成被拒绝（MCP tool call requires approval）">
-    EvoLink 的生成工具会花钱，是否弹出工具审批由 Codex 设置决定。要求审批但当前运行方式不能交互确认时，调用会被拒绝。只有您已经明确批准任务范围和预算、希望自动执行时，才允许跳过工具审批：在 `~/.codex/config.toml` 里加上下面两行（视频、音频把 `generate_image` 换成 `generate_video`、`generate_audio`）：
-
-    ```toml
-    [mcp_servers.evolink.tools.generate_image]
-    approval_mode = "approve"
-    ```
-
-    这样生成会直接扣费，建议同时在 [API Keys](https://evolink.ai/dashboard/keys) 里给 `EvoLink MCP (OAuth)` 设一个额度上限。
-  </Accordion>
-  <Accordion title="要求每次付费生成弹出工具确认">
-    可在 `~/.codex/config.toml` 中为三个生成工具设置 `prompt`。免费查询不受影响。这是客户端的工具审批；助手仍应先说明本次参数和预计费用。
-
-    ```toml
-    [mcp_servers.evolink.tools.generate_image]
-    approval_mode = "prompt"
-
-    [mcp_servers.evolink.tools.generate_video]
-    approval_mode = "prompt"
-
-    [mcp_servers.evolink.tools.generate_audio]
-    approval_mode = "prompt"
-    ```
-  </Accordion>
-</AccordionGroup>
-
-## 试一下
-
-在对话里发这句话，只是查询，不扣费：
-
-```text
-用 EvoLink 查一下我的账户余额。
-```
-
-助手调用了 EvoLink 的工具并给出结果，就说明连上了。看不到 EvoLink 时，在 Codex App 的 **Customize** → **Plugins** 里看 `evolink` 是否已连接，命令行里运行 `codex mcp list`。更多见[确认已经连上](/cn/mcp/tools#确认已经连上)和[常见问题](/cn/mcp/troubleshooting)。

@@ -1,82 +1,133 @@
 ---
-title: "工具与用法"
-sidebarTitle: "工具与用法"
-description: "EvoLink MCP 提供的工具、怎么提需求、参考文件、任务进度和结果"
+title: "MCP 工具参考"
+sidebarTitle: "12 个工具"
+description: "远程 EvoLink MCP 的工具参数、调用示例、费用与结果约定"
 ---
 
-## 能做什么
+以下是浏览器 OAuth 登录的远程 MCP 提供的 12 个工具。本地 stdio MCP 的工具列表和上传方式可能不同，以实际连接返回的列表为准。JSON 示例展示工具名称与参数，交由 MCP 客户端调用；不是平台 REST API 的请求体。示例不代表付费批准。
 
-| 工具 | 用途 | 是否收费 |
+| 分组 | 工具 | 是否收费 |
 |---|---|---|
-| `search_models` | 按类型和关键词找图片、视频、音频模型 | 免费 |
-| `get_model` | 查看某个模型的参数和价格 | 免费 |
-| `estimate_cost` | 生成之前先报价 | 免费 |
-| `generate_image` | 生成图片 | 按模型价格扣费 |
-| `generate_video` | 生成视频 | 按模型价格扣费 |
-| `generate_audio` | 生成音乐、歌曲或语音 | 按模型价格扣费 |
-| `get_task` | 查询任务进度和结果 | 免费 |
-| `list_tasks` | 查看最近的任务 | 免费 |
-| `check_balance` | 查看账户余额和 MCP 已花费 | 免费 |
-| `upload_file` | 把公开链接或 1 MB 以内的小文件存到 EvoLink，换成可用于生成的链接 | 免费 |
-| `prepare_upload` | 拿一个一次性上传地址，用来上传最大 95 MB 的本地文件 | 免费 |
-| `get_upload` | 查看一次性上传的结果，拿到文件链接 | 免费 |
+| 模型 | `search_models`、`get_model` | 免费 |
+| 报价 | `estimate_cost` | 免费 |
+| 生成 | `generate_image`、`generate_video`、`generate_audio` | 按模型计费 |
+| 任务 | `get_task`、`list_tasks` | 免费 |
+| 账户 | `check_balance` | 免费 |
+| 上传 | `upload_file`、`prepare_upload`、`get_upload` | 免费 |
 
-直接用自然语言说就行，比如"用 z-image-turbo 画一只红苹果"。助手先说明模型、参数和预计费用，结束回复后等您明确确认，再提交付费任务。报价不完整或无法预估时，应先说明哪些费用未知，再请您决定是否继续。助手推荐的预算不是您批准的预算；变体和重新生成也是新的付费任务。只有您明确批准了任务或批次范围以及足够的预算，才能在该范围内继续。实际扣费以任务结算为准。
+## search_models
 
-安装 `evolink-mcp` 技能后，媒体生成默认使用 EvoLink。只有您明确指定或同意时，才换用其他平台。这些是助手的工作规则，服务端没有逐笔审批；客户端是否弹出工具确认由客户端设置决定。
+`type` 为 `image`、`video`、`audio`、`all`，默认 `all`；`query` 可选，最多 100 字符；`limit` 为 1–50，默认 20。返回规范 ID、别名、类型、起价、参数文档状态及适用的推荐字段。
 
-## 提供参考图片、视频或音频
+```json
+{"name":"search_models","arguments":{"type":"video","query":"seedance","limit":5}}
+```
 
-EvoLink MCP 运行在 EvoLink 的服务器上，读不到您电脑里的文件路径。参考文件可以这样提供：
+起价不是任务总价；实际选型见[模型与参数](/cn/mcp/models)。
 
-- **公开链接：** 直接把能公开访问的链接发给助手，它会用 `upload_file` 存到 EvoLink。
-- **1 MB 以内的小文件：** 在 Claude Code、Codex、Cursor 里，助手可以读出文件内容，直接交给 `upload_file`。
-- **更大的本地文件（最大 95 MB）：** 助手先用 `prepare_upload` 拿一个一次性上传地址，再运行一条 `curl` 命令把文件传上去，最后用 `get_upload` 拿到文件链接。上传地址 15 分钟内有效，只能用一次；上传结果保留 1 小时，只有您自己的账户能查。
+## get_model
 
-<Note>
-上传本地文件要能运行命令：Claude Code、Codex、Cursor 可以，第一次可能要您批准。Claude 网页版和桌面版、ChatGPT 一般不能运行命令，也拿不到您拖进对话的文件原件，请改用公开链接。
-</Note>
+必填 `model`，字符串长度 1–128。返回输入要求、参数范围、示例和公开价格；缺信息时会给出提示。
 
-上传不收费，文件保留 72 小时后删除。支持的格式：
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
 
-| 类型 | 格式 |
+## estimate_cost
+
+必填 `model`；`input` 是计划提交的参数对象；可选 `media_seconds` 为大于 0、不超过 3600 的数字。它独立于 `input`，只参与估价，不发给模型。
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+检查输入是否有效、估价状态、警告及余额/额度是否足够。可能返回估价、部分估价、Token 计费、缺少输入或价格不可用。任何非完整报价都不能被当作可保证的总价。此工具不接收 `max_cost_usd`；原生 MCP 的预算放在生成工具，CLI 预算放在 `estimate --max-cost-usd`。见[费用与上限](/cn/mcp/billing)。
+
+## generate_image、generate_video、generate_audio
+
+三个工具分别提交图片、视频、音频任务，共用下列顶层参数：
+
+| 参数 | 说明 |
 |---|---|
-| 图片 | JPEG、PNG、GIF、WebP |
-| 音频 | MP3、WAV、M4A、AAC、FLAC、OGG |
-| 视频 | MP4、MOV、WebM |
+| `model` | 必填，所选媒体类型的模型 ID，1–128 字符 |
+| `input` | 模型定义的参数对象；不要在其中放 `model` 或 `callback_url` |
+| `prompt` | 可选的 `input.prompt` 快捷方式，仍受模型自身限制；避免重复且冲突 |
+| `client_request_id` | 可选幂等 ID，16–96 字符，字母、数字、`.`、`_`、`-`；只在重试同一请求时复用 |
+| `max_cost_usd` | 可选提交前估价上限，大于 0 且不超过 10000；不是结算硬上限 |
+| `media_seconds` | 同估价工具，不能把未知或部分费用变成可保证的预算 |
 
-## 任务进度和结果
+先查参数、报价并取得明确批准，再调用对应工具。下面仅示意一张图片的参数：
 
-- **要等多久：** 图片一般会直接返回结果；视频通常要 3–5 分钟，音乐 20–60 秒。助手会自动查询进度，您不用一直盯着。
-- **结果可以接着用：** 生成结果的链接可以直接当参考图拿去改图，或者当首帧做图生视频，不用先下载再上传。
-- **中途断开了**（比如关掉了窗口），回来后对助手说"用 EvoLink 查一下我最近的任务"，它会用 `list_tasks` 找到刚才的任务，再用 `get_task` 接着查。
-- **不要让助手重新生成**同一个任务来"刷新"进度，那会再扣一次费。
-- **结果链接 24 小时后失效**，拿到后请及时下载保存。上传的参考文件保留 72 小时，和结果链接是两回事。
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"image-coffee-demo-001"}}
+```
+
+返回 `task_id` 后用任务工具继续查询。媒体参数和工作流分别见[图片](/cn/mcp/images)、[视频](/cn/mcp/video)、[音频](/cn/mcp/audio)。
+
+## get_task
+
+必填 `task_id`；`wait_seconds` 是 0–45 的整数，默认 30。返回状态、进度、结果链接、费用或错误；设 0 立即查询。
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+结果通常 24 小时后过期。继续查询同一任务，不要重新生成来刷新进度。
+
+## list_tasks
+
+两种模式：`task_ids`（1–50 个已知 ID）批量查询，或不填 ID、按 `type` / `status` / `since` / `limit` 找近期任务。`status` 支持 `processing`、`completed`、`failed`、`cancelled`；`processing` 包含排队任务。`since` 可用 ISO 8601 或 `30m`、`2h`、`1d`；`limit` 为 1–50，默认 20。
+
+```json
+{"name":"list_tasks","arguments":{"type":"image","since":"2h","limit":10}}
+```
+
+指定 `task_ids` 时其他筛选不生效。近期任务是整个账户的任务，并非当前对话；`since` 过滤当前获取的页，不扫描全部历史。
+
+## check_balance
+
+无参数。返回账户余额、花费范围和额度信息。OAuth 登录的 MCP 花费覆盖同一账户连接的智能体，不能当作单次对话的花费。
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+## upload_file
+
+`file_url` 和 `base64_data` 二选一。`file_url` 必须是公开 HTTPS；`base64_data` 在远程 OAuth 连接中最多 1 MB，裸 base64 还需 `mime_type`，data URL 可自带 MIME。可选 `file_name`（不含文件夹）和 `upload_path`（相对路径、不含 `..`）。
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+以上域名只是占位，请换成实际可访问的文件。远程不支持 `file_path`。文件保留约 72 小时。
+
+## prepare_upload
+
+必填 `file_name`（扩展名决定媒体类型），可选 `upload_path`。返回一次性 `upload_url`、`upload_id`、PUT 方法、上传命令和有效期；15 分钟内最多一次，文件最大 95 MB。
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+需在能读取文件的环境执行 PUT。见[上传指南](/cn/mcp/files)。
+
+## get_upload
+
+必填 `upload_id`。查询同一账户的上传状态，成功返回 `file_url`；状态记录约 1 小时后过期。
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
 
 ## 确认已经连上
 
-在助手里发一句话试试。下面两句都只是查询，不扣费：
+让智能体查询账户余额，确认它确实调用了 `check_balance` 并成功返回。CLI 接入则运行 `evolink balance --json`，不需要客户端出现原生 MCP 工具。两者都还需确认相应技能可用。排查见[常见问题](/cn/mcp/troubleshooting)。
 
-```text
-用 EvoLink 查一下我的账户余额。
-```
+## 任务进度和结果
 
-```text
-用 EvoLink 找 3 个能生成视频的模型，告诉我价格。
-```
+使用 `get_task` 和 `list_tasks` 继续已有任务，完成后交付原文件链接与实际费用。等待、中断恢复、预览和 CLI 下载见[任务与结果](/cn/mcp/tasks)。
 
-助手调用了 EvoLink 的工具并给出结果，就说明连上了。第一次调用时，有的助手会先问您是否允许使用这个工具，点允许即可。
+## 提供参考图片、视频或音频
 
-助手说找不到 EvoLink 时，先看看连接状态：
-
-| 助手 | 怎么看 |
-|---|---|
-| Claude 网页版和桌面版 | **Customize → Connectors** 里 EvoLink 显示已连接，并且在对话里点 **+ → Connectors** 打开了 |
-| Cursor | MCP 设置里 `evolink` 显示已连接 |
-| Claude Code | 输入 `/mcp`，`evolink` 显示已连接 |
-| Codex | 运行 `codex mcp list` |
-| Hermes Agent | 在会话里输入 `/reload-mcp` |
-| OpenClaw | 运行 `openclaw mcp doctor evolink --probe` |
-| ChatGPT | 在输入框输入 `@`，能选到 EvoLink |
-
-助手调用工具时遇到额度用完、余额不足、MCP 被暂停等情况，会直接告诉您原因，见[费用与额度](/cn/mcp/billing#常见提示)。
+按文件所在位置选择公开 URL、小文件 base64、CLI 或一次性上传，见[上传与参考素材](/cn/mcp/files)。结果和缩略图显示规则见[任务与结果](/cn/mcp/tasks)。

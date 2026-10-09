@@ -1,58 +1,83 @@
 ---
 title: "Troubleshooting"
-sidebarTitle: "Troubleshooting"
-description: "What to do when EvoLink MCP won't connect, its tools don't show up or the sign-in expired"
+description: "Diagnose MCP and CLI setup, login, skills, parameters, quotes, tasks and file previews"
 ---
 
-<AccordionGroup>
-  <Accordion title="The assistant doesn't show EvoLink's tools">
-    Check the connection as described in [Check the connection](/en/mcp/tools#check-the-connection), and sign in again if it says sign-in is needed. Reopen Claude Code, start a new Codex session only if the tools are missing in the current one, or type `/reload-mcp` in Hermes Agent.
+## Identify your connection
 
-    In Claude Code, if the assistant says it has no evolink tools, type `/mcp`, choose `evolink`, select **Authenticate** to sign in again, then restart Claude Code.
-  </Accordion>
-  <Accordion title="The approval page says the request expired">
-    You have 10 minutes from starting the sign-in in your assistant to approving. If it expired, start the sign-in again from the assistant.
-  </Accordion>
-  <Accordion title="The approval page shows Unverified">
-    The assistant registered itself (see [Sign-in and approval](/en/mcp/sign-in#what-the-approval-page-checks)) and wants to send the approval to a website. Approve only if you started this connection yourself.
-  </Accordion>
-  <Accordion title="Use a different EvoLink account">
-    Click **Switch account** on the approval page and approve with the account you want. For an assistant that's already connected, disconnect it first, then connect again.
-  </Accordion>
-  <Accordion title="Cursor: sign-in fails after clicking Connect">
-    Cursor waits for the browser callback on local port 8787. If another program uses that port (for example `wrangler dev`), the sign-in fails. Close that program and click **Connect** again. See [Cursor setup](/en/mcp/cursor).
-  </Accordion>
-  <Accordion title="Codex: the command isn't recognized, or no browser opens">
-    You need Codex 0.77 or later. If no browser opens, run `codex mcp login evolink`. See [Codex setup](/en/mcp/codex).
-  </Accordion>
-  <Accordion title="Codex: after Cancel on the approval page, the sign-in page opens again">
-    Codex retries once by itself when the first authorization does not go through. Click **Cancel** again, or press Ctrl+C in the terminal.
-  </Accordion>
-  <Accordion title="Hermes Agent: the sign-in times out, or it asks for an API key">
-    Include `--auth oauth` and `--connect-timeout 300` in the command. See [Hermes Agent setup](/en/mcp/hermes-agent).
-  </Accordion>
-  <Accordion title="OpenClaw: it won't connect">
-    Include `--transport streamable-http`; OpenClaw's default SSE can't reach EvoLink. See [OpenClaw setup](/en/mcp/openclaw).
-  </Accordion>
-  <Accordion title="Over SSH, or no browser on this machine">
-    In Claude Code use `claude mcp login evolink --no-browser`, in Codex `codex mcp login evolink --no-browser`, then open the printed link in the browser on your own computer. In Hermes Agent paste the URL the browser ends up on back into the terminal; in OpenClaw use `--code`.
-  </Accordion>
-  <Accordion title="Claude: the connector limit is reached">
-    Claude's Free plan can add one custom connector. Remove one you don't use, or upgrade your plan.
-  </Accordion>
-</AccordionGroup>
+- **CLI:** check `evolink --version`, `evolink auth status --json`, `evolink balance --json`. No native MCP tools in the client does not mean CLI failure.
+- **Native MCP:** verify `https://mcp.evolink.ai/mcp`, complete sign-in and actually call `check_balance`.
+- **Documentation MCP:** the documentation site's `/docs/mcp` searches documentation only; it is not the media generation service.
 
-## Common messages
+## Installed CLI is unavailable to the agent
 
-When a call stops because a limit is reached, the balance is too low or MCP is paused, the assistant tells you why; see [Costs and limits](/en/mcp/billing#common-messages).
+| Symptom | Next step |
+|---|---|
+| `evolink: command not found` | Check the agent's PATH and whether installation occurred on another machine/container |
+| Old Node version | Use Node.js 22+ in the actual execution environment |
+| Skill exists but is not discovered | Run `evolink skills install --agent NAME`, open a new conversation and verify `evolink-cli` discovery |
+| Only `evolink-mcp` is discovered | That is the native MCP skill; CLI requires `evolink-cli` |
+| Agent command execution is denied | Follow host permission rules; do not switch invocation paths to bypass a denial |
 
-## Contact support
+## Login or browser problems
 
-If none of the above helps, email [support@evolink.ai](mailto:support@evolink.ai) or find us on [Discord](https://discord.gg/P9xzmJWndW). These details help us find the problem faster:
+The CLI prints an authorization link you can open manually. Its callback must reach the CLI machine; see [Linux and SSH](/en/mcp/cli#linux-and-ssh). `--no-browser` is not device-code login and does not accept a pasted callback URL.
 
-- the email address of your EvoLink account;
-- which assistant you use, for example Claude Code, Codex or ChatGPT;
-- roughly when it happened, and the full error message;
-- for a generation problem, the task ID (`task_id`).
+- `credential_store_unavailable`: check Linux Secret Service, D-Bus and the same user session. Do not replace secure storage with plaintext tokens.
+- `login_timeout` or expired consent: start a new login rather than reusing an old URL. CLI waiting lasts roughly three minutes; the consent transaction may live longer.
+- Wrong account: log out and sign in again in CLI, or disconnect/reconnect native MCP in that client.
+- Claude/ChatGPT has no add-server entry: check version, account and workspace permissions; follow the client guide and official docs.
+- Native MCP login succeeded but tools are missing: verify in the current chat first, then open a new chat if needed, then restart the client if still missing.
 
-Please don't send your API key or password.
+## Models and input
+
+| Problem | Next step |
+|---|---|
+| Old model such as Topaz is absent | Search current available models; do not use retired entries from historic indexes |
+| Missing prices or parameters | Inspect model docs or select a complete entry; never invent totals |
+| Wan duration or GPT image dimensions rejected | Follow returned ranges, pixel and combination constraints; quote again |
+| Seed Audio asks for duration but rejects input.duration | Do not add it; use separate `media_seconds` as an illustrative hint and disclose unknown output length |
+| Both image and audio references supplied | Follow the model's mutually exclusive input rules |
+
+## Quote failures or different final costs
+
+MCP `max_cost_usd` and CLI budgets protect estimates, not guaranteed settlement. Reference video, incomplete multipliers, token billing and unknown audio duration are explained in [billing](/en/mcp/billing).
+
+CLI errors can include `invalid_input`, `estimate_unavailable`, `uncheckable_cap`, `cost_exceeds_cap`, `price_changed`, `quote_expired` or `quote_session_changed`. Read JSON `error` details, retain the budget, and quote/approve any changed request again. Never silently remove budgets or replace failed quotes with starting prices.
+
+## Timeouts and uncertain submission
+
+- Task ID exists: query it or run `evolink tasks wait TASK_ID --json`.
+- Original quote can recover a started submission: `evolink tasks resume --quote QUOTE_ID --json`, retaining the original request ID.
+- Quote expired or local records are lost: inspect recent tasks and match model/time first.
+- Do not generate again to refresh a preview or status. A new task incurs another charge.
+
+## Download returns 403
+
+Public media access may depend on client characteristics. Default Python urllib has been observed returning HTTP 403 with `error code: 1010`, while an explicit product User-Agent downloaded successfully. Set such a header when your application needs programmatic download. Your own application can use `YourApp/1.0`; this EvoLink client example uses `EvoLinkClient/1.0`:
+
+```python
+import urllib.request
+
+request = urllib.request.Request(
+    result_url,
+    headers={"User-Agent": "EvoLinkClient/1.0"},
+)
+with urllib.request.urlopen(request, timeout=60) as response:
+    content_type = response.headers.get("Content-Type", "")
+    # Check status and media type before saving the response in your application.
+```
+
+`result_url` is the returned original link. Do not forward EvoLink authentication headers to media hosts. A successful header change does not guarantee every network works. If blocked, report HTTP status, content type and time without publishing secrets or private media links.
+
+## Original opens but thumbnail is gray
+
+Inspect client rendering before generating anything again. MCP provides compatible small previews, but old messages do not update automatically and failed previews can be cached. Query the existing task and retain its original links. See [tasks and downloads](/en/mcp/tasks).
+
+## Local upload/download paths
+
+Check file existence, readability, supported format and size. Download parent directories must exist and destination files must not. Some 0.5.0 filesystem failures are reported as `request_failed`; inspect the command and path. If a reported successful download will not open, check actual file type and HTTP response. Renaming an HTML error page does not make it an image. Do not assume unreleased file-header validation is already available.
+
+## Reporting an issue
+
+Include CLI/client version, connection mode, sanitized command and error code, task ID, timestamp and whether the original file opens. Never include API keys, tokens, verification codes, authorization callbacks or one-time upload URLs.

@@ -1,82 +1,133 @@
 ---
-title: "Tools and usage"
-sidebarTitle: "Tools and usage"
-description: "The tools EvoLink MCP offers, how to ask, reference files, task progress and results"
+title: "MCP tool reference"
+sidebarTitle: "12 tools"
+description: "Remote EvoLink MCP arguments, examples, charges and result behavior"
 ---
 
-## What you can do
+These 12 tools are exposed by the remote browser-OAuth connection. Local stdio MCP may expose a different list or upload behavior; use the actual connected list. JSON examples show tool names and arguments for an MCP client, not platform REST request bodies. Examples do not approve paid execution.
 
-| Tool | What it does | Cost |
+| Group | Tools | Cost |
 |---|---|---|
-| `search_models` | Find image, video and audio models by type and keywords | Free |
-| `get_model` | See a model's parameters and prices | Free |
-| `estimate_cost` | Get a quote before generating | Free |
-| `generate_image` | Generate images | Charged at the model's price |
-| `generate_video` | Generate video | Charged at the model's price |
-| `generate_audio` | Generate music, songs or speech | Charged at the model's price |
-| `get_task` | Check a task's progress and results | Free |
-| `list_tasks` | List recent tasks | Free |
-| `check_balance` | See your balance and what MCP has spent | Free |
-| `upload_file` | Turn a public link or a small file (up to 1 MB) into a link for generation input | Free |
-| `prepare_upload` | Get a one-time upload address for a local file up to 95 MB | Free |
-| `get_upload` | Check a one-time upload and get the file's link | Free |
+| Models | `search_models`, `get_model` | Free |
+| Quotes | `estimate_cost` | Free |
+| Generation | `generate_image`, `generate_video`, `generate_audio` | Model pricing |
+| Tasks | `get_task`, `list_tasks` | Free |
+| Account | `check_balance` | Free |
+| Uploads | `upload_file`, `prepare_upload`, `get_upload` | Free |
 
-Ask in plain language, for example "Draw a red apple with z-image-turbo". The assistant should show the model, settings and estimated cost, end its reply and wait for your explicit approval before submitting a paid task. If the quote is partial or unavailable, it should explain the unknown charges and ask whether to proceed. Its recommended budget is not your approval; variations and regeneration are new paid tasks. Prior approval applies only to an explicitly approved task or batch with a sufficient budget. The final charge is set when the task settles.
+## search_models
 
-With the `evolink-mcp` skill installed, media generation defaults to EvoLink. Another provider is used only when you explicitly request or approve it. These are assistant instructions, not a server-side approval gate; client tool prompts depend on the client settings.
+`type`: `image`, `video`, `audio`, `all` (default). Optional `query`: at most 100 characters. `limit`: 1–50, default 20. Returns canonical IDs, aliases, types, starting prices, documentation status and applicable recommendation fields.
 
-## Reference images, video and audio
+```json
+{"name":"search_models","arguments":{"type":"video","query":"seedance","limit":5}}
+```
 
-EvoLink MCP runs on EvoLink's servers and can't read file paths on your computer. Give reference files in one of these ways:
+Starting prices are not task totals. See [models and parameters](/en/mcp/models).
 
-- **A public link:** send the assistant a publicly accessible link; it stores the file on EvoLink with `upload_file`.
-- **A small file (up to 1 MB):** in Claude Code, Codex and Cursor, the assistant can read the file and pass its content to `upload_file`.
-- **A larger local file (up to 95 MB):** the assistant gets a one-time upload address with `prepare_upload`, runs a `curl` command to upload the file, then gets the file's link with `get_upload`. The address works once and expires after 15 minutes; the upload result is kept for one hour and only your account can look it up.
+## get_model
 
-<Note>
-Uploading a local file needs an assistant that can run commands: Claude Code, Codex and Cursor can, and may ask you to approve it the first time. Claude on the web and desktop and ChatGPT usually can't run commands and can't get the original of a file you drop into the chat, so use a public link instead.
-</Note>
+Required `model`: 1–128 characters. Returns input requirements, parameters, ranges, examples and published pricing, with notices for missing information.
 
-Uploading is free, and uploaded files are deleted after 72 hours. Supported formats:
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
 
-| Type | Formats |
+## estimate_cost
+
+Required `model`, optional planned `input` object, optional `media_seconds` greater than 0 and at most 3600. The hint is separate from `input` and is not sent to the model.
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+Inspect input validity, estimate status, warnings and balance/limit coverage. Responses can indicate estimated, partial, token-billed, missing-input or unavailable pricing. Incomplete quotes are not guaranteed totals. This tool does not accept `max_cost_usd`; native MCP puts the cap on generation, while CLI accepts it on `estimate --max-cost-usd`. See [billing and caps](/en/mcp/billing).
+
+## generate_image, generate_video, generate_audio
+
+These tools submit paid tasks for their respective media types and share these top-level arguments:
+
+| Argument | Meaning |
 |---|---|
-| Images | JPEG, PNG, GIF, WebP |
-| Audio | MP3, WAV, M4A, AAC, FLAC, OGG |
-| Video | MP4, MOV, WebM |
+| `model` | Required model ID of the matching media type, 1–128 characters |
+| `input` | Documented model parameters; do not put `model` or `callback_url` inside |
+| `prompt` | Optional shortcut for `input.prompt`, subject to model limits; avoid conflicting duplicates |
+| `client_request_id` | Optional idempotency ID: 16–96 letters, digits, `.`, `_`, `-`; reuse only for the same request |
+| `max_cost_usd` | Optional pre-submission estimate cap, greater than 0 and at most $10000; not a settlement cap |
+| `media_seconds` | Same estimate hint; cannot turn unknown/partial costs into a guaranteed budget |
+
+Inspect input, quote and obtain approval first. Example image arguments:
+
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"image-coffee-demo-001"}}
+```
+
+Retain the returned `task_id` and query progress with task tools. See [images](/en/mcp/images), [video](/en/mcp/video) and [audio](/en/mcp/audio).
+
+## get_task
+
+Required `task_id`. Integer `wait_seconds`: 0–45, default 30; 0 checks immediately. Returns status, progress, result links, charges or errors.
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+Results usually expire after 24 hours. Query the same task; never regenerate to refresh progress.
+
+## list_tasks
+
+Use `task_ids` (1–50 known IDs) for batch lookup, or omit IDs to filter recent tasks by `type`, `status`, `since` and `limit`. `status`: `processing`, `completed`, `failed`, `cancelled`; processing includes queued tasks. `since`: ISO 8601 or relative `30m`, `2h`, `1d`. `limit`: 1–50, default 20.
+
+```json
+{"name":"list_tasks","arguments":{"type":"image","since":"2h","limit":10}}
+```
+
+ID mode ignores other filters. Recent tasks cover the whole account, not just your chat. `since` filters the fetched page instead of scanning all history.
+
+## check_balance
+
+No arguments. Returns balance, spending scope and limits. OAuth MCP spending covers connected agents across the account, not one chat.
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+## upload_file
+
+Choose exactly one of `file_url` and `base64_data`. `file_url` must be public HTTPS. Remote OAuth base64 files are limited to 1 MB; raw base64 also needs `mime_type`, while data URLs can include MIME. Optional `file_name` has no folders; optional relative `upload_path` must not contain `..`.
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+Replace the placeholder domain with an accessible file. Remote MCP does not accept `file_path`. Files remain for approximately 72 hours.
+
+## prepare_upload
+
+Required `file_name` including an extension, optional `upload_path`. Returns one-time `upload_url`, `upload_id`, PUT method, command and expiry. Valid for 15 minutes, once, up to 95 MB.
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+Execute PUT where the file can be read. See [uploads](/en/mcp/files).
+
+## get_upload
+
+Required `upload_id`. Returns status for your account's upload and `file_url` when complete. Status records expire after approximately one hour.
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
+
+## Confirm the connection
+
+Ask the agent for account balance and verify an actual successful `check_balance` call. For CLI setup, run `evolink balance --json`; native MCP tools need not appear in the client. Also verify the matching skill is available. See [troubleshooting](/en/mcp/troubleshooting).
 
 ## Task progress and results
 
-- **How long it takes:** images usually come back right away; video typically takes 3–5 minutes and music 20–60 seconds. The assistant checks progress for you, so you don't have to watch it.
-- **Reuse results:** a result link can go straight into the next request, as a reference image for editing or as the first frame for image-to-video; no need to download and upload it.
-- **If you got disconnected** (for example you closed the window), come back and say "Use EvoLink to check my recent tasks". The assistant finds the task with `list_tasks` and follows it with `get_task`.
-- **Don't ask the assistant to generate the same task again** to "refresh" progress; that charges again.
-- **Result links expire after 24 hours.** Download what you want to keep. Uploaded reference files are kept for 72 hours; that's a separate rule.
+Use `get_task` and `list_tasks` to continue existing tasks and deliver original links and actual charges. See [tasks and results](/en/mcp/tasks) for waiting, recovery, previews and CLI downloads.
 
-## Check the connection
+## Provide reference images, video or audio
 
-Send your assistant one of these; both only look things up and cost nothing:
-
-```text
-Use EvoLink to check my account balance.
-```
-
-```text
-Use EvoLink to find 3 video models and tell me their prices.
-```
-
-If the assistant calls an EvoLink tool and answers, you're connected. The first time, some assistants ask whether to allow the tool; allow it.
-
-If the assistant can't find EvoLink, check the connection:
-
-| Assistant | Where to look |
-|---|---|
-| Claude web and desktop | EvoLink shows as connected under **Customize → Connectors**, and it's turned on under **+ → Connectors** in the conversation |
-| Cursor | `evolink` shows as connected in the MCP settings |
-| Claude Code | Type `/mcp`; `evolink` shows as connected |
-| Codex | Run `codex mcp list` |
-| Hermes Agent | Type `/reload-mcp` in the session |
-| OpenClaw | Run `openclaw mcp doctor evolink --probe` |
-| ChatGPT | Type `@` in the input; EvoLink is listed |
-
-When a call stops because a limit is reached, the balance is too low or MCP is paused, the assistant tells you why; see [Costs and limits](/en/mcp/billing#common-messages).
+Choose public URL, small base64, CLI or one-time upload according to file location. See [uploads and references](/en/mcp/files) and [tasks and results](/en/mcp/tasks).

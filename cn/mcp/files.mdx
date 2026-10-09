@@ -1,0 +1,58 @@
+---
+title: "上传与参考素材"
+description: "公开 URL、base64、95 MB 本地上传、一次性地址、支持格式与有效期"
+---
+
+## 选择上传方式
+
+| 素材在哪里 | 推荐方式 |
+|---|---|
+| 已有公开 HTTPS 链接 | 交给 MCP `upload_file`；模型支持公开 URL 时可按模型要求直接使用 |
+| 电脑上的媒体，智能体能运行终端 | `evolink upload` |
+| 最大 1 MB 的小文件 | MCP `upload_file` 的 `base64_data` 和 `mime_type` |
+| 较大的本地文件，使用原生远程 MCP | `prepare_upload` 获取地址，本地 PUT 后 `get_upload` 查询 |
+| Claude 或 ChatGPT 网页附件 | 确认智能体能取得可供模型访问的原件，否则提供公开链接 |
+
+远程 MCP 无法读取 `/Users/...`、`C:\...` 等本地路径。不要把临时会话附件地址当作公开 URL。只有[本地 stdio MCP](/cn/mcp/local)允许在设置的目录内读本地文件。
+
+## CLI 上传
+
+```bash
+evolink upload ./reference.png --json
+```
+
+返回的 `file_url` 可放入模型支持的参考字段。需要指定存储文件夹时：
+
+```bash
+evolink upload ./clip.mp4 --upload-path references --json
+```
+
+上传中断或响应丢失，使用已保存的上传 ID：
+
+```bash
+evolink uploads get UPLOAD_ID --json
+```
+
+先查状态，不要重复使用一次性地址。CLI 自动执行准备、PUT 和查询，不需要用户手动复制上传令牌。
+
+## 原生 MCP 的一次性上传
+
+1. 调用 `prepare_upload`，传 `file_name`（含扩展名）和可选 `upload_path`。
+2. 在能读取原文件的电脑上运行返回的上传命令，或对返回的 `upload_url` 执行 PUT。
+3. 调用 `get_upload`，传同一个 `upload_id`，取得完成状态和 `file_url`。
+
+上传地址最长 15 分钟有效，最多使用一次；单文件上限 95 MB。地址包含授权信息，请只用于这一次上传，不放进截图或公开日志。`get_upload` 的状态记录保留约 1 小时，实际文件保留约 72 小时，两者不是同一个有效期。
+
+## 支持格式
+
+| 类型 | 格式 |
+|---|---|
+| 图片 | JPEG、PNG、GIF、WebP |
+| 音频 | MP3、WAV、M4A、AAC、FLAC、OGG/Opus |
+| 视频 | MP4、MOV、WebM |
+
+上传免费；文件约 72 小时后删除。上传接受该格式，并不保证某个模型支持它。仍需检查模型对格式、文件大小、图片像素、视频秒数和参考数量的限制。
+
+## 结果与参考素材的区别
+
+生成结果的链接通常 24 小时有效；上传的参考素材通常保留 72 小时。需要长期保存时下载到自己的存储。有效期内，模型支持时可以直接把结果链接用作下一任务的参考，避免重复上传。

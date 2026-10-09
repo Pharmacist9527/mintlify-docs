@@ -1,0 +1,78 @@
+---
+title: "CLI workflows and scripts"
+description: "Discover models, approve quotes, generate, recover and download with the EvoLink CLI"
+---
+
+## Generate your first image
+
+Complete [CLI sign-in](/en/mcp/cli), then inspect models and parameters:
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+This example uses only a prompt. First verify the model is available and accepts the input. Create `input.json` in the current directory:
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft side lighting"}
+```
+
+Obtain and save a free quote:
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+Show the model, actual input, estimated range and billing notes to the user, then stop for approval. This example and its commands are not approval. After approval, replace the returned quote ID:
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+With the returned `task_id`, inspect and download:
+
+```bash
+evolink tasks get TASK_ID --json
+evolink download TASK_ID --output ./coffee-cup.png --json
+```
+
+Video and audio follow the same sequence with their own models and inputs. Use `video` or `audio` in generation. An image quote cannot submit a video task.
+
+## Reference files
+
+```bash
+evolink upload ./reference.png --json
+```
+
+Put the returned `file_url` in `input.json` using the selected model's documented field. It might use `image_urls`; check `models show`. Quote the new input and obtain approval. A local path or agent-internal attachment URL is not a publicly accessible model URL.
+
+## Tasks with a budget
+
+If the user explicitly approved a $1 estimate budget:
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+The CLI checks budget and price changes before saving and submitting a quote. Stop for incomplete quotes, invalid input or exceeded budgets. Do not substitute a starting price or silently remove `--max-cost-usd`. Ask the user to change settings, select another model or explicitly accept the unresolved cost risk. See [quote limitations](/en/mcp/billing#quotes-and-spending-caps).
+
+## Interruptions and timeouts
+
+| Situation | Next step |
+|---|---|
+| Task ID exists but waiting timed out or the window closed | `evolink tasks wait TASK_ID --json` |
+| Submission started, response was lost, original quote ID exists | `evolink tasks resume --quote QUOTE_ID --json` |
+| Task ID or local quote file was lost | `evolink tasks list --since 2h --json`, then match model and time |
+| Quote is older than 15 minutes or login changed | Check for existing tasks first; quote and approve again for a new generation |
+
+`resume` preserves the original request ID. An unknown submission outcome does not mean no charge occurred. Do not blindly resubmit with a new quote and request ID.
+
+## Scripts and CI
+
+- Verify login in the actual execution environment. Linux/SSH needs secure credential storage; copying configuration does not copy credentials.
+- Use `--json` and check both the exit code and `ok`. Retain `quote_id` and `task_id`. Separate stderr progress from stdout JSON.
+- Approval can cover a defined batch and budget. Added variants, changed parameters or changed prices require review.
+- `tasks list` covers recent tasks across the account, not just your script. Match the intended task carefully.
+- No server-side cancellation command is provided. Ctrl-C and script timeouts only stop local waiting.
+- Use the platform API documentation for webhooks, key management and other features not exposed by the CLI. Do not invent CLI flags.

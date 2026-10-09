@@ -1,68 +1,82 @@
 ---
 title: "OpenClaw 接入"
 sidebarTitle: "OpenClaw"
-description: "复制一句命令，把 EvoLink MCP 加到 OpenClaw Gateway"
+description: "在 OpenClaw 执行环境安装 EvoLink CLI 与技能，或添加原生 MCP"
 ---
 
-<Steps>
-  <Step title="复制这一句，在 Gateway 所在的机器上运行">
-    ```bash
-    openclaw mcp add evolink --url https://mcp.evolink.ai/mcp --transport streamable-http --auth oauth && openclaw mcp login evolink
-    ```
-  </Step>
-  <Step title="打开登录链接">
-    终端会打印一个登录链接（不会自动打开浏览器），点开后登录 EvoLink 并点 **允许并连接**。
-  </Step>
-  <Step title="看到保存成功的提示">
-    终端显示 `MCP OAuth credentials saved for "evolink".` 就好了。不用重启，下一轮对话就能用。
-  </Step>
-</Steps>
+## 完整安装提示词
 
-<AccordionGroup>
-  <Accordion title="浏览器不在 Gateway 那台机器上">
-    回调会传不回去。从浏览器最后跳转到的网址里复制 `code` 的值，再运行：
-
-    ```bash
-    openclaw mcp login evolink --code <code>
-    ```
-  </Accordion>
-  <Accordion title="为什么要写 --transport streamable-http">
-    OpenClaw 默认用 SSE 连接远程服务，EvoLink 用的是 Streamable HTTP，不写就连不上。
-  </Accordion>
-  <Accordion title="检查连接">
-    ```bash
-    openclaw mcp doctor evolink --probe
-    ```
-  </Accordion>
-  <Accordion title="想直接改配置文件">
-    在 `~/.openclaw/openclaw.json` 的 `mcp.servers` 下加上 `evolink` 这一项，再运行 `openclaw mcp login evolink` 登录：
-
-    ```json
-    {
-      "mcp": {
-        "servers": {
-          "evolink": {
-            "url": "https://mcp.evolink.ai/mcp",
-            "transport": "streamable-http",
-            "auth": "oauth"
-          }
-        }
-      }
-    }
-    ```
-  </Accordion>
-</AccordionGroup>
-
-<Note>
-这些步骤按 OpenClaw 官方文档整理，我们还没逐一实测。
-</Note>
-
-## 试一下
-
-在对话里发这句话，只是查询，不扣费：
+将下面整段发给OpenClaw；命令会在助手实际执行终端的环境运行：
 
 ```text
-用 EvoLink 查一下我的账户余额。
+帮我设置 EvoLink，让我可以直接在这里生成图片、视频和音频。
+1. 检查 Node.js 和 npm，需要 Node.js 22 或更新版本。运行 `npm install -g @evolinkai/cli`。
+2. 运行 `evolink auth login`，由我在浏览器里登录 EvoLink 并点同意；没有打开浏览器时，把登录链接发给我。
+3. 运行 `evolink skills install --agent openclaw`，确认当前助手能发现并读取 `evolink-cli`。需要时新开会话，再验证技能发现。
+4. 运行 `evolink balance --json`，免费验证连接。成功后告诉我可以开始了；失败时说明具体步骤。
+媒体生成默认使用 EvoLink。每次付费任务先报价，等我明确确认后再生成。
 ```
 
-助手调用了 EvoLink 的工具并给出结果，就说明连上了。看不到 EvoLink 时，运行 `openclaw mcp doctor evolink --probe`。更多见[确认已经连上](/cn/mcp/tools#确认已经连上)和[常见问题](/cn/mcp/troubleshooting)。
+想自己操作或改用远程／本地 MCP，见[安装方式与手动设置](/cn/mcp/setup-methods)。
+
+
+## 推荐：CLI 与技能
+
+把[统一安装提示词](/cn/mcp/quickstart)发给能运行终端的 OpenClaw，或者在 Gateway/智能体实际运行命令的机器上运行：
+
+```bash
+npm install -g @evolinkai/cli
+evolink auth login
+evolink skills install --agent openclaw
+evolink balance --json
+```
+
+需要 Node.js 22+，并满足 OpenClaw 自己的运行环境要求。在浏览器由您登录并同意。确认 OpenClaw 的执行用户、PATH、安全凭据存储和技能目录与安装一致，能够发现 `evolink-cli`。
+
+仅在您的笔记本安装，远端 Gateway 不会自动获得 CLI 和登录。远端登录见[Linux 与 SSH](/cn/mcp/cli#linux-与-ssh)。
+
+## 可选：原生远程 MCP
+
+支持原生 MCP 的 OpenClaw 版本可以添加：
+
+```bash
+openclaw mcp add evolink --url https://mcp.evolink.ai/mcp --transport streamable-http --auth oauth
+openclaw mcp login evolink
+```
+
+按客户端提示完成浏览器回调，再检查：
+
+```bash
+openclaw mcp doctor evolink --probe
+```
+
+请查询实际版本的 `openclaw mcp --help`，不要假设 CLI 登录会同时完成原生 MCP 登录。认证回调和设备码选项也依客户端而定。
+
+### 自己修改配置文件
+
+1. 在 Gateway 运行机器上备份并打开 `~/.openclaw/openclaw.json`；设置了 `OPENCLAW_CONFIG_PATH` 时使用实际文件。
+2. 将 `evolink` 合并到已有 `mcp.servers`，保留其他配置。文件支持 JSON5，下面使用标准 JSON：
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "evolink": {
+        "url": "https://mcp.evolink.ai/mcp",
+        "transport": "streamable-http",
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+3. 保存后运行 `openclaw mcp login evolink` 完成浏览器 OAuth，再运行 `openclaw mcp doctor evolink --probe`。新开会话确认工具发现，并让助手调用 `check_balance`。
+
+参考 [OpenClaw MCP 配置](https://docs.openclaw.ai/tools/mcp)和[配置文件位置](https://docs.openclaw.ai/gateway/configuration)。OAuth 登录由客户端管理，不在文件里手动粘贴令牌。
+
+## 使用和验收范围
+
+EvoLink CLI 的 OpenClaw 接入、技能发现和报价已有云端记录；原生 MCP 工具发现有协议检查。这不表示所有 Gateway 部署、消息渠道、桌面界面和真实付费媒体均已完成验收。
+
+生成前等待明确费用确认，完成后交付原文件和实际费用。更多见[CLI 工作流](/cn/mcp/cli-workflows)和[结果与下载](/cn/mcp/tasks)。

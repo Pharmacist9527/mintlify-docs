@@ -1,0 +1,78 @@
+---
+title: "CLI 工作流与脚本"
+description: "从模型查询到批准报价、生成、恢复和下载，适用于新手及 API 开发者"
+---
+
+## 用命令生成第一张图片
+
+先完成 [CLI 登录](/cn/mcp/cli)，然后查模型和参数：
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+下面采用仅有提示词的示例输入。请先确认该型号仍可用，以及查询返回的参数允许这个输入。在当前目录新建 `input.json`：
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft side lighting"}
+```
+
+免费估价并保存报价：
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+把返回的型号、实际输入、估价范围和费用说明展示给用户，停止并等待确认。示例文件和本文命令不代表批准。确认后替换实际报价 ID：
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+拿到 `task_id` 后，查询和下载：
+
+```bash
+evolink tasks get TASK_ID --json
+evolink download TASK_ID --output ./coffee-cup.png --json
+```
+
+视频和音频走同样的步骤，换用相应模型及输入，生成时用 `video` 或 `audio`。不能复用图片的报价 ID 去生成视频。
+
+## 带参考文件
+
+```bash
+evolink upload ./reference.png --json
+```
+
+使用返回的 `file_url`，按所选模型的参数说明加入 `input.json`。例如模型支持的字段可能是 `image_urls`，但请以 `models show` 为准。再次报价后等待确认。不能直接把本地路径或智能体内部附件地址当作模型能访问的 URL。
+
+## 有预算的任务
+
+如果用户明确批准估价预算为 1 美元：
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+CLI 在报价保存和提交前检查预算及价格变化。报价不完整、输入有误或超预算时应停止；不要改用起价，不要自动删 `--max-cost-usd` 重试。请用户选择修改规格、换模型，或明确接受原预算无法覆盖的风险。详见[估价局限](/cn/mcp/billing#报价和花费上限)。
+
+## 网络中断与等待超时
+
+| 发生什么 | 下一步 |
+|---|---|
+| 已拿到任务 ID，等待超时或关闭窗口 | `evolink tasks wait TASK_ID --json` |
+| 提交已开始，响应丢失，但保留原报价 ID | `evolink tasks resume --quote QUOTE_ID --json` |
+| 任务 ID 或报价文件丢失 | `evolink tasks list --since 2h --json`，核对模型和时间 |
+| 报价超过 15 分钟或已登录另一账户 | 先确认是否已有任务；需新生成时重新报价并确认 |
+
+`resume` 保留原请求 ID。收到“提交状态未知”不等于未扣费；不要用新报价和新请求 ID盲目重发。
+
+## 给脚本和 CI 的建议
+
+- 请求前确认运行环境有可用登录；SSH/Linux 需要安全凭据存储，不要假设复制配置文件就会复制登录。
+- 用 `--json`，同时检查退出码与 `ok`。记录实际 `quote_id`、`task_id`，将 stderr 的进度与 stdout 的 JSON 分开。
+- 人工批准可以是明确范围的批次和预算，但增加变体、改变参数或价格都需要重新评估。
+- `tasks list` 查询的是整个账户近期任务，不只当前脚本；不要误认别人的任务。
+- 当前不提供服务端取消命令。Ctrl-C 和脚本超时仅停止本地等待。
+- API 开发者需要 Webhook、Key 管理或 CLI 尚未提供的功能时，使用对应的平台 API 文档，不要编造 CLI 选项。
