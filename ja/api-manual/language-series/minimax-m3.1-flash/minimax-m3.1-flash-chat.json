@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "MiniMax-M3.1-Flash 対話インターフェース（OpenAI 互換）",
-        "description": "**プレビュー版モデル**：MiniMax-M3.1-Flash はプレビュー版です。動作やパラメータは変更される可能性があります。\n\n- OpenAI Chat Completions プロトコルを使用して MiniMax-M3.1-Flash モデルを呼び出します\n- **マルチターン対話**：シングルターンまたはマルチターンの文脈対話に対応\n- **システムプロンプト**：`role=system` メッセージで AI の役割と振る舞いをカスタマイズ\n- **マルチモーダル入力**：`content` はテキスト + 画像 / 動画の混在に対応\n- **思考**：常に有効。`reasoning_effort` で思考の深さを設定します。思考内容は `reasoning_content` で返され、`content` の回答とは分離されます\n- **ストリーミング出力**：SSE ストリーミングレスポンスに対応。思考は `delta.reasoning_content`、回答は `delta.content` で届きます\n- **ツール呼び出し**：Function Calling に対応\n\n**思考と出力トークン上限**：\n- 思考は無効にできません。思考トークンは出力トークンとして課金され、`max_completion_tokens` に含まれます\n- 出力トークン上限を指定しない場合、EvoLink は **32768** を使用します\n- 上限が小さく `reasoning_effort` が高いと、思考だけで上限を使い切ることがあります。その場合、レスポンスは `finish_reason: \"length\"` で終了し、`content` は空になります。上限は 32768 以上に設定し、簡単なタスクでは `reasoning_effort` を下げてください\n- マルチターンのツール呼び出しでは、`reasoning_content` と `tool_calls` を含む assistant メッセージ全体を返送してください\n\n**互換ルール**：\n\n| リクエスト | EvoLink の処理 |\n| --- | --- |\n| `thinking.type: \"disabled\"` | `thinking` を削除。`reasoning_effort` が未指定の場合は `low` を設定 |\n| `reasoning_effort: \"none\"` / `\"minimal\"` | `low` に変更 |\n| `reasoning_split: false` | 削除。思考内容は常に `reasoning_content` で返されます |\n| `service_tier` | 削除。リクエストは常に標準ティアで処理されます |\n\n`thinking` や `reasoning_effort` にどの値を指定しても思考は実行され、そのトークンは出力として課金されます。\n\n**無視されるパラメータ**：`presence_penalty`、`frequency_penalty`、`logit_bias`。`n` は `1` のみ対応します。",
+        "description": "**プレビュー版モデル**：MiniMax-M3.1-Flash はプレビュー版です。動作やパラメータは変更される可能性があります。\n\n- OpenAI Chat Completions プロトコルを使用して MiniMax-M3.1-Flash モデルを呼び出します\n- **マルチターン対話**：シングルターンまたはマルチターンの文脈対話に対応\n- **システムプロンプト**：`role=system` メッセージで AI の役割と振る舞いをカスタマイズ\n- **マルチモーダル入力**：`content` はテキスト + 画像 / 動画の混在に対応\n- **思考**：常に有効。`reasoning_effort` で思考の深さを設定します。思考内容は `reasoning_content` で返され、`content` の回答とは分離されます\n- **ストリーミング出力**：SSE ストリーミングレスポンスに対応。思考は `delta.reasoning_content`、回答は `delta.content` で届きます\n- **ツール呼び出し**：Function Calling に対応\n\n**思考と出力トークン上限**：\n- 思考は無効にできません。思考トークンは出力トークンとして課金され、`max_completion_tokens` に含まれます\n- 出力トークン上限を指定しない場合、EvoLink は **32768** を使用します\n- 上限が小さく `reasoning_effort` が高いと、思考だけで上限を使い切ることがあります。その場合、レスポンスは `finish_reason: \"length\"` で終了し、`content` は空になります。上限は 32768 以上に設定し、簡単なタスクでは `reasoning_effort` を下げてください\n- マルチターンのツール呼び出しでは、`reasoning_content` と `tool_calls` を含む assistant メッセージ全体を返送してください\n\n**互換ルール**：\n\n| リクエスト | EvoLink の処理 |\n| --- | --- |\n| `thinking.type: \"disabled\"` | `thinking` を削除。`reasoning_effort` が未指定の場合は `low` を設定 |\n| `thinking.type: \"enabled\"` + `budget_tokens` | adaptive 思考に変換。`reasoning_effort` が未指定の場合は `budget_tokens` から effort を決定：≤ 2048 → `low`、≤ 4096 → `medium`、≤ 8192 → `high`、≤ 16384 → `xhigh`、それより大きい場合 → `max` |\n| `reasoning_effort: \"none\"` / `\"minimal\"` | `low` に変更 |\n| `reasoning_split: false` | 削除。思考内容は常に `reasoning_content` で返されます |\n| `service_tier` | 削除。リクエストは常に標準ティアで処理されます |\n\n`thinking` や `reasoning_effort` にどの値を指定しても思考は実行され、そのトークンは出力として課金されます。\n\n**無視されるパラメータ**：`presence_penalty`、`frequency_penalty`、`logit_bias`。`n` は `1` のみ対応します。",
         "operationId": "createChatCompletionMiniMaxM31Flash",
         "tags": [
           "対話生成"
@@ -641,12 +641,18 @@
             "properties": {
               "type": {
                 "type": "string",
-                "description": "思考モード\n\n- `adaptive`：思考を有効にします（このフィールドを省略した場合と同じ）\n- `disabled`：思考は**無効になりません**。EvoLink は `thinking` を削除し、`reasoning_effort` が未指定の場合は `low` を設定します。思考は引き続き実行され、出力トークンとして課金されます",
+                "description": "思考モード\n\n- `adaptive`：思考を有効にします（このフィールドを省略した場合と同じ）\n- `disabled`：思考は**無効になりません**。EvoLink は `thinking` を削除し、`reasoning_effort` が未指定の場合は `low` を設定します\n- `enabled`：Anthropic の旧来の指定方法で、`budget_tokens` と併用します。EvoLink は adaptive 思考に変換し、`reasoning_effort` が未指定の場合は `budget_tokens` から effort を決定します\n\nいずれの場合も思考は実行され、出力トークンとして課金されます",
                 "enum": [
                   "adaptive",
-                  "disabled"
+                  "disabled",
+                  "enabled"
                 ],
                 "default": "adaptive"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "`type: \"enabled\"` の場合のみ使用します。思考トークンの厳密な上限ではなく、`reasoning_effort` が未指定の場合に EvoLink が effort レベルに変換します\n\n- ≤ 2048 → `low`\n- ≤ 4096 → `medium`\n- ≤ 8192 → `high`\n- ≤ 16384 → `xhigh`\n- それより大きい場合 → `max`",
+                "minimum": 1
               }
             }
           },

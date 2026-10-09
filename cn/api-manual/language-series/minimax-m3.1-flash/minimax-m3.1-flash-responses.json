@@ -36,7 +36,7 @@
           "对话生成"
         ],
         "summary": "MiniMax-M3.1-Flash Responses 接口（OpenAI 兼容）",
-        "description": "**预览版模型**：MiniMax-M3.1-Flash 目前为预览版，行为和参数可能会发生变化。\n\n- 使用 OpenAI Responses 协议调用 MiniMax-M3.1-Flash\n- **输入形态**：`input` 可以是一段纯文本，也可以是输入项数组（消息、函数调用、函数结果、思考）\n- **多模态输入**：用户消息支持 `input_image` 和 `input_video` 内容块\n- **系统指令**：通过 `instructions` 下达，等价于首条 system 消息\n- **思考模式**：始终开启，通过 `reasoning.effort` 设置思考深度。`output` 数组以 `reasoning` 项（`reasoning_text`）开头，随后是 `message` 项（`output_text`）\n- **流式输出**：SSE 事件；回答文本通过 `response.output_text.delta` 事件返回，生成以 `response.completed`（或 `response.incomplete` / `response.failed`）结束\n- **工具调用**：支持 Function Calling\n\n**思考与输出 token 上限**：\n- 思考无法关闭。推理 token 按输出 token 计费，计入 `max_output_tokens`，并在 `usage.output_tokens_details.reasoning_tokens` 中统计\n- 未设置 `max_output_tokens` 时，EvoLink 默认使用 **32768**\n- 上限较小而思考深度较高时，思考可能占满整个上限：响应以 `status: \"incomplete\"`（`incomplete_details.reason: \"max_output_tokens\"`）结束，且没有 `message` 项。建议将上限保持在 32768 及以上，简单任务可调低 `reasoning.effort`\n- 多轮工具调用时，请将上一轮响应的 `output` 项（包括 `reasoning` 和 `function_call` 项）原样加入 `input`，再追加你的 `function_call_output` 项\n\n**兼容规则**：\n\n| 请求 | EvoLink 处理方式 |\n| --- | --- |\n| `reasoning.effort: \"none\"` / `\"minimal\"` | 改为 `low`；思考仍会进行，并按输出计费 |\n| `service_tier` | 移除；请求始终按标准服务层级处理 |\n| `previous_response_id` / `conversation` | 不支持：请求会被拒绝并返回 400（`unsupported_parameter`），请在 `input` 中携带完整历史 |\n| `store` | 不生效；响应不会被保存 |\n| `tool_choice` | 仅支持 `none` 和 `auto` |\n| `text.format.type` | 仅支持 `text` |",
+        "description": "**预览版模型**：MiniMax-M3.1-Flash 目前为预览版，行为和参数可能会发生变化。\n\n- 使用 OpenAI Responses 协议调用 MiniMax-M3.1-Flash\n- **输入形态**：`input` 可以是一段纯文本，也可以是输入项数组（消息、函数调用、函数结果、思考）\n- **多模态输入**：用户消息支持 `input_image` 和 `input_video` 内容块\n- **系统指令**：通过 `instructions` 下达，等价于首条 system 消息\n- **思考模式**：始终开启，通过 `reasoning.effort` 设置思考深度。`output` 数组以 `reasoning` 项（`reasoning_text`）开头，随后是 `message` 项（`output_text`）\n- **流式输出**：SSE 事件；回答文本通过 `response.output_text.delta` 事件返回，生成以 `response.completed`（或 `response.incomplete` / `response.failed`）结束\n- **工具调用**：支持 Function Calling\n\n**思考与输出 token 上限**：\n- 思考无法关闭。推理 token 按输出 token 计费，计入 `max_output_tokens`，并在 `usage.output_tokens_details.reasoning_tokens` 中统计\n- 未设置 `max_output_tokens` 时，EvoLink 默认使用 **32768**\n- 上限较小而思考深度较高时，思考可能占满整个上限：响应以 `status: \"incomplete\"`（`incomplete_details.reason: \"max_output_tokens\"`）结束，且没有 `message` 项。建议将上限保持在 32768 及以上，简单任务可调低 `reasoning.effort`\n- 多轮工具调用时，请将上一轮响应的 `output` 项（包括 `reasoning` 和 `function_call` 项）原样加入 `input`，再追加你的 `function_call_output` 项\n\n**兼容规则**：\n\n| 请求 | EvoLink 处理方式 |\n| --- | --- |\n| `reasoning.effort: \"none\"` / `\"minimal\"` | 改为 `low`；思考仍会进行，并按输出计费 |\n| `thinking.type: \"disabled\"` | 移除 `thinking`；若未设置 `reasoning.effort`，则将其设为 `low`；思考仍会进行，并按输出计费 |\n| `thinking.type: \"enabled\"` + `budget_tokens` | 移除 `thinking`；若未设置 `reasoning.effort`，则按 `budget_tokens` 换算思考深度：≤ 2048 → `low`，≤ 4096 → `medium`，≤ 8192 → `high`，≤ 16384 → `xhigh`，更大 → `max` |\n| `service_tier` | 移除；请求始终按标准服务层级处理 |\n| `previous_response_id` / `conversation` | 不支持：请求会被拒绝并返回 400（`unsupported_parameter`），请在 `input` 中携带完整历史 |\n| `store` | 不生效；响应不会被保存 |\n| `tool_choice` | 仅支持 `none` 和 `auto` |\n| `text.format.type` | 仅支持 `text` |",
         "operationId": "createResponseMiniMaxM31Flash",
         "requestBody": {
           "required": true,
@@ -405,11 +405,27 @@
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
-                "example": {
-                  "error": {
-                    "code": 400,
-                    "message": "Invalid request parameters",
-                    "type": "invalid_request_error"
+                "examples": {
+                  "invalid_parameters": {
+                    "summary": "参数错误",
+                    "value": {
+                      "error": {
+                        "code": 400,
+                        "message": "Invalid request parameters",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "stateful_field": {
+                    "summary": "使用了有状态字段（`previous_response_id` / `conversation`）",
+                    "value": {
+                      "error": {
+                        "message": "previous_response_id is not supported for MiniMax-M3.1-Flash: its Responses API is stateless and does not store responses, so send the full conversation history in input instead",
+                        "type": "invalid_request_error",
+                        "param": "previous_response_id",
+                        "code": "unsupported_parameter"
+                      }
+                    }
                   }
                 }
               }
@@ -709,8 +725,15 @@
             "description": "不支持。携带该字段的请求会被拒绝并返回 400（`unsupported_parameter`），请在 `input` 中携带完整历史"
           },
           "conversation": {
-            "type": "string",
-            "description": "不支持。携带该字段的请求会被拒绝并返回 400（`unsupported_parameter`），请在 `input` 中携带完整历史"
+            "description": "不支持。携带该字段的请求会被拒绝并返回 400（`unsupported_parameter`），请在 `input` 中携带完整历史",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
           }
         }
       },
@@ -1030,8 +1053,15 @@
             "type": "object",
             "properties": {
               "code": {
-                "type": "integer",
-                "description": "HTTP 状态错误代码"
+                "description": "错误代码：HTTP 状态码，或字符串错误码（如 `unsupported_parameter`）",
+                "oneOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
               },
               "message": {
                 "type": "string",

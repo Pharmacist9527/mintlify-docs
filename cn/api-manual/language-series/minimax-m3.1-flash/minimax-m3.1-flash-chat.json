@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "MiniMax-M3.1-Flash 对话接口（OpenAI 兼容）",
-        "description": "**预览版模型**：MiniMax-M3.1-Flash 目前为预览版，行为和参数可能会发生变化。\n\n- 使用 OpenAI Chat Completions 协议调用 MiniMax-M3.1-Flash 模型\n- **多轮对话**：支持单轮或多轮上下文对话\n- **系统提示词**：通过 `role=system` 消息自定义 AI 的角色和行为\n- **多模态输入**：`content` 支持文本 + 图像 / 视频混排\n- **思考模式**：始终开启，通过 `reasoning_effort` 设置思考深度。思考内容通过 `reasoning_content` 返回，与 `content` 中的回答分开\n- **流式输出**：支持 SSE 流式返回；思考内容通过 `delta.reasoning_content` 返回，回答通过 `delta.content` 返回\n- **工具调用**：支持 Function Calling\n\n**思考与输出 token 上限**：\n- 思考无法关闭。思考 token 按输出 token 计费，并计入 `max_completion_tokens`\n- 未设置输出 token 上限时，EvoLink 默认使用 **32768**\n- 上限较小而 `reasoning_effort` 较高时，思考可能占满整个上限：响应以 `finish_reason: \"length\"` 结束，`content` 为空。建议将上限保持在 32768 及以上，简单任务可调低 `reasoning_effort`\n- 多轮工具调用时，请回传完整的 assistant 消息，包括 `reasoning_content` 和 `tool_calls`\n\n**兼容规则**：\n\n| 请求 | EvoLink 处理方式 |\n| --- | --- |\n| `thinking.type: \"disabled\"` | 移除 `thinking`；若未设置 `reasoning_effort`，则将其设为 `low` |\n| `reasoning_effort: \"none\"` / `\"minimal\"` | 改为 `low` |\n| `reasoning_split: false` | 移除；思考内容始终通过 `reasoning_content` 返回 |\n| `service_tier` | 移除；请求始终按标准服务层级处理 |\n\n无论传入什么 `thinking` 或 `reasoning_effort` 值，思考都会照常进行，其 token 按输出计费。\n\n**忽略的参数**：`presence_penalty`、`frequency_penalty`、`logit_bias`。`n` 仅支持 `1`。",
+        "description": "**预览版模型**：MiniMax-M3.1-Flash 目前为预览版，行为和参数可能会发生变化。\n\n- 使用 OpenAI Chat Completions 协议调用 MiniMax-M3.1-Flash 模型\n- **多轮对话**：支持单轮或多轮上下文对话\n- **系统提示词**：通过 `role=system` 消息自定义 AI 的角色和行为\n- **多模态输入**：`content` 支持文本 + 图像 / 视频混排\n- **思考模式**：始终开启，通过 `reasoning_effort` 设置思考深度。思考内容通过 `reasoning_content` 返回，与 `content` 中的回答分开\n- **流式输出**：支持 SSE 流式返回；思考内容通过 `delta.reasoning_content` 返回，回答通过 `delta.content` 返回\n- **工具调用**：支持 Function Calling\n\n**思考与输出 token 上限**：\n- 思考无法关闭。思考 token 按输出 token 计费，并计入 `max_completion_tokens`\n- 未设置输出 token 上限时，EvoLink 默认使用 **32768**\n- 上限较小而 `reasoning_effort` 较高时，思考可能占满整个上限：响应以 `finish_reason: \"length\"` 结束，`content` 为空。建议将上限保持在 32768 及以上，简单任务可调低 `reasoning_effort`\n- 多轮工具调用时，请回传完整的 assistant 消息，包括 `reasoning_content` 和 `tool_calls`\n\n**兼容规则**：\n\n| 请求 | EvoLink 处理方式 |\n| --- | --- |\n| `thinking.type: \"disabled\"` | 移除 `thinking`；若未设置 `reasoning_effort`，则将其设为 `low` |\n| `thinking.type: \"enabled\"` + `budget_tokens` | 转为自适应思考；若未设置 `reasoning_effort`，则按 `budget_tokens` 换算思考深度：≤ 2048 → `low`，≤ 4096 → `medium`，≤ 8192 → `high`，≤ 16384 → `xhigh`，更大 → `max` |\n| `reasoning_effort: \"none\"` / `\"minimal\"` | 改为 `low` |\n| `reasoning_split: false` | 移除；思考内容始终通过 `reasoning_content` 返回 |\n| `service_tier` | 移除；请求始终按标准服务层级处理 |\n\n无论传入什么 `thinking` 或 `reasoning_effort` 值，思考都会照常进行，其 token 按输出计费。\n\n**忽略的参数**：`presence_penalty`、`frequency_penalty`、`logit_bias`。`n` 仅支持 `1`。",
         "operationId": "createChatCompletionMiniMaxM31Flash",
         "tags": [
           "对话生成"
@@ -641,12 +641,18 @@
             "properties": {
               "type": {
                 "type": "string",
-                "description": "思考模式\n\n- `adaptive`：开启思考（与不传该字段效果相同）\n- `disabled`：**不会**关闭思考。EvoLink 会移除 `thinking`，并在未设置 `reasoning_effort` 时将其设为 `low`。思考仍会进行，并按输出 token 计费",
+                "description": "思考模式\n\n- `adaptive`：开启思考（与不传该字段效果相同）\n- `disabled`：**不会**关闭思考。EvoLink 会移除 `thinking`，并在未设置 `reasoning_effort` 时将其设为 `low`\n- `enabled`：Anthropic 旧版写法，需配合 `budget_tokens` 使用。EvoLink 会将其转为自适应思考；若未设置 `reasoning_effort`，则按 `budget_tokens` 换算思考深度\n\n无论取哪个值，思考都会进行，并按输出 token 计费",
                 "enum": [
                   "adaptive",
-                  "disabled"
+                  "disabled",
+                  "enabled"
                 ],
                 "default": "adaptive"
+              },
+              "budget_tokens": {
+                "type": "integer",
+                "description": "仅在 `type: \"enabled\"` 时使用。它不是思考长度的硬性上限：若未设置 `reasoning_effort`，EvoLink 会将其换算为思考深度档位\n\n- ≤ 2048 → `low`\n- ≤ 4096 → `medium`\n- ≤ 8192 → `high`\n- ≤ 16384 → `xhigh`\n- 更大 → `max`",
+                "minimum": 1
               }
             }
           },
