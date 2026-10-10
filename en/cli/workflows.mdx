@@ -1,0 +1,137 @@
+---
+title: "CLI media, references, and tasks"
+description: "Model selection, approval, media generation, uploads, task recovery, and original downloads"
+---
+
+<span id="workflows" />
+## Complete one task
+
+After sign-in and skill discovery, follow: requirements → model parameters → references → free estimate → approval → one submission → original task query → original download. Commands below illustrate steps, not permission to generate.
+
+<span id="models" />
+## Step 1: choose a model and inspect inputs
+
+```bash
+evolink models search --type image --query seedream --limit 5 --json
+evolink models recommend --type image --query "coffee advertisement" --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink docs search --query "reference images" --json
+```
+
+Replace MODEL_ID with a canonical search result. Check reference_inputs, required fields, enums, ranges, and exclusive options. Being first, cheap, new, or beta does not establish suitability.
+
+Selection order, newer families, and cost rules are maintained in [models, costs, and quotas](/en/cli-mcp/models-and-billing#models). Check availability for requested models; examples are not default recommendations.
+
+<span id="files" />
+## Step 2: prepare and upload references
+
+CLI reads files on its execution machine. Check path, permissions, format, size, and model requirements before uploading:
+
+```bash
+evolink upload ./reference.png --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+```
+
+Regular local files must be 1 byte–95 MiB. Image/video/audio still have model-specific format, count, dimensions, and duration limits. Use the returned file_url in supported fields such as image_url or image_urls, not a desktop path.
+
+References generally last 72 hours. Retain upload_id and inspect the original receipt after a lost response. Report unknown if compatible file-service recovery is unavailable; do not repeat uploads just because of a timeout. Check whether a public HTTPS reference is accepted directly.
+
+<span id="images" />
+## Step 3: prepare input and estimate for free
+
+This image example first checks z-image-turbo availability. It demonstrates the flow, not a default recommendation:
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+Create input.json in the working directory:
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft morning light"}
+```
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+Read input_valid, problems, estimate.status, basis, warnings, and quote_id. Show model, output, references, count, cost range, and omissions, then wait for approval. partial, no_price, or token_billed cannot be described as guaranteed totals. See [CLI costs](/en/cli/billing).
+
+## Step 4: submit once after approval
+
+After the user approves this plan, submit the image using its quote:
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+--confirm declares approval already obtained. Generation does not accept a new model/input. Re-estimate and obtain approval when specification, pricing, or account changes, or the quote expires after about 15 minutes. Do not submit one quote as image, video, and audio.
+
+<span id="video" />
+## Video tasks
+
+Prepare video-input.json from the actual model schema. Check prompt, duration, ratio, quality, audio, and references. Image-to-video, reference video, editing, and extension may use different models and inputs.
+
+```bash
+evolink estimate --model VIDEO_MODEL_ID --input-file video-input.json --json
+```
+
+Show estimate coverage, wait for this task's approval, then:
+
+```bash
+evolink generate video --quote VIDEO_QUOTE_ID --confirm --json
+```
+
+Save task_id and query it; do not regenerate to wait. Reference duration, quality, and audio can affect cost, and published estimation does not cover every multiplier. Deliver the original video first without automatic local editing, interpolation, or captions.
+
+<span id="audio" />
+## Music, songs, and speech
+
+Choose music and speech models separately. Prepare audio-input.json according to schema, including supported lyrics/description, language, voice, instrumental mode, references, and exclusive options.
+
+```bash
+evolink estimate --model AUDIO_MODEL_ID --input-file audio-input.json --json
+```
+
+After approval for this quote:
+
+```bash
+evolink generate audio --quote AUDIO_QUOTE_ID --confirm --json
+```
+
+Do not force duration into a model that does not support it. media_seconds is a billing hint, not output-length control. Explain unknown output duration or usage and retain all audio results.
+
+<span id="tasks" />
+## Step 5: query, wait, and recover
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --status processing --page 1 --limit 20 --json
+```
+
+processing includes queueing; completed, failed, and cancelled are terminal states. Failed tasks differ from failed query commands. Time filtering applies to the current page; an empty page does not prove no submission. Timeout, Ctrl-C, and closing a window do not cancel tasks. CLI currently has no queue-cancellation command.
+
+Retain the original account and quote records after a lost submission response:
+
+```bash
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+outcome_unknown does not mean no charge. Do not delete records, change Keys/path, or create a replacement quote to resubmit; recover first. Failure does not prove a refund; report unknown when accounting evidence is absent.
+
+<span id="delivery" />
+## Step 6: download and deliver originals
+
+```bash
+evolink download TASK_ID --output ./coffee-cup.png --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+Choose single-result or all-result mode. Prepare parent directories; files are not overwritten. Originals are limited to 1 GiB each and checked for type/content. Batch resume uses its original records, not arbitrary matching filenames. Indexes start at 1; extensions must match actual formats.
+
+Original URLs generally last 24 hours. Save promptly and deliver location, original link, model, specifications, and reported actual cost. balance/usage are not a complete bill. Check originals rather than regenerating for gray thumbnails. See [CLI reference](/en/cli/reference) and [download troubleshooting](/en/cli/billing#download).

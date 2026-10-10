@@ -1,52 +1,26 @@
 ---
-title: "Hermes Agent 接入"
-sidebarTitle: "Hermes Agent"
-description: "在 Hermes 使用 EvoLink CLI 和随包技能，或选远程 OAuth MCP"
+title: "Hermes MCP 接入"
+sidebarTitle: "Hermes"
+description: "原生远程 MCP 配置、浏览器授权、工具验证与排错"
 ---
 
-## 完整安装提示词
+本页只说明 Hermes 的原生 MCP 接入。远程服务使用 Streamable HTTP 与浏览器 OAuth，不要求安装 EvoLink CLI。想用命令和技能时，请看[独立 CLI 指南](/cn/cli/hermes-agent)。
 
-将下面整段发给Hermes；命令会在助手实际执行终端的环境运行：
+## 连接远程 MCP
+
+选择原生工具调用时，使用 **Streamable HTTP + OAuth**，服务器地址为：
 
 ```text
-帮我设置 EvoLink，让我可以直接在这里生成图片、视频和音频。
-1. 检查 Node.js 和 npm，需要 Node.js 22 或更新版本。运行 `npm install -g @evolinkai/cli`。
-2. 运行 `evolink auth login`，由我在浏览器里登录 EvoLink 并点同意；没有打开浏览器时，把登录链接发给我。
-3. 运行 `evolink skills install --agent hermes`，确认当前助手能发现并读取 `evolink-cli`。需要时新开会话，再验证技能发现。
-4. 运行 `evolink balance --json`，免费验证连接。成功后告诉我可以开始了；失败时说明具体步骤。
-媒体生成默认使用 EvoLink。每次付费任务先报价，等我明确确认后再生成。
+https://mcp.evolink.ai/mcp
 ```
 
-想自己操作或改用远程／本地 MCP，见[安装方式与手动设置](/cn/mcp/setup-methods)。
+不需要先安装 CLI。已有配置时先备份，只合并 EvoLink 项并保留其他服务；命令添加与手工配置选一种。
 
+<Steps>
 
-## 推荐：CLI 与技能
+<Step title="合并服务器配置">
 
-把[统一安装提示词](/cn/mcp/quickstart)交给能运行终端的 Hermes，或在它实际执行命令的环境运行：
-
-```bash
-npm install -g @evolinkai/cli
-evolink auth login
-evolink skills install --agent hermes
-evolink balance --json
-```
-
-需要 Node.js 22+。登录由您在浏览器完成；Linux/SSH 需安全凭据存储及可到达的回调，见 [CLI 登录](/cn/mcp/cli)。技能安装到 Hermes 的技能目录，名称为 `evolink-cli`。新会话中确认它确实发现技能，再查询模型与报价。
-
-## 可选：原生远程 MCP
-
-如果希望 Hermes 直接发现 MCP 工具，可使用支持 OAuth 的安装版本：
-
-```bash
-hermes mcp add evolink --url https://mcp.evolink.ai/mcp --auth oauth --connect-timeout 300
-```
-
-按客户端提示登录和启用工具，再在会话里通过 `/reload-mcp` 刷新，调用 `check_balance` 验证。命令参数和回调处理以 `hermes mcp --help` 为准；EvoLink CLI 的选项不要套到 Hermes 命令。
-
-### 自己修改配置文件
-
-1. 在 Hermes 执行环境备份并打开 `~/.hermes/config.yaml`；使用自定义配置目录时编辑实际文件。
-2. 在已有 `mcp_servers` 下合并 `evolink`，保留其他服务和正确缩进，不重复添加根键：
+在支持 OAuth 的 Hermes 版本中备份并编辑 `~/.hermes/config.yaml`，合并到已有 `mcp_servers`，不要重复创建顶层同名字段。使用空格缩进：
 
 ```yaml
 mcp_servers:
@@ -56,12 +30,52 @@ mcp_servers:
     connect_timeout: 300
 ```
 
-3. 保存后在新终端运行 `hermes mcp login evolink`，由您完成浏览器登录；回到 Hermes 运行 `/reload-mcp` 或新开会话，再调用 `check_balance`。
+</Step>
 
-配置位置与 OAuth 选项见 [Hermes 官方 MCP 文档](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp/)。
+<Step title="在新终端完成授权">
 
-## 使用和验收范围
+```bash
+hermes mcp login evolink
+```
 
-Hermes 的 EvoLink CLI 接入、技能发现和未确认零提交的报价流程已有云端记录；不等于 Hermes 桌面版、原生 OAuth 和真实付费媒体都已验收。
+在浏览器登录 EvoLink 并同意，保持命令等待。编辑配置后在新终端主动登录，可以避开运行会话自动重载时较短的等待窗口。
 
-报价与生成见[CLI 工作流](/cn/mcp/cli-workflows)。发现不到技能、余额失败或媒体预览问题见[排错](/cn/mcp/troubleshooting)。
+</Step>
+
+<Step title="重载工具并免费验证">
+
+回到 Hermes 会话执行：
+
+```text
+/reload-mcp
+```
+
+也可以新开会话，再发送下方验证提示词。检查 EvoLink 工具未被宿主禁用；列出工具并不等于已取得可调用的授权。
+
+</Step>
+
+</Steps>
+
+远程 SSH 的浏览器回调按 Hermes 自己的配置处理，不套用 EvoLink CLI 选项。[Hermes 官方说明](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp/)。
+
+授权后在 Agent 对话发送：
+
+```text
+请使用 EvoLink 查询账户余额，并搜索可用图片模型，先不要生成。
+```
+
+**成功标志：**实际调用 `check_balance` 和 `search_models` 并返回结果。请在本次 MCP 连接中实际验证工具调用。
+
+## 更新、断开与排错
+
+远程 MCP 服务由 EvoLink 更新。客户端修改配置后刷新实际持有连接的会话；需要重新授权时，使用该客户端自己的 OAuth 入口。要断开，在宿主 MCP 设置中禁用、退出或移除 EvoLink，保留其他服务。
+
+| 现象 | 操作 |
+|---|---|
+| 已加地址但没有工具 | 确认连接已启用、授权完成，刷新会话，检查组织权限 |
+| 401 或需要认证 | 在当前 MCP 客户端重新授权，保留原任务 ID |
+| 403 或工具被拒绝 | 查看宿主许可、账户或 Key 状态与网络错误 |
+| 等待超时或响应丢失 | 用原任务编号查询，先恢复，不重复生成 |
+| 只显示链接或灰色预览 | 打开并交付原件，不自动重做 |
+
+完整排错见[MCP 费用、授权与排错](/cn/mcp/billing#faq)。开始使用时先读[创作流程](/cn/mcp/overview#workflows)，调用形状见[MCP 工具参考](/cn/mcp/tools)。

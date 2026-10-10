@@ -1,0 +1,97 @@
+---
+title: "Tasks, references, and results"
+description: "Shared task recovery, file expiry, downloading, previews, and support steps"
+---
+
+This page maintains common task and file rules. See [CLI workflows](/en/cli/workflows) and [MCP workflows](/en/mcp/overview#workflows) for execution steps.
+
+<span id="tasks" />
+## Submit once and retain the task ID
+
+Generation can return outputs directly or a task_id. Retain the ID, model, inputs, and reported status, then query the original task until completion or confirmed failure. Interpret actual returned states; a tool wait timeout is not generation failure.
+
+| Outcome | Action |
+|---|---|
+| A task_id exists | Query/wait for the original task; batch multiple IDs |
+| Still queued or running | Continue querying; stopping a wait does not cancel |
+| Completed | Save every original; report count, format, known costs, and expiry |
+| Confirmed failed | Preserve safe errors and time; check billing without assuming a refund |
+| Unknown submission without ID | Recover through the original route as described below |
+
+Released CLI and MCP currently have no usable public cancellation entry. Closing a terminal, conversation, or connection neither cancels the task nor establishes no charge.
+
+<span id="recovery" />
+## Recover timeouts and unknown outcomes
+
+<Steps>
+  <Step title="Preserve the original identity and submission record">
+    CLI retains quote_id and its recovery record; MCP retains client_request_id, original inputs, and errors. Prefer querying an existing task_id over generating again.
+  </Step>
+  <Step title="Recover through the original route">
+    Follow [CLI recovery](/en/cli/billing#tasks-and-recovery) or [MCP recovery](/en/mcp/billing#tasks-and-recovery). Keep the original identity, inputs, and request ID. Do not change accounts, Keys, or CLI/MCP routes and resubmit.
+  </Step>
+  <Step title="Establish task and billing facts">
+    Save completed outputs; inspect billing after confirmed failure. If still unknown, preserve the error/time and contact support. Unknown does not mean nothing generated or charged.
+  </Step>
+</Steps>
+
+<span id="files" />
+## Make references readable by the model
+
+1. Check accepted image/video/audio types, counts, sizes, and reference combinations.
+2. Use a file readable in the execution environment or a URL accessible to the server. Chat attachments and desktop paths are not automatically remote-readable.
+3. Confirm the upload receipt and file URL before adding it to model inputs and estimating again.
+4. Preserve the original upload_id when the outcome is unknown. Request a replacement only after confirmed failure or expiry; receipt support depends on deployment.
+
+| Route | Input location and limits | Instructions |
+|---|---|---|
+| CLI local file | Readable by the CLI; 95 MiB maximum, models may be stricter | [CLI references](/en/cli/workflows#files) |
+| Remote MCP URL/inline data | Server-readable URL; 1 MiB base64 limit | [MCP upload tools](/en/mcp/tools) |
+| Remote MCP single-use upload | prepare_upload, upload from a file-capable environment, then get_upload; 95 MiB limit | [MCP references](/en/mcp/overview#files) |
+| Local stdio | file_path on the MCP process machine; model/file-service limits apply | [Local MCP](/en/mcp/other-clients#local-mcp) |
+
+<span id="retention" />
+## Expiry and storage
+
+| Item | Current default |
+|---|---|
+| Original generated URL | Usually 24 hours; save promptly |
+| Uploaded reference | Usually 72 hours; re-upload after expiry |
+| CLI local quote | Usually 15 minutes; re-estimate/approve unsubmitted expired quotes |
+| Remote single-use upload authorization | Usually 15 minutes, one use |
+| Remote upload status URL | Usually 1 hour; retain the original upload_id |
+
+Actual returned values apply. Receipt compatibility depends on file-service deployment. Downloaded originals remain in user storage; temporary URLs, documentation, and chat attachments are not permanent storage. Re-upload expired references and reconfirm changed inputs.
+
+<span id="download" />
+## Download and preview troubleshooting
+
+1. Query the original task and confirm completion. Use its original URL; headers cannot fix expired, private, or invalid links.
+2. CLI users can use download. MCP users can open originals in a browser or save them from a file-capable environment. See [CLI downloads](/en/cli/reference) and [MCP delivery](/en/mcp/overview#delivery).
+3. Check HTTP status, Content-Type, and actual format. Error HTML/JSON is not media. Match extensions to real formats rather than renaming every image PNG.
+4. Open the original when a preview is gray or only a link appears. If it works, deliver/save it. Host previews must not trigger unapproved regeneration or editing.
+
+### Default Python requests rejected
+
+When a valid original works in a browser/curl but default Python fails, controlled code can set a product User-Agent. This image example assumes result_url is already a valid original URL:
+
+```python
+from urllib.request import Request, urlopen
+from shutil import copyfileobj
+
+request = Request(result_url, headers={"User-Agent": "EvoLinkClient/1.0"})
+with urlopen(request, timeout=60) as response:
+    if not response.headers.get_content_type().startswith("image/"):
+        raise ValueError("Expected an image response")
+    with open("result.png", "xb") as output:
+        copyfileobj(response, output)
+```
+
+The example rejects non-image responses and avoids overwrites. Change the extension when the actual format is not PNG. Video/audio need matching MIME checks, filenames, and separate verification. This approach was verified only for particular metadata/image cases, not every client, file, or network. CLI downloads already set a product UA.
+
+<span id="support" />
+## Information for support
+
+Provide OS, agent/version, CLI/MCP version, route, failed stage, time, error code, expected/actual behavior, existing task_id, quote_id/client_request_id, upload_id, and redacted diagnostics. Mention SSH, containers, or proxies.
+
+Hide OAuth tokens, Keys, full authorization links, single-use upload URLs, signed private URLs, and private files. Do not share credential files or full environment dumps. Start with [CLI troubleshooting](/en/cli/billing#faq) or [MCP troubleshooting](/en/mcp/billing#faq) to locate the stage.

@@ -1,0 +1,174 @@
+---
+title: "CLI command and API reference"
+description: "Complete commands, options, JSON output, recovery, and REST execution path"
+---
+
+<span id="cli-reference" />
+## CLI command reference
+
+For released @evolinkai/cli **0.8.1**. Use evolink --help or evolink COMMAND --help --json for your installed version. Business commands support --json. Replace MODEL_ID, QUOTE_ID, TASK_ID and UPLOAD_ID with actual returned values.
+
+### Authentication, diagnostics and skills
+
+See [installation](/en/cli/setup#cli-install).
+
+| Command | Behavior |
+|---|---|
+| evolink --version | Version |
+| evolink setup --agent codex --json | Prerequisites, login, skill sync and free connection verification |
+| evolink auth login [--no-browser] [--timeout SECONDS] | OAuth, 30–900 seconds, default 180 |
+| evolink auth status --json | Local login state, not network verification |
+| evolink auth logout | Revoke the current CLI session and sign out |
+| evolink doctor --agent codex --json | Environment, storage, account, models and skills |
+| evolink skills install [--agent NAME] [--replace-modified] | Install/sync; preserve edits by default |
+| evolink skills status [--agent NAME] --json | Missing, current, outdated, modified or conflicting skills |
+
+Agent values: all/codex/claude-code/cursor/gemini/opencode/copilot/openclaw/hermes; default all. The assistant must still verify skill discovery.
+
+### Models, inputs and documentation
+
+```bash
+evolink models search --type image --query seedream --limit 5 --page 1 --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink models recommend --type video --query seedance --references image --limit 3 --json
+evolink docs search --type video --query "first frame" --limit 5 --json
+```
+
+| Command | Options and output |
+|---|---|
+| models search | type image/video/audio/all, default all; limit 1–50, default 20; page 1–100000; query up to 100 characters |
+| models show MODEL_ID | Canonical ID, aliases, parameters, prices, references, documentation provenance and schema |
+| models schema MODEL_ID | Versioned input/submission schema; explicitly fails when unavailable |
+| models recommend | Required type image/video/audio; references comma-separated image/video/audio; limit 1–10 |
+| docs search | Required query up to 100 characters; type as search; limit 1–20, default 5 |
+
+Docs search uses the bundled official model-reference index, not a live website crawl. Recommendation is based on documented inputs, keywords and editorial platform preferences, not a popularity leaderboard. Unit prices are not task quotes.
+
+### Quotes and generation
+
+Create input.json using the model's real parameters, then obtain a free quote:
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+| Option | Meaning |
+|---|---|
+| --model | Required canonical ID or supported alias |
+| --input-file FILE / --input JSON | JSON object, choose one; omission starts with an empty object |
+| --prompt TEXT | Prompt shortcut; cannot conflict with JSON prompt |
+| --max-cost-usd NUMBER | Positive submission estimate cap, at most USD10000 |
+| --media-seconds NUMBER | Positive pricing hint up to 3600 seconds, not a model input |
+
+A successful quote returns quote_id, lasts about **15 minutes**, and binds login, backend, model and exact inputs. Failed/cap-refused estimates are not usable quotes. Show specifications, range and warnings, wait for explicit approval, then select the matching command:
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
+evolink generate video --quote QUOTE_ID --confirm --json
+evolink generate audio --quote QUOTE_ID --confirm --json
+```
+
+These are separate examples; one quote covers one type/task. Generation accepts no replacement model/input. Requote and approve changes. --confirm declares approval was obtained; it cannot ask the user by itself.
+
+--wait waits for the existing task. Timeout 1–86400 seconds, default 1800. Timeout/Ctrl-C does not cancel the server task. Complete estimates default to their quoted maximum for submission checks. See [budget limitations](/en/cli/billing).
+
+### Tasks, batches and recovery
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --type video --status processing --since 2h --limit 20 --page 1 --json
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+| List option | Contract |
+|---|---|
+| --status | processing/completed/failed/cancelled; processing includes queued; omit for all |
+| --type | image/video/audio; omit for all media |
+| --model | Exact canonical model ID |
+| --since / --until | Creation time: ISO8601, Unix seconds, 30m/2h/1d; until inclusive |
+| --page / --limit | Page 1–100000; size 1–50, default 20 |
+
+Time filtering affects only the selected page. History covers the account, not just this chat. An empty page cannot prove submission was absent; total precedes local time filtering. Batch IDs are 1–50 comma-separated values.
+
+With a task ID, use get/wait. For a lost submit response, resume the original quote with its request ID and login. If records are lost, expired or the account changed, inspect history/console before another paid intent. CLI has no cancellation command.
+
+### Balance and task usage
+
+```bash
+evolink balance --json
+evolink usage --since 7d --until 1h --type video --max-pages 5 --json
+```
+
+Balance returns account balance and applicable limits. Usage accepts model/type/creation time; default since 30d, max-pages 1–20, default 5, 50 tasks per page. Inspect missing costs, coverage and truncation.
+
+Usage is reported completed-task cost from bounded account-wide retained history, not a bill, refund ledger, CLI/MCP-only usage or final budget.
+
+### Uploads and original downloads
+
+```bash
+evolink upload ./reference.mp4 --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+evolink download TASK_ID --output ./result.mp4 --index 1 --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+CLI accepts regular files from **1 byte to 95 MiB**, saving an upload ID first. uploads get only reads the original receipt. Without compatible backend support, it can report unknown without resending. References typically remain for 72 hours.
+
+Download index is 1-based, default 1, range 1–50. Parent directories must exist; files are not overwritten. Each result is at most 1 GiB. Type/content checks reject HTML error pages masquerading as media.
+
+Batch mode --all --output-dir DIR supports --template NAME and --resume. Resume uses original batch records and does not trust arbitrary same-name files. More in [task delivery](/en/cli/workflows#tasks).
+
+### JSON, exit codes and configuration
+
+--json writes one stdout JSON line with schema_version:1 and ok. Progress goes to stderr. Errors use ok:false/error and nonzero exit; Ctrl-C usually exits130. A task status:failed differs from a query invocation failure. Check command ok, then task state.
+
+Local records remain in ~/.evolink-media; credentials use OS secure storage. Do not copy this directory to migrate login or delete quote/recovery records to fix an uncertain submission.
+
+Advanced --server selects the OAuth resource/identity binding, default https://mcp.evolink.ai/mcp, without changing REST execution. Keep --api-url/--files-url production defaults; arbitrary external URLs are refused. --token-stdin is a one-command OAuth access token, not a platform API key, and is not for setup. Do not put tokens in command arguments or logs.
+
+No generic run, text chat, cancellation, top-up, key management or custom alias-file command is provided. Use the corresponding console/API.
+
+<span id="api" />
+## CLI execution path and APIs
+
+Since CLI 0.8.0, media requests use **terminal or agent → EvoLink CLI → platform REST API**. Input checks, model references, estimation, and result formatting run locally; business execution does not call remote MCP tools/call.
+
+| Service | Address and role |
+|---|---|
+| Platform API | https://api.evolink.ai: models, media, tasks, and balance |
+| Passport | https://passport.evolink.ai: browser authorization and refresh |
+| Files | https://files-api.evolink.ai: uploads and compatible receipts |
+| OAuth resource | https://mcp.evolink.ai/mcp: identity binding, not the media execution path |
+| Generated originals | HTTPS URLs returned by tasks: direct download without platform tokens |
+
+### Commands and backend operations
+
+| CLI capability | Backend operation or implementation |
+|---|---|
+| models search | `GET /v1/models`, combined with aliases, references, and availability |
+| models show/schema, models recommend, docs search | Published bundled references, shared rules, and current account catalog |
+| estimate | `GET /web/api/models/pricing` and client estimation rules |
+| generate image | `POST /v1/images/generations` |
+| generate video | `POST /v1/videos/generations` |
+| generate audio | `POST /v1/audios/generations` |
+| tasks get/wait | `GET /v1/tasks/{task_id}` |
+| tasks batch | `POST /v1/tasks/batch` |
+| tasks list, usage | `GET /v1/tasks`, pagination, and bounded aggregation |
+| balance | `GET /v1/credits` |
+| upload | `POST /v1/files/upload-token`, followed by direct file-service upload |
+| uploads get | Compatible file service `GET /api/v1/files/upload-receipts/{upload_id}` |
+| download | Direct task result download, format checks, and result records |
+
+CLI quote_id, --confirm, and recovery files implement a client workflow, not new backend fields. Published CLI 0.8.1 still uses public-default estimation; the existence of new pricing APIs does not mean this version consumes account-specific media quotes. --max-cost-usd is not a final settlement cap.
+
+### Requests, recovery, and automation
+
+Persist the quote and request identifier before submitting. REST uses existing Idempotency-Key / X-Evo-Run-Id identifiers. Recover with the original quote after a lost response; do not change identity, inputs, or identifiers to resubmit. Client records alone do not prove uniform backend idempotency across production nodes.
+
+Scripts should inspect ok, then task status, then results and cost fields. Store quote_id, task_id, and download manifests instead of relying on the last terminal line. Query errors, failed tasks, and failed downloads require different handling. Do not unconditionally retry paid submissions.
+
+CLI and native MCP sessions are managed separately, but account OAuth currently shares the permissions, limits, and pause state of `EvoLink MCP (OAuth)`. Use the [separate MCP documentation](/en/mcp/overview) for native connections.

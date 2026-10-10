@@ -1,60 +1,160 @@
 ---
-title: "费用、报价与上限"
-sidebarTitle: "费用与上限"
-description: "计费方式、完整与部分估价、Token 与未知时长、max_cost_usd 的实际保护范围及账户额度"
+title: "MCP 授权、确认与排错"
+description: "费用边界、账户权限、保留期和完整分步排错"
 ---
 
-## 费用和额度
+<span id="pricing" />
 
-MCP 与 CLI 不另收接入费。生成按平台模型价格计费，余额与 API、网页共用。模型查询、报价、余额、任务查询和上传免费。积分换算约为 **68 credits = 1 美元**；实际扣费以完成任务和控制台记录为准。
+## MCP 费用与确认
 
-浏览器授权后，控制台 [API Keys](https://evolink.ai/dashboard/keys) 中会出现 `EvoLink MCP (OAuth)`。它是同一账户通过 OAuth 连接的智能体共用的内部 Key，不能复制作为个人 API Key。CLI 同样使用 OAuth 服务访问，退出一个客户端不等于停用整把 Key。
+本页按已发布 MCP 1.6.1 说明。用 `estimate_cost` 查询预计费用，再由 Agent 向用户展示模型、最终输入、输出数量与预计费用。用户明确批准本次生成之后，才调用对应生成工具。
 
-可以在控制台为它设总额度、当日额度、有效期或停用。花费和任务照常在控制台显示。账户余额、内部 Key 额度、任务估价预算是不同的限制；不要把一个数值当作全部预算。
+报价状态、公开默认价限制、费用批准和预算边界统一见[模型、费用与额度](/cn/cli-mcp/models-and-billing#pricing)。已发布版 max_cost_usd 仍只比较提交前估价，不能保证最终扣费不超额。
 
-## 报价和花费上限
+estimate_cost 不接受 max_cost_usd；该参数用于生成工具。
 
-| 返回情况 | 可以怎么理解 |
+原生 MCP 没有 CLI 的本地 `quote_id` 与 `--confirm` 命令，也没有会话级服务端批准按钮。Agent 需要保存本次模型、参数、估价和批准记录；变更输入或价格后重新确认。宿主工具权限、账户授权和费用批准互不代替。
+
+模型、余额与任务查询不提交生成；生成会计费。上传另有文件服务限额。失败、超时或关闭聊天不能证明没有扣费或已经退款，查询账户用量也不能代替完整结算凭证。
+
+账户共用权限和额度规则见[共用说明](/cn/cli-mcp/models-and-billing#authorization)，本页保留当前入口的登录与退出操作。
+
+<span id="authorization" />
+
+## 授权、权限与额度
+
+远程 MCP 使用 Passport 浏览器 OAuth，宿主保存连接凭据，服务端使用现有 OAuth 关联 Key。远程 MCP 与 CLI 可以共用账户、Key 额度和权限；暂停共享 Key 会影响所有使用它的入口。宿主的单会话退出与账户 Key 的暂停是不同操作。
+
+本地 stdio 使用配置给 MCP 进程的个人 API Key，按该 Key 的模型权限及额度执行。不要把个人 Key 粘贴到聊天，也不要通过 CLI 登录判断原生 MCP 是否已经授权。
+
+退出远程连接请在宿主的 MCP／连接器设置中断开或登出；需要撤销账户授权时使用账户授权管理。单纯关闭窗口不保证撤销授权。余额、日额度、总额度或模型权限不足时需要按账户设置处理。
+
+<span id="retention" />
+
+## 保存与有效期
+
+报价、素材、一次性上传授权和原件链接的默认有效期集中在[任务、素材与结果](/cn/cli-mcp/tasks-and-files#retention)。具体以实际返回值为准；上传回执兼容取决于文件服务部署。
+
+<span id="faq" />
+
+## MCP 排错：先确认连接方式
+
+远程地址使用 `https://mcp.evolink.ai/mcp`，传输类型为 Streamable HTTP，使用宿主 OAuth 登录。本地 stdio 使用宿主配置的 `@evolinkai/mcp` 进程与平台 Key。它们的凭据和工具发现分别检查。
+
+| 现象 | 处理位置 |
 |---|---|
-| `estimated` | 根据已发布价格和当前输入计算的估价范围 |
-| `partial` | 已知有费用未覆盖，不能看作总价或上限 |
-| `token_billed` | 只知道 Token 单价，运行前不知道总用量 |
-| `needs_input` | 还缺估价所需输入或时长提示 |
-| `no_price` | 没有足够定价信息，不能编造总费用 |
+| 浏览器授权失败或反复登录 | [登录](#login) |
+| 技能存在，但没有实际工具 | [技能与权限](#skills-discovery) |
+| 找不到 MCP、只返回文字、工具被拒 | [连接与工具发现](#mcp-connection) |
+| 模型不存在、参数无效、报价不完整 | [模型与报价](#models-and-pricing) |
+| 生成超时、任务结果不确定 | [任务与恢复](#tasks-and-recovery) |
+| 附件不能读、上传失败 | [上传](#uploads) |
+| 原文件 403、灰色预览或只有链接 | [下载](#download) |
+| 问题仍存在 | [提交问题信息](#support) |
 
-智能体先展示真实估价和警告，结束回复，等待您明确批准。CLI 报价保存 15 分钟，生成前重新检查价格和输入；变化后要重新报价确认。
+先在宿主检查本次服务连接是否启用、是否已授权、工具是否可见，再实际调用 `check_balance`。远程服务共有 15 个工具，本地 stdio 13 个。CLI 能正常运行不证明原生 MCP 已连接，MCP 排错无需安装 CLI。
 
-<Warning>
-原生 MCP 的 `max_cost_usd` 与 CLI 的 `--max-cost-usd` 都是**提交前基于估价的检查**，不是网关最终结算的硬上限。发布价中的部分分辨率、声音及参考视频信息仍在补齐，即便返回 `estimated`，也不保证最终扣费绝不会超过估价。要求不可超支的任务应先选择计费足够明确的方案，并配合账户/Key 额度；不要把它们宣传为逐任务结算保证。
-</Warning>
+<span id="login" />
 
-### 参考视频、声音和分辨率
+### 浏览器登录与授权
 
-时长、输出画质、声音和参考输入可能影响费用。按秒视频请求带 `video_urls`、`video_url` 或 `source_task_id` 时，MCP 会把总价标为部分估价；有 `max_cost_usd` 时拒绝提交。填 `media_seconds` 不能补全参考视频费用。
+<Steps>
+  <Step title="在宿主中启动授权">
+    从当前 MCP／连接器入口点击登录或授权。具体命令或菜单见对应客户端指南。不要在另一个 CLI 登录后直接认为当前连接已授权。
+  </Step>
+  <Step title="在浏览器完成账户确认">
+    登录正确的 EvoLink 账户，核对授权范围并同意。让宿主的授权流程保持等待；不要把完整授权链接或回调参数发给别人。失败后从原宿主重新启动授权。
+  </Step>
+  <Step title="返回宿主并验证">
+    刷新当前连接的工具列表，检查 `check_balance`、`search_models` 等工具，再实际调用余额查询。401 时重新授权；403 时同时核对账户权限、Key 状态和宿主工具权限。
+  </Step>
+</Steps>
 
-### 无法指定输出时长的音频
+本地 stdio 不使用这段浏览器登录：检查进程收到的平台 Key、启动环境与 stderr。远程 OAuth 和个人 Key 不能混用。详见[其他客户端](/cn/mcp/other-clients)。
 
-不能给不支持时长参数的模型塞 `input.duration`。`media_seconds` 只用于估价提示；输出时长未知时，它是“按假设长度举例”，不是总价。MCP 不会据此承诺花费上限。
+<span id="skills-discovery" />
 
-### Token 计费
+### 技能已经安装，但工具仍不可用
 
-展示文本/图片等输入输出单价和总费用未知，得到明确同意后才提交。不能根据模型起价或另一任务的扣费承诺本次金额。
+1. 确认使用 `evolink-mcp` 工具说明，原生 MCP 不能执行 CLI 技能中的终端命令。
+2. 在宿主中检查实际服务配置与工具列表。读到技能不等于注册了服务；插件安装也不自动完成 OAuth。
+3. 重新加载会话或插件后检查宿主是否允许对应工具。只返回使用建议而没有工具调用记录时，不把它算作连接成功。
+4. 工具能列出但调用失败时查看本次工具错误和原服务连接，不通过付费生成验证。
 
-### 预算被拒绝时
+<span id="mcp-connection" />
+### MCP 连接与权限：没有工具、连接失败、401/403
 
-不要自行去掉预算、更换 Key 或绕过调用路径。智能体应解释原因，让您选择降低规格、换模型、增加预算，或明确接受无法事前算出完整金额的任务。已有批准的预算应保留，除非您明确修改。
+1. 核对连接类型：远程 URL 为 `https://mcp.evolink.ai/mcp`，传输为 Streamable HTTP，认证 OAuth；本地 stdio 使用启动命令与个人 Key。`llms.txt`、文档页、平台 API 地址都不是 MCP 服务器。
+2. 在客户端确认 EvoLink 已启用，完成它自己的浏览器授权，按宿主方式刷新或新开会话。手工修改配置时先备份，只合并 EvoLink；检查 JSON 逗号、引号，YAML 空格和配置范围，不覆盖其他服务。
+3. 实际调用 `check_balance` 与 `search_models`。有工具列表但调用失败时继续查看授权和权限；有余额但没生成工具时查看工具开关与工作区策略。
 
-## 常见提示
-
-| 提示 | 含义与处理 |
+| 现象 | 处理方式 |
 |---|---|
-| MCP spending limit reached | MCP 总额度不足，在控制台查看或调整 |
-| MCP daily limit reached | 当日额度不足，按控制台重置时间或调整额度 |
-| account balance is too low | 账户余额不足，需要充值 |
-| MCP is paused for this account | 内部 Key 被停用，确认后在控制台恢复 |
-| MCP key has expired | 检查内部 Key 有效期 |
-| connection was disconnected | 当前登录连接已断开或过期，重新登录 |
-| temporarily turned off MCP access | 服务暂时暂停，稍后再试 |
-| max_cost_usd cannot be checked | 估价不完整或未知，保留预算并讨论替代方案 |
+| 同名服务已存在 | 查看已有连接，保留一种配置来源；插件与手工配置不要重复注册 |
+| 401 / 授权过期 | 通过出错的宿主重新授权，并保留原任务 ID |
+| 403 / 工具被拒绝 | 区分宿主权限、账户/Key限制和网络拒绝；记录发生步骤，不认定改 UA 能修所有 403 |
+| 本地服务不能启动 | 检查 Node 18+、npx 路径、宿主实际环境和启动错误；重载后再验证 |
+| 本地 Key 无效或无权限 | 在控制台检查专用 Key 的状态和范围，更新宿主安全设置，不在聊天里贴 Key |
+| 修改后没生效 | 刷新实际拥有连接的进程；远端 Gateway 不会随本机终端自动刷新 |
 
-这些提交前拒绝不产生生成费用。网络超时或“状态未知”则不能据此断定未扣费；先按[任务恢复](/cn/mcp/tasks)查已有任务。重复生成、变体和再次编辑都是新的付费任务。
+对应安装页：[ChatGPT](/cn/mcp/chatgpt)、[Claude](/cn/mcp/claude)、[Claude Code](/cn/mcp/claude-code)、[Codex](/cn/mcp/codex)、[Cursor](/cn/mcp/cursor)、[OpenClaw](/cn/mcp/openclaw)、[Hermes](/cn/mcp/hermes-agent)、[其他客户端](/cn/mcp/other-clients)。
+
+<span id="models-and-pricing" />
+### 模型与价格：搜索为空、参数报错、报价不完整
+
+1. 使用实时模型搜索，采用返回的规范 ID；别名、展示名称和模型系列不一定是可提交 ID。搜索为空时放宽关键词，但保留素材类型等必要条件。
+2. 用 MCP 的 `get_model` 查本型号参数。检查必填字段、拼写、枚举、数值范围和参考互斥，不复制其他型号的 `duration`、`size` 或 `quality`。
+3. 重新估价，查看 `input_valid`、`problems`、`estimate.status`、`basis`、`warnings`。修改输入、价格或账户后重新报价并确认。
+
+`needs_input` 需要补齐参数，`no_price` 不是有效报价，`partial` 不是总价；未知输出时长或参考倍率不能靠目录起价补齐。保留原预算，不自动删除上限、更换 Key 或降低规格来绕过。
+
+已发布客户端的公开默认估价不是账户专属权威 Quote，`max_cost_usd` 也不是最终结算硬上限。具体边界见[费用说明](/cn/mcp/billing)。完整命令与工具参数见[平台参考](/cn/mcp/tools)。
+
+<span id="tasks-and-recovery" />
+
+### 超时、任务仍运行或结果未知
+
+<Steps>
+  <Step title="保留并查询原任务">
+    已有 `task_id` 时调用 `get_task`，需要等待时设 `wait_seconds`（0–45 秒）。多个 ID 使用 `list_tasks`。等待超时结束本次等待，不取消任务。
+  </Step>
+  <Step title="未知提交使用原请求恢复">
+    没拿到任务编号时保留原 `client_request_id`、输入、身份与错误。用原工具和原编号恢复，不新建编号或换账户再次生成。`list_tasks` 只能按公开参数查询，不接收任意自造过滤字段。
+  </Step>
+  <Step title="确认失败与账务结果">
+    记录真实错误和时间，查询原任务与账户用量。任务失败不证明未扣费或已退款，提交未知也不等于失败。当前没有可用的公开取消排队工具；断开 MCP 和关闭页面不能取消任务。
+  </Step>
+</Steps>
+
+输入或价格变化后重新确认适用于尚未提交的任务；已经提交或未知结果时先恢复。参数与示例见[任务工具参考](/cn/mcp/tools#任务进度和结果)。
+
+<span id="uploads" />
+
+### 附件无法读取、上传失败或结果未知
+
+1. 确认当前宿主能读取用户提供的文件。远程 MCP 本身不能直接读取用户电脑路径，聊天附件也不自动转成模型 URL。
+2. 已有公开 URL 使用 `upload_file.file_url`；远程 base64 上限为 1 MiB。大文件使用 `prepare_upload`，由能读取文件的环境上传，再调用 `get_upload`。一次性上传上限 95 MiB、授权约 15 分钟、状态约 1 小时。
+3. 本地 stdio 可以使用 `upload_file.file_path`，路径位于 MCP 进程机器。检查路径、权限、格式和文件服务／模型限制；不要把桌面路径当成云端可读路径。
+4. 保留原 `upload_id` 查询。未知结果不证明没上传，回执兼容依赖文件服务部署；确认失败或授权过期后再申请新上传。参考文件通常保留 72 小时，过期重新上传。
+
+工具参数见[上传工具](/cn/mcp/tools)，完整步骤见[素材流程](/cn/mcp/overview#files)。宿主没有文件能力时使用可访问 URL，不通过重复生成排查上传问题。
+
+<span id="download" />
+
+### 下载与预览
+
+先查原任务、确认完成并使用原件链接。在浏览器打开原件，或由具备文件能力的环境保存；见[MCP 交付](/cn/mcp/overview#delivery)。
+
+HTTP／格式检查、Python 产品 User-Agent 示例、过期链接与灰色缩略图处理统一见[下载排错](/cn/cli-mcp/tasks-and-files#download)。结果未知先恢复原任务，不为预览重新生成或剪辑。
+
+<span id="support" />
+
+### 仍未解决时提供什么
+
+按[问题信息清单](/cn/cli-mcp/tasks-and-files#support)提供版本、失败步骤、编号和脱敏错误。保留本入口的诊断记录；不要分享 Key、token、私人链接或完整环境变量。
+
+<span id="cli-install" />
+
+### 需要 CLI 的安装排错吗
+
+CLI 安装、命令、安全存储、SSH 回调和技能加载已经移到[CLI 排错](/cn/cli/billing#cli-install)与[CLI 安装指南](/cn/cli/setup)。这个入口保留旧链接兼容；原生 MCP 接入按本页和对应客户端指南操作。

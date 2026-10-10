@@ -1,133 +1,283 @@
 ---
-title: "MCP tool reference"
-sidebarTitle: "12 tools"
-description: "Remote EvoLink MCP arguments, examples, charges and result behavior"
+title: "MCP tool and API reference"
+description: "Parameters, examples, results, protocol, and backend mapping for 15 tools"
 ---
 
-These 12 tools are exposed by the remote browser-OAuth connection. Local stdio MCP may expose a different list or upload behavior; use the actual connected list. JSON examples show tool names and arguments for an MCP client, not platform REST request bodies. Examples do not approve paid execution.
+<span id="mcp-tools" />
+## MCP tool reference
 
-| Group | Tools | Cost |
+This page describes the 15 tools in the **1.6.1** OAuth remote MCP release. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+
+The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
+
+| Tool | Purpose | Generation charge |
 |---|---|---|
-| Models | `search_models`, `get_model` | Free |
-| Quotes | `estimate_cost` | Free |
-| Generation | `generate_image`, `generate_video`, `generate_audio` | Model pricing |
-| Tasks | `get_task`, `list_tasks` | Free |
-| Account | `check_balance` | Free |
-| Uploads | `upload_file`, `prepare_upload`, `get_upload` | Free |
+| search_models | Search available models and aliases | None |
+| recommend_models | Compare models matching the request and reference types | None |
+| search_docs | Search the versioned official model-reference index | None |
+| get_model | Inspect parameters, schema, references, and pricing | None |
+| estimate_cost | Validate inputs and estimate cost | None |
+| generate_image | Generate or edit images | Paid |
+| generate_video | Generate, edit, or extend video | Paid |
+| generate_audio | Generate music, songs, or speech | Paid |
+| get_task | Inspect a task, results, and reported cost | None |
+| list_tasks | Query IDs or paginated account history | None |
+| get_task_usage | Summarize reported costs within a bounded scan | None |
+| check_balance | Inspect account balance and shared limits | None |
+| upload_file | Upload a URL or base64 reference | No generation charge; file quotas apply |
+| prepare_upload | Prepare a one-use upload for a local file | No generation charge; file quotas apply |
+| get_upload | Recover an existing upload's status and URL | None |
 
-## search_models
+### search_models
 
-`type`: `image`, `video`, `audio`, `all` (default). Optional `query`: at most 100 characters. `limit`: 1–50, default 20. Returns canonical IDs, aliases, types, starting prices, documentation status and applicable recommendation fields.
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| type | string | No | image/video/audio/all; default all |
+| query | string | No | Search keywords, up to 100 characters |
+| limit | integer | No | 1–50; default 20 |
+| page | integer | No | 1–100000; default 1 |
 
 ```json
-{"name":"search_models","arguments":{"type":"video","query":"seedance","limit":5}}
+{"name":"search_models","arguments":{"type":"image","query":"seedream","limit":5,"page":1}}
 ```
 
-Starting prices are not task totals. See [models and parameters](/en/mcp/models).
+Returns models, total_matches, page, page_size, and next_page. Entries include canonical IDs, aliases, references, documentation coverage, and starting prices. Ordering considers keyword relevance first, then price availability, editorial preference, and ID. It is not a quality or popularity ranking. Starting prices are not task totals, and availability can change between pages.
 
-## get_model
+### recommend_models
 
-Required `model`: 1–128 characters. Returns input requirements, parameters, ranges, examples and published pricing, with notices for missing information.
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| type | string | Yes | image/video/audio |
+| query | string | No | Up to 100 characters; all search terms must match |
+| references | string[] | No | image/video/audio; at most 3 entries; default empty |
+| limit | integer | No | 1–10; default 3 |
+
+```json
+{"name":"recommend_models","arguments":{"type":"video","query":"seedance","references":["image"],"limit":3}}
+```
+
+Returns documented candidates with reasons, reference_inputs, selection_basis, and unit pricing. Required reference types must have documented input fields. If no model matches, adjust the request transparently rather than dropping a necessary reference. Editorial preferences are not live popularity or release-date statistics.
+
+### search_docs
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| query | string | Yes | 1–100 characters after trimming |
+| type | string | No | image/video/audio/all; default all |
+| limit | integer | No | 1–20; default 5 |
+
+```json
+{"name":"search_docs","arguments":{"query":"first frame","type":"video","limit":5}}
+```
+
+Returns documents, total_matches, scope, and source version. It searches bundled official model titles, IDs, and parameter descriptions for available models. It does not crawl the live documentation site or search account and billing documentation.
+
+### get_model
+
+Required `model`: a string of 1–128 characters, using a returned canonical ID or supported alias.
 
 ```json
 {"name":"get_model","arguments":{"model":"z-image-turbo"}}
 ```
 
-## estimate_cost
+Returns the canonical model, requirements, examples, public pricing, reference_inputs, parameters_source, and, when available, input_schema with its source. Parameter references are versioned; account availability is queried live. Follow missing-information warnings rather than inventing defaults.
 
-Required `model`, optional planned `input` object, optional `media_seconds` greater than 0 and at most 3600. The hint is separate from `input` and is not sent to the model.
+### estimate_cost
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| model | string | Yes | 1–128 characters |
+| input | object | No | Planned model parameters; defaults to an empty object |
+| media_seconds | number | No | Greater than 0 and at most 3600; estimation hint only |
 
 ```json
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-Inspect input validity, estimate status, warnings and balance/limit coverage. Responses can indicate estimated, partial, token-billed, missing-input or unavailable pricing. Incomplete quotes are not guaranteed totals. This tool does not accept `max_cost_usd`; native MCP puts the cap on generation, while CLI accepts it on `estimate --max-cost-usd`. See [billing and caps](/en/mcp/billing).
+Returns input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced, and balance/limits when available. The estimate status can be estimated, partial, token_billed, needs_input, or no_price; see [billing](/en/mcp/billing). A successful query does not prove valid input or a complete quote.
 
-## generate_image, generate_video, generate_audio
+This tool has no `max_cost_usd` argument and does not produce the CLI's local quote_id. MCP budget checks belong to generation tools. media_seconds does not set output duration or fill unknown reference-video multipliers.
 
-These tools submit paid tasks for their respective media types and share these top-level arguments:
+### generate_image, generate_video, generate_audio
 
-| Argument | Meaning |
-|---|---|
-| `model` | Required model ID of the matching media type, 1–128 characters |
-| `input` | Documented model parameters; do not put `model` or `callback_url` inside |
-| `prompt` | Optional shortcut for `input.prompt`, subject to model limits; avoid conflicting duplicates |
-| `client_request_id` | Optional idempotency ID: 16–96 letters, digits, `.`, `_`, `-`; reuse only for the same request |
-| `max_cost_usd` | Optional pre-submission estimate cap, greater than 0 and at most $10000; not a settlement cap |
-| `media_seconds` | Same estimate hint; cannot turn unknown/partial costs into a guaranteed budget |
+Choose the tool matching the output type. They share these top-level arguments:
 
-Inspect input, quote and obtain approval first. Example image arguments:
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| model | string | Yes | 1–128 characters; must match the media type |
+| input | object | No | Parameters from get_model; do not include model or callback_url |
+| prompt | string | No | Shortcut for input.prompt; up to 20000 characters, subject to model limits |
+| client_request_id | string | No | 16–96 characters: letters, digits, . _ -; reuse when recovering the same request |
+| max_cost_usd | number | No | Greater than 0 and at most 10000; submission-time estimate check |
+| media_seconds | number | No | Greater than 0 and at most 3600; estimation hint only |
+
+Inspect the model and inputs, estimate the complete request, disclose limitations, and obtain explicit cost approval before calling. This is an illustrative call shape:
 
 ```json
-{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"image-coffee-demo-001"}}
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
 ```
 
-Retain the returned `task_id` and query progress with task tools. See [images](/en/mcp/images), [video](/en/mcp/video) and [audio](/en/mcp/audio).
+Image generation waits for up to approximately 40 seconds, returning results if ready or a task_id otherwise. Video and audio return a task_id after submission; continue with get_task. Submission can report a precharge, which must be distinguished from completed-task cost.
 
-## get_task
+Query a running task rather than calling generation again to check progress. If the response is lost, retain the original ID, account, inputs, and request identifier. A different identifier creates a new paid intent. Client recovery protections do not prove identical backend idempotency guarantees across all production nodes.
 
-Required `task_id`. Integer `wait_seconds`: 0–45, default 30; 0 checks immediately. Returns status, progress, result links, charges or errors.
+### get_task
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| task_id | string | Yes | Original supported task ID; 4–128 characters |
+| wait_seconds | integer | No | 0–45; default 30; 0 queries immediately |
 
 ```json
 {"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
 ```
 
-Results usually expire after 24 hours. Query the same task; never regenerate to refresh progress.
+Returns status, progress, results, reported cost, or error. Continue querying the same ID while it runs. Task failure does not prove a refund; report unknown settlement when evidence is absent. Original results are generally retained for 24 hours. Preview rendering depends on the host client.
 
-## list_tasks
+### list_tasks
 
-Use `task_ids` (1–50 known IDs) for batch lookup, or omit IDs to filter recent tasks by `type`, `status`, `since` and `limit`. `status`: `processing`, `completed`, `failed`, `cancelled`; processing includes queued tasks. `since`: ISO 8601 or relative `30m`, `2h`, `1d`. `limit`: 1–50, default 20.
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| task_ids | string[] | No | 1–50 IDs; batch mode |
+| status | string | No | processing/completed/failed/cancelled |
+| type | string | No | image/video/audio |
+| model | string | No | Exact model ID; 1–128 characters |
+| page | integer | No | 1–100000; default 1 |
+| since / until | string | No | ISO 8601, Unix seconds, or 30m/2h/1d; up to 40 characters |
+| limit | integer | No | 1–50; default 20 |
 
 ```json
-{"name":"list_tasks","arguments":{"type":"image","since":"2h","limit":10}}
+{"name":"list_tasks","arguments":{"type":"video","since":"2h","page":1,"limit":20}}
 ```
 
-ID mode ignores other filters. Recent tasks cover the whole account, not just your chat. `since` filters the fetched page instead of scanning all history.
+```json
+{"name":"list_tasks","arguments":{"task_ids":["TASK_ID_ONE","TASK_ID_TWO"]}}
+```
 
-## check_balance
+task_ids cannot be combined with status/type/model/page/since/until. Batch mode returns tasks and missing; history returns total/page/page_size/next_page. processing includes queued tasks. Time filters apply to the selected page; total is counted before time filtering. History is account-wide, not limited to this conversation. An empty page does not prove that submission never happened.
 
-No arguments. Returns balance, spending scope and limits. OAuth MCP spending covers connected agents across the account, not one chat.
+### get_task_usage
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| since | string | No | Default 30d; lower creation-time bound |
+| until | string | No | Default current time; inclusive boundary |
+| model | string | No | Exact ID; 1–128 characters |
+| type | string | No | image/video/audio |
+| max_pages | integer | No | 1–20; default 5; 50 tasks per page |
+
+```json
+{"name":"get_task_usage","arguments":{"since":"7d","type":"video","max_pages":5}}
+```
+
+Returns totals, by_model, by_status, coverage, and as_of. Inspect missing_cost_tasks, truncated, concurrent_change_detected, and complete_for_retained_tasks. It summarizes reported costs for retained completed account tasks. It is not a complete invoice, payment/refund ledger, MCP-only usage report, or settlement limit.
+
+### check_balance
+
+No arguments:
 
 ```json
 {"name":"check_balance","arguments":{}}
 ```
 
-## upload_file
+Returns account_balance_credits/usd, spent_scope, spent_credits, and available total/daily limits with console links. OAuth Key spending includes the account's CLI and all OAuth MCP sessions, rather than only this conversation.
 
-Choose exactly one of `file_url` and `base64_data`. `file_url` must be public HTTPS. Remote OAuth base64 files are limited to 1 MB; raw base64 also needs `mime_type`, while data URLs can include MIME. Optional `file_name` has no folders; optional relative `upload_path` must not contain `..`.
+### upload_file
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| file_url | string | One source required | Public HTTPS media; no private-network or credential URLs |
+| base64_data | string | One source required | At most 1 MiB decoded in remote mode |
+| mime_type | string | Conditional | Required for raw base64; data URLs contain MIME |
+| file_name | string | No | Plain filename, without directories |
+| upload_path | string | No | Relative directory, without .. |
 
 ```json
 {"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
 ```
 
-Replace the placeholder domain with an accessible file. Remote MCP does not accept `file_path`. Files remain for approximately 72 hours.
+Replace the URL with actual accessible media. Returns file_url, file properties, and expiration information. References are generally retained for 72 hours. Remote MCP cannot accept file_path. Local stdio can instead use an absolute path in an allowed directory; choose exactly one source. Successful upload does not prove that the selected model supports the media.
 
-## prepare_upload
+### prepare_upload
 
-Required `file_name` including an extension, optional `upload_path`. Returns one-time `upload_url`, `upload_id`, PUT method, command and expiry. Valid for 15 minutes, once, up to 95 MB.
+Required `file_name`: string with an extension used to determine media type. Optional `upload_path`: relative directory.
 
 ```json
 {"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
 ```
 
-Execute PUT where the file can be read. See [uploads](/en/mcp/files).
+Returns upload_id, upload_url, method:PUT, command, max_bytes, and expires_at. The URL lasts approximately 15 minutes, is single-use, and accepts at most **95 MiB**. Run the returned command where the file can actually be read, then use the confirmed file_url. A browser attachment may not be accessible this way. The address contains temporary authorization; do not publish it or append a personal Key.
 
-## get_upload
+### get_upload
 
-Required `upload_id`. Returns status for your account's upload and `file_url` when complete. Status records expire after approximately one hour.
+Required `upload_id`, from the original prepare result:
 
 ```json
 {"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
 ```
 
-## Confirm the connection
+States include waiting/uploading/done/failed/expired/outcome_unknown. Use file_url only after a confirmed done result. Server-local state lasts about one hour; compatible file services can provide receipts for approximately 72 hours. Unsupported or unverifiable receipts can yield outcome_unknown. Querying does not upload the file again; retain the original ID and inspect status first.
 
-Ask the agent for account balance and verify an actual successful `check_balance` call. For CLI setup, run `evolink balance --json`; native MCP tools need not appear in the client. Also verify the matching skill is available. See [troubleshooting](/en/mcp/troubleshooting).
+### Results and errors
+
+Tools return readable text and structuredContent; failures can include isError/error/next_step. Completed media can include resource_link and an optional image thumbnail. Hosts differ in content-block support. The original URL remains the delivery reference; previews are not guaranteed in every host.
+
+Check tool errors and business fields such as input_valid, estimate status, and task.status. HTTP 200 alone does not establish generation success. Submission timeout may follow task creation and is not proof of no charge. A failed query is not proof that the original task failed.
 
 ## Task progress and results
 
-Use `get_task` and `list_tasks` to continue existing tasks and deliver original links and actual charges. See [tasks and results](/en/mcp/tasks) for waiting, recovery, previews and CLI downloads.
+Use balance and model queries for free connection verification. Use get_task/list_tasks for existing tasks, then deliver original URLs and reported actual costs. The [workflow guide](/en/mcp/overview#workflows) covers references, recovery, saving, and gray previews. A display problem must not trigger another paid generation.
 
-## Provide reference images, video or audio
+<span id="api" />
+## MCP protocol and backend APIs
 
-Choose public URL, small base64, CLI or one-time upload according to file location. See [uploads and references](/en/mcp/files) and [tasks and results](/en/mcp/tasks).
+| Mode | Execution path | Authentication and installation |
+|---|---|---|
+| Remote MCP | Client → hosted EvoLink MCP → platform API | Streamable HTTP and browser OAuth; no local server installation |
+| Local stdio | Client → local MCP process → platform API | Node.js 18+, npx startup, and a personal API Key |
+
+The remote endpoint is `https://mcp.evolink.ai/mcp`. Passport provides OAuth; the server requests https://api.evolink.ai and the file service. MCP URLs, platform /v1 routes, documentation, and llms.txt are separate entry points.
+
+### Initialize and call tools
+
+Let the host or MCP SDK handle initialize, protocol versions, Accept, authentication, sessions, and content blocks. Read tools/list after initialization, then call tools/call:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_balance","arguments":{}}}
+```
+
+Examples using name / arguments describe tool input, not REST request bodies. Tools can return text, structured data, resource links, and thumbnails; display depends on the host. Check tool errors and task status, not just HTTP success.
+
+### Tools and backend operations
+
+| MCP tool | Backend operation or implementation |
+|---|---|
+| search_models | `GET /v1/models` plus aliases, availability, and references |
+| get_model, recommend_models, search_docs | Versioned references and account catalog, not same-name REST routes |
+| estimate_cost | `GET /web/api/models/pricing` and server-side estimation rules |
+| generate_image | `POST /v1/images/generations` |
+| generate_video | `POST /v1/videos/generations` |
+| generate_audio | `POST /v1/audios/generations` |
+| get_task | `GET /v1/tasks/{task_id}` |
+| list_tasks with task_ids | `POST /v1/tasks/batch` |
+| list_tasks, get_task_usage | `GET /v1/tasks`, pagination, and bounded aggregation |
+| check_balance | `GET /v1/credits` |
+| Upload authorization | `POST /v1/files/upload-token` |
+| upload_file | File service /url or /base64; local stdio can read allowed directories |
+| prepare_upload, get_upload | Hosted single-use PUT URL and status; receipt recovery depends on file-service support |
+
+Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.6.1 has no final settlement cap and does not automatically consume complete account quotes merely because new pricing APIs exist.
+
+### Uploads, recovery, and access
+
+Use a prepare_upload PUT URL only in an environment that can read the file, then query get_upload. A remote server cannot read desktop paths, and chat attachments may not expose original bytes. See [reference uploads](/en/mcp/overview#files).
+
+Save client_request_id, normalized inputs, account identity, and returned task_id for paid submissions. Query the original task and history when the outcome is unknown; do not change identifiers to resubmit. Client identifiers alone cannot guarantee uniform backend protection against every duplicate charge.
+
+OAuth exposes limited media operations, not arbitrary Key management or administrative APIs. No usable cancellation tool is currently provided; stopping a wait does not cancel the task. CLI commands and execution are documented separately in the [CLI reference](/en/cli/reference#api).
+
+<span id="cli-reference" />
+
+## CLI command documentation
+
+The complete CLI reference is now in the [separate CLI section](/en/cli/reference#cli-reference). This page documents MCP tools and protocol.

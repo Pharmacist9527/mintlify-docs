@@ -1,0 +1,236 @@
+---
+title: "CLI 登录、确认与排错"
+description: "费用边界、账户权限、保留期和完整分步排错"
+---
+
+<span id="pricing" />
+
+## CLI 费用与确认
+
+本页按已发布 CLI 0.8.1 说明。CLI 直接请求平台 API，命令与保存的报价由本地管理；登录复用 Passport。运行命令之前可先读[完整流程](/cn/cli/workflows)。
+
+1. 使用最终模型与输入执行 `evolink estimate`，展示预计费用。
+2. 用户批准本次模型、参数和预计费用后，使用保存的 `quote_id` 与 `--confirm` 生成。
+3. 参数、身份、报价有效期或价格变化时重新核价并取得批准，不复用另一份报价。
+4. 查询原任务与账户用量了解结果；不能把估价写成已扣费或退款记录。
+
+报价状态、公开默认价限制、费用批准和预算边界统一见[模型、费用与额度](/cn/cli-mcp/models-and-billing#pricing)。已发布版 max_cost_usd 仍只比较提交前估价，不能保证最终扣费不超额。
+
+报价通常保留 15 分钟，与原身份、模型和输入绑定。报价不是付款凭证。`--confirm` 表示本次用户批准，不代替登录和宿主执行权限。模型查询、余额、任务查询无需提交生成；生成会计费，文件服务另有大小及保留期限制。美元换算参考为 68 积分约 $1，实际以返回值和账户记录为准。
+
+账户共用权限和额度规则见[共用说明](/cn/cli-mcp/models-and-billing#authorization)，本页保留当前入口的登录与退出操作。
+
+<span id="authorization" />
+
+## 登录、权限与额度
+
+CLI 的浏览器登录由 Passport 完成，凭据由系统安全存储保存。平台业务使用现有 OAuth 关联 Key。CLI 与远程 MCP 可以共用账户、Key 额度和权限；暂停或调整共享 Key 会影响使用它的入口。各 OAuth 会话的退出分别处理。
+
+```bash
+evolink auth status --json
+```
+
+需要退出本机 CLI 时，单独执行：
+
+```bash
+evolink auth logout
+```
+
+本地 MCP 使用个人 API Key 时按该 Key 的权限执行；CLI 登录不会给另一个本地 MCP 进程授权。余额、日额度、总额度、模型权限和工具权限都可能阻止提交。失败任务、连接中断或退出登录不能自动证明已经退款。
+
+<span id="retention" />
+
+## 保存与有效期
+
+报价、素材、一次性上传授权和原件链接的默认有效期集中在[任务、素材与结果](/cn/cli-mcp/tasks-and-files#retention)。具体以实际返回值为准；上传回执兼容取决于文件服务部署。
+
+<span id="faq" />
+
+## CLI 排错：先找到失败步骤
+
+在运行 CLI 的同一机器、系统用户和终端检查版本与连接。以下查询不会提交生成：
+
+```bash
+evolink --version
+evolink auth status --json
+evolink doctor --json
+```
+
+| 现象 | 处理位置 |
+|---|---|
+| 找不到 `node`、`npm`、`evolink` | [环境与安装](#cli-install) |
+| 登录、SSH 回调或安全存储失败 | [登录](#login) |
+| 已安装技能，Agent 仍不会调用 | [技能加载](#skills-discovery) |
+| 找不到模型、参数被拒或价格不完整 | [模型与报价](#models-and-pricing) |
+| 生成超时、不知道是否提交 | [任务与恢复](#tasks-and-recovery) |
+| 上传失败或结果不确定 | [上传](#uploads) |
+| 下载 403、灰色预览或只有链接 | [下载](#download) |
+| 以上步骤仍无法解决 | [提交问题信息](#support) |
+
+先检查当前步骤，修复后再继续下一步。连接验证不需要付费生成，不要通过重复生成来验证安装。
+
+<span id="cli-install" />
+### 环境与安装：命令找不到、权限不足、安装超时
+
+**第一步：检查安装在哪个环境。**在 Agent 自己使用的终端执行：
+
+```bash
+node --version
+npm --version
+```
+
+CLI 需要 Node.js 22+。`command not found` 或 Windows“无法识别命令”时，先安装 [Node.js](https://nodejs.org/en/download)，重开终端。不要只在本机安装，却让 SSH、WSL 或容器里的 Agent 使用。
+
+**第二步：确认 npm 的安装位置。**
+
+```bash
+npm config get prefix
+```
+
+| 现象 | 处理方式 |
+|---|---|
+| npm 安装成功，evolink 找不到 | 新开终端，确认当前 Node/npm 与安装时一致；检查其全局命令目录是否在 PATH 中 |
+| EACCES / permission denied | 使用当前用户可写的 Node/npm 环境，按 [npm 权限说明](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally/)调整；重新安装 CLI，再确认命令路径和版本 |
+| 超时、DNS、证书或代理错误 | 检查网络能否访问 npm 官方注册表与代理设置；保留原错误，不关闭证书验证 |
+| PowerShell 拒绝运行脚本 | 可在同一 Windows 环境的命令提示符中执行；受管理设备按组织设置处理 |
+| 旧包或多个 evolink 版本 | 确认 Agent 命中的命令路径，再更新对应 Node 环境的包 |
+
+定位命令路径时，选择当前系统对应的一组：
+
+<Tabs>
+  <Tab title="macOS / Linux">
+
+```bash
+command -v node
+command -v npm
+command -v evolink
+```
+
+  </Tab>
+  <Tab title="Windows PowerShell">
+
+```powershell
+Get-Command node
+Get-Command npm
+Get-Command evolink
+```
+
+  </Tab>
+</Tabs>
+
+**第三步：重新验证命令。**修复对应问题后再安装或更新，运行 `evolink --version`。能显示版本后才继续登录。完整步骤见[通用安装指南](/cn/cli/setup#cli-install)。
+
+<span id="login" />
+### 登录与回调：浏览器没有打开、登录未完成
+
+1. 保持 `evolink auth login` 或 `setup` 运行。浏览器未自动打开时，手动打开这一次命令给出的链接，核对账户并同意。
+2. 回到原终端等待登录完成。浏览器回调页只表示收到回调，不表示余额连接已验证；不要提前关闭命令。
+3. 用下面两条命令分别确认保存了登录、可以访问账户：
+
+```bash
+evolink auth status --json
+evolink balance --json
+```
+
+`authenticated: true` 与真实余额结果是各自的成功标志。超时后重新发起登录，用新链接，不复用旧授权码。需要更长等待可使用：
+
+```bash
+evolink auth login --timeout 600
+```
+
+| 现象 | 下一步 |
+|---|---|
+| 浏览器返回 127.0.0.1 / localhost 无法连接 | 确认登录进程还在运行、浏览器与 CLI 所在机器；远端按 [SSH 回调转发](/cn/cli/setup#ssh-login)处理 |
+| credential_store_unavailable | Linux 检查同一用户的 D-Bus、Secret Service 和解锁状态；系统安全存储未准备好时先处理环境 |
+| 更换用户、容器或服务器后未登录 | 登录留在原执行环境，新环境需自己的授权；不要复制凭据文件 |
+| Key 已暂停、过期或限额耗尽 | 在控制台检查共享 Key 状态；重新登录不能解除暂停或增加额度 |
+
+`--no-browser` 仍然需要浏览器回调，不是设备码或无浏览器身份验证。不要将 API Key 当作 OAuth 令牌填入远程连接。
+
+<span id="skills-discovery" />
+### 技能与权限：文件已安装，但 Agent 不会使用
+
+1. 确认安装目录属于实际运行 Agent 的用户，使用对应的 `--agent` 查看状态。例如 Codex：
+
+```bash
+evolink skills status --agent codex --json
+```
+
+2. 根据状态处理：`current: true` 说明文件与当前 CLI 一致；缺失或旧版本时运行 `evolink skills install --agent codex`。`modified` 表示个人修改，先决定保留内容；`conflict` 需处理同名技能或无效安装元数据，不直接删除整个技能目录。
+3. 回到 Agent 对话，让它确认能发现并读取 `evolink-cli`。没有刷新时新开对话；宿主要求命令执行许可时，由您审核并允许需要的命令。仍受组织策略限制时按宿主设置处理。
+
+`assistant_discovery: not_checked` 是“宿主加载尚未验证”，不是已加载的证明。只看到 `SKILL.md`、只让 Agent 阅读了网页，也不表示它能执行 CLI。
+
+更新 CLI 后需要再次同步技能。明确决定替换个人修改时才加 `--replace-modified`，备份位于 `~/.evolink-media/skill-backups/`。安装位置和技能内容集中在[Agent 可读资料](/cn/cli/skills#skills)。
+
+<span id="models-and-pricing" />
+### 模型与价格：搜索为空、参数报错、报价不完整
+
+1. 使用实时模型搜索，采用返回的规范 ID；别名、展示名称和模型系列不一定是可提交 ID。搜索为空时放宽关键词，但保留素材类型等必要条件。
+2. 用 `models show` / `models schema`  查本型号参数。检查必填字段、拼写、枚举、数值范围和参考互斥，不复制其他型号的 `duration`、`size` 或 `quality`。
+3. 重新估价，查看 `input_valid`、`problems`、`estimate.status`、`basis`、`warnings`。修改输入、价格或账户后重新报价并确认。
+
+`needs_input` 需要补齐参数，`no_price` 不是有效报价，`partial` 不是总价；未知输出时长或参考倍率不能靠目录起价补齐。保留原预算，不自动删除上限、更换 Key 或降低规格来绕过。
+
+已发布客户端的公开默认估价不是账户专属权威 Quote，`max_cost_usd` 也不是最终结算硬上限。具体边界见[费用说明](/cn/cli/billing)。完整命令参数见[CLI 参考](/cn/cli/reference)。
+
+<span id="tasks-and-recovery" />
+
+### 生成超时、任务仍运行或提交结果未知
+
+<Steps>
+  <Step title="已有 task_id 时查询原任务">
+    ```bash
+    evolink tasks get TASK_ID --json
+    evolink tasks wait TASK_ID --timeout 600 --json
+    ```
+    等待超时不取消任务。多任务使用 batch 或 list 查状态，完成后下载原件。
+  </Step>
+  <Step title="没有 task_id 时恢复原报价">
+    ```bash
+    evolink tasks resume --quote QUOTE_ID --json
+    ```
+    使用原身份、原报价和请求编号恢复。不能换账户、新报价或新编号重复生成；结果未知不表示未提交或未扣费。
+  </Step>
+  <Step title="失败时保留证据再处理">
+    记录原任务编号、错误码与时间。确认失败后核对账户记录；不能只从失败状态推断已退款。取消排队目前没有公开可用命令，关闭终端或停止等待不会取消服务端任务。
+  </Step>
+</Steps>
+
+报价过期或变价，在尚未提交的情况下重新估算并确认；已有任务或未知提交先恢复。详细命令见[任务参考](/cn/cli/reference#cli-reference)。
+
+<span id="uploads" />
+
+### 上传失败、文件太大或结果未知
+
+1. 在 Agent 实际执行机器上确认绝对路径、可读权限和真实文件类型。远端或容器不能直接读取用户桌面的路径。
+2. CLI 本地上传上限为 95 MiB，模型可能有更严格的格式、数量或大小限制。先核对模型说明，再上传；聊天附件需要落成 CLI 可读文件或可访问 URL。
+3. 上传不确定时保留原 `upload_id` 并查询：
+
+```bash
+evolink uploads get UPLOAD_ID --json
+```
+
+4. 查询能力取决于文件服务部署。`outcome_unknown` 不证明未上传；确认失败或授权过期后才申请新的上传。参考文件通常保留 72 小时，过期后重新上传并更新输入，生成前重新估价与确认。
+
+上传命令和 URL 方式见[素材流程](/cn/cli/workflows#files)，回执字段见[命令参考](/cn/cli/reference)。不要把一次性上传 URL、私人签名链接或 Key 发到聊天中。
+
+<span id="download" />
+
+### 下载与预览
+
+先查原任务、确认完成并使用原件链接。CLI 优先使用 download；命令见[CLI 参考](/cn/cli/reference)。CLI 下载已带产品 UA。
+
+HTTP／格式检查、Python 产品 User-Agent 示例、过期链接与灰色缩略图处理统一见[下载排错](/cn/cli-mcp/tasks-and-files#download)。结果未知先恢复原任务，不为预览重新生成或剪辑。
+
+<span id="support" />
+
+### 仍未解决时提供什么
+
+按[问题信息清单](/cn/cli-mcp/tasks-and-files#support)提供版本、失败步骤、编号和脱敏错误。保留本入口的诊断记录；不要分享 Key、token、私人链接或完整环境变量。
+
+<span id="mcp-connection" />
+
+### 需要排查原生 MCP 连接吗
+
+CLI 和 MCP 是独立入口。原生 MCP 的 OAuth、工具发现和本地 stdio 排错请看[MCP 排错](/cn/mcp/billing#mcp-connection)；CLI 安装成功不能作为 MCP 连接验证。这里保留旧链接入口，CLI 的命令、登录和技能排错都在本页。

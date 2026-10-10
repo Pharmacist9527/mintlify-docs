@@ -1,0 +1,137 @@
+---
+title: "CLI 媒体、素材与任务"
+description: "选模型、报价确认、三媒体生成、上传、任务恢复与原件下载"
+---
+
+<span id="workflows" />
+## 一次任务的完整流程
+
+在已登录、Agent 已读取技能的环境中依次完成：明确需求 → 查询模型与参数 → 上传参考 → 免费报价 → 等待批准 → 提交一次 → 查询原任务 → 下载原件。下面的命令是步骤示例，不表示已经批准生成。
+
+<span id="models" />
+## 第一步：选择模型并核对参数
+
+```bash
+evolink models search --type image --query seedream --limit 5 --json
+evolink models recommend --type image --query "coffee advertisement" --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink docs search --query "reference images" --json
+```
+
+将 MODEL_ID 换成搜索返回的规范 ID。参考模型需要先检查 reference_inputs、必填项、枚举、范围与互斥条件。目录首项、起价、较新或 beta 都不表示最适合本次任务。
+
+推荐顺序、新款系列与费用规则集中在[模型、费用与额度](/cn/cli-mcp/models-and-billing#models)。用户指定型号时先核对实际可用性；示例不构成默认推荐。
+
+<span id="files" />
+## 第二步：准备与上传参考素材
+
+CLI 读取实际执行机器上的文件。先确认路径、权限、文件格式、大小及模型要求，然后上传：
+
+```bash
+evolink upload ./reference.png --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+```
+
+本地普通文件为 1 字节至 95 MiB；图片、视频和音频仍受模型的格式、数量、尺寸与时长约束。成功后使用返回 file_url 填入真实模型支持的字段，例如 image_url 或 image_urls，而非电脑路径。
+
+参考素材通常保留72小时。保留原 upload_id；响应丢失先查原回执，兼容文件服务未支持时如实报告未知。不要因超时直接重复上传。公开 HTTPS 素材能否直接引用，也须按模型要求核对。
+
+<span id="images" />
+## 第三步：准备输入并免费报价
+
+以图片为例，先查 z-image-turbo 当前可用性。这个型号用于展示流程，不是默认推荐：
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+在工作目录新建 input.json，填本次输入：
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft morning light"}
+```
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+阅读 input_valid、problems、estimate.status、basis、warnings 和返回 quote_id。向用户展示模型、输出、参考、数量、费用范围和未覆盖项，然后停止等待确认。partial、no_price 或 token_billed 不应被说成可保证的总价；费用限制见[CLI 计费说明](/cn/cli/billing)。
+
+## 第四步：批准后只提交一次
+
+用户确认原方案后，用该报价编号提交图片任务：
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+--confirm 声明已经取得批准。生成命令不传新的模型或输入；改规格、价格、账户或超过约15分钟报价有效期时，重新报价和确认。不要把同一报价分别提交图片、视频和音频。
+
+<span id="video" />
+## 视频任务
+
+根据真实视频模型 schema 创建 video-input.json，核对 prompt、时长、比例、质量、声音以及参考字段。图生、参考视频、编辑或延长不一定使用相同型号与输入。
+
+```bash
+evolink estimate --model VIDEO_MODEL_ID --input-file video-input.json --json
+```
+
+展示估价及缺口，等待本次批准后：
+
+```bash
+evolink generate video --quote VIDEO_QUOTE_ID --confirm --json
+```
+
+保存 task_id，再查询；不能重复生成来等待结果。参考秒数、画质与声音可能影响费用；已发布报价不能完整覆盖所有倍率。生成完成先交付原视频，不自动本地剪辑、补帧或加字幕。
+
+<span id="audio" />
+## 音乐、歌曲与语音任务
+
+音乐模型与普通配音模型分别选择。按 schema 准备 audio-input.json，核对歌词或描述、语言、声音、是否纯音乐、参考音频及互斥项。
+
+```bash
+evolink estimate --model AUDIO_MODEL_ID --input-file audio-input.json --json
+```
+
+本次报价获得批准后：
+
+```bash
+evolink generate audio --quote AUDIO_QUOTE_ID --confirm --json
+```
+
+不支持固定时长的模型不要强加 duration。media_seconds 只提示计费，不控制作品长度。未知输出时长或用量须说明费用范围；多个音频结果全部保留。
+
+<span id="tasks" />
+## 第五步：查询、等待与恢复
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --status processing --page 1 --limit 20 --json
+```
+
+processing包含排队；completed、failed和cancelled是已结束状态。任务failed与查询命令失败不同。分页时间筛选只作用当前页，空页不证明未创建任务。等待超时、Ctrl-C或关窗口不取消任务；当前CLI没有取消排队命令。
+
+提交响应丢失时保留原账户和报价记录：
+
+```bash
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+outcome_unknown不证明没扣费。不要删除记录、换Key、换入口或新建报价重发；先恢复原请求。明确失败也不能直接声称已退款，缺少账务证据时报告未知。
+
+<span id="delivery" />
+## 第六步：下载并交付原件
+
+```bash
+evolink download TASK_ID --output ./coffee-cup.png --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+以上是单项或全部结果的替代方式。父目录先准备好，文件不覆盖；单原件最大1 GiB，检查类型与内容。批量恢复使用原记录，不把任意同名文件当正确结果。index从1开始，文件扩展名匹配实际格式。
+
+原件链接通常24小时有效；及时保存，返回文件位置、原链接、型号、规格和已报告实际扣费。用量可通过 balance / usage查看，但不是完整账单。缩略图灰色时核对原件，不自动重做。更多参数见[CLI参考](/cn/cli/reference)，下载403及其他问题见[排错](/cn/cli/billing#download)。
