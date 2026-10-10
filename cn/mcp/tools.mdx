@@ -1,12 +1,12 @@
 ---
 title: "MCP 工具与接口参考"
-description: "15 个工具的参数、示例、结果、协议与后台接口映射"
+description: "16 个工具的参数、示例、结果、协议与后台接口映射"
 ---
 
 <span id="mcp-tools" />
 ## MCP 工具参考
 
-本页对应远程 OAuth MCP **1.6.1** 的 15 个工具。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
+本页对应远程 OAuth MCP **1.7.0** 的 16 个工具。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
 
 JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 REST 请求体；它们也不代表已批准费用。
 
@@ -17,6 +17,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 | search_docs | 搜索版本化官方模型参考索引 | 无 |
 | get_model | 参数、schema、参考输入和价格 | 无 |
 | estimate_cost | 检查输入与估价 | 无 |
+| get_pricing_rules | 读取公开默认价格规则（参考价，不是报价） | 无 |
 | generate_image | 图片生成/编辑 | 有 |
 | generate_video | 视频生成/编辑/延长 | 有 |
 | generate_audio | 音乐、歌曲或语音 | 有 |
@@ -97,6 +98,23 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 返回 input_valid、problems、warnings、estimate、pricing_scope、final_budget_enforced，以及能读取时的余额/额度。estimate.status 可为 estimated、partial、token_billed、needs_input、no_price；见[费用说明](/cn/mcp/billing)。查询成功不等于输入有效或报价完整。
 
 该工具没有 `max_cost_usd`，也不会返回 CLI 本地报价编号。MCP 预算放在生成工具。media_seconds 不改变输出时长，不补全未知参考视频倍率。
+
+### get_pricing_rules
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| model | string | 否 | 单个模型 ID，最多 100 字符 |
+| product_id | string | 否 | 按产品系列筛选 |
+| operation | string | 否 | 按操作筛选，例如 `text_to_video` |
+| modality | string | 否 | `text`、`image`、`video`、`audio` |
+| lifecycle | string | 否 | `active`、`preview`、`deprecated` |
+| view | string | 否 | `summary` 或 `full`，默认 `full` |
+
+```json
+{"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
+```
+
+返回公开默认价格规则：各计费组件的单价（十进制字符串）、最低收费、档位和完整表达式，以及 price_scope、price_selection。这是参考价，不含账户折扣，不是任务报价、账单或最终花费上限；不要把单价直接乘成账单。某次生成的预计费用仍用 `estimate_cost`，它按同一套规则对实际输入计算。结果为空只表示没有匹配的公开规则，不表示免费。
 
 ### generate_image、generate_video、generate_audio
 
@@ -254,7 +272,8 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 |---|---|
 | search_models | `GET /v1/models` 与别名、可用性和参考整合 |
 | get_model、recommend_models、search_docs | 版本化模型参考与账户目录，不是同名 REST 接口 |
-| estimate_cost | `GET /web/api/models/pricing` 与服务内估价规则 |
+| estimate_cost | `GET /v1/catalog/models/{model_id}/pricing-rules?view=full` 与服务内估价规则（1.7.0 起） |
+| get_pricing_rules | `GET /v1/catalog/pricing-rules` 与 `GET /v1/catalog/models/{model_id}/pricing-rules`（view=full） |
 | generate_image | `POST /v1/images/generations` |
 | generate_video | `POST /v1/videos/generations` |
 | generate_audio | `POST /v1/audios/generations` |
@@ -266,7 +285,7 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 | upload_file | 文件服务 /url 或 /base64；本地 stdio 可读允许目录 |
 | prepare_upload、get_upload | 托管 MCP 的一次性 PUT 地址与状态；回执恢复依文件服务支持 |
 
-模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。已发布 1.6.1 没有最终结算硬上限，也不能因新价格接口存在就声称已接入完整本人报价。
+模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。已发布 1.7.0 按公开价格规则估价（参考价，不含账户折扣），仍没有最终结算硬上限。
 
 ### 上传、恢复与权限
 
