@@ -1,0 +1,160 @@
+---
+title: "MCP authorization, approval, and troubleshooting"
+description: "Cost boundaries, account access, retention, and step-by-step troubleshooting"
+---
+
+<span id="pricing" />
+
+## MCP costs and approval
+
+This page describes released MCP 1.6.1. Call `estimate_cost`, then show the model, final inputs, output count, and estimated cost. Call the generation tool only after explicit approval of this task.
+
+See [models, costs, and quotas](/en/cli-mcp/models-and-billing#pricing) for estimate states, public-pricing limitations, approval, and budgets. Released max_cost_usd only compares pre-submission estimates; it does not cap final charges.
+
+estimate_cost does not accept max_cost_usd; generation tools accept it.
+
+Native MCP has neither a CLI local `quote_id` and `--confirm` command nor a session-level server approval button. The agent must retain the model, inputs, estimate, and approval for this task; changed inputs or prices require renewed approval. Host tool permission, account authorization, and purchase approval do not replace one another.
+
+Model, balance, and task queries do not submit generation. Generation is billed; file-service limits apply separately. Failure, timeout, or closing chat does not establish that no charge occurred or that a refund completed. Usage queries are not complete settlement receipts.
+
+See [shared access rules](/en/cli-mcp/models-and-billing#authorization); this page retains sign-in and sign-out actions for this route.
+
+<span id="authorization" />
+
+## Authorization, permissions, and quotas
+
+Remote MCP uses Passport browser OAuth. The host stores connection credentials, and the service uses the existing OAuth-linked Key. Remote MCP and CLI can share account access, Key quotas, and permissions. Pausing a shared Key affects all its consumers; host session sign-out is a separate operation.
+
+Local stdio uses the personal API Key supplied to its MCP process and follows that Key's permissions and quotas. Do not paste Keys into chat or use CLI sign-in as proof of native MCP authorization.
+
+Disconnect or sign out through the host's MCP or connector settings. Revoke account authorization through account authorization management when needed. Closing a window does not necessarily revoke access. Resolve insufficient balance, daily/total quotas, or model permissions through account settings.
+
+<span id="retention" />
+
+## Storage and expiry
+
+Default quote, reference, upload-authorization, and original URL lifetimes are maintained in [tasks, references, and results](/en/cli-mcp/tasks-and-files#retention). Actual returned values apply; receipt support depends on file-service deployment.
+
+<span id="faq" />
+
+## MCP troubleshooting: identify your connection
+
+Remote MCP uses `https://mcp.evolink.ai/mcp`, Streamable HTTP, and host OAuth sign-in. Local stdio uses the host-configured `@evolinkai/mcp` process and a platform Key. Check credentials and tool discovery for the actual connection.
+
+| Symptom | Troubleshooting section |
+|---|---|
+| Browser authorization fails or repeats | [Sign-in](#login) |
+| Skill present but actual tools missing | [Skills and permissions](#skills-discovery) |
+| MCP missing, text-only replies, or denied tools | [Connection and tool discovery](#mcp-connection) |
+| Model missing, invalid inputs, or incomplete pricing | [Models and pricing](#models-and-pricing) |
+| Generation timed out or outcome unknown | [Tasks and recovery](#tasks-and-recovery) |
+| Attachment unreadable or upload failed | [Uploads](#uploads) |
+| Original file 403, gray preview, or link-only result | [Downloads](#download) |
+| Problem persists | [Support information](#support) |
+
+Check that this host connection is enabled and authorized and that tools are visible, then actually call `check_balance`. Remote MCP exposes 15 tools; local stdio exposes 13. CLI success does not prove native MCP access, and MCP troubleshooting does not require CLI installation.
+
+<span id="login" />
+
+### Browser sign-in and authorization
+
+<Steps>
+  <Step title="Start authorization from the host">
+    Use sign-in or authorization in this MCP or connector entry. Find the host command or menu in its dedicated guide. Signing into a separate CLI does not authorize this connection.
+  </Step>
+  <Step title="Complete account approval in the browser">
+    Sign into the correct EvoLink account, check scopes, and approve. Keep the host authorization flow waiting. Do not share full authorization URLs or callback parameters. Restart a failed flow from the original host.
+  </Step>
+  <Step title="Return to the host and verify">
+    Refresh the connection's tools, check for `check_balance` and `search_models`, and actually query balance. Reauthorize after 401. For 403, also check account permissions, Key status, and host tool permissions.
+  </Step>
+</Steps>
+
+Local stdio does not use this browser flow. Check the platform Key received by the process, startup environment, and stderr. Do not mix remote OAuth with personal Keys. See [other clients](/en/mcp/other-clients).
+
+<span id="skills-discovery" />
+
+### Skill installed but tools unavailable
+
+1. Read the `evolink-mcp` tool instructions. Native MCP cannot execute terminal commands from the CLI skill.
+2. Check actual server configuration and tools in the host. Reading a skill does not register a server, and plugin installation does not automatically complete OAuth.
+3. Reload the session or plugin and check tool permissions. Instructions without a recorded tool call do not prove access.
+4. If tools are listed but calls fail, inspect the tool error and original connection. Do not use paid generation as a connection test.
+
+<span id="mcp-connection" />
+### MCP connection and access: missing tools, connection failure, 401/403
+
+1. Check the connection type. Remote uses `https://mcp.evolink.ai/mcp`, Streamable HTTP, and OAuth; local stdio uses a launch command and personal Key. A documentation page, `llms.txt`, or REST endpoint is not an MCP server.
+2. Enable EvoLink, complete this host’s browser authorization, then refresh or open a new session. Back up existing configuration and merge only EvoLink. Check JSON quotes/commas, YAML spaces, and configuration scope without overwriting other services.
+3. Call `check_balance` and `search_models`. If tools list but calls fail, inspect authorization. If balance works but generation tools are absent, check tool toggles and workspace policies.
+
+| Symptom | Action |
+|---|---|
+| Duplicate server name | Inspect the existing entry and choose one source; avoid manual/plugin duplicates |
+| 401 / expired authorization | Reauthorize through the affected host, preserving task IDs |
+| 403 / denied tool | Distinguish host policy, account/Key limits, and network rejection; record the failed stage rather than assuming a UA change fixes all 403s |
+| Local process cannot start | Check Node 18+, npx path, host environment, and launch errors; reload and verify |
+| Invalid/unauthorized local Key | Inspect its status and scope in the dashboard and update host secret settings, not chat |
+| Configuration change has no effect | Refresh the process that owns the connection; a remote Gateway does not refresh with your laptop terminal |
+
+Setup pages: [ChatGPT](/en/mcp/chatgpt), [Claude](/en/mcp/claude), [Claude Code](/en/mcp/claude-code), [Codex](/en/mcp/codex), [Cursor](/en/mcp/cursor), [OpenClaw](/en/mcp/openclaw), [Hermes](/en/mcp/hermes-agent), [other clients](/en/mcp/other-clients).
+
+<span id="models-and-pricing" />
+### Models and pricing: empty search, invalid parameters, incomplete estimate
+
+1. Search live models and use the returned canonical ID. A family, display name, or alias may not be a valid submission ID. Broaden search wording without discarding required reference capabilities.
+2. Inspect MCP `get_model` for this model. Check required fields, spelling, enums, numeric limits, and mutually exclusive references. Do not copy another model’s `duration`, `size`, or `quality` fields.
+3. Re-estimate and inspect `input_valid`, `problems`, `estimate.status`, `basis`, and `warnings`. Input, price, or identity changes require a new estimate and approval.
+
+Supply missing input for `needs_input`; `no_price` is unusable and `partial` is not a total. Unknown duration or reference multipliers cannot be filled with a starting price. Preserve the budget; do not silently remove caps, switch Keys, or reduce specifications to bypass a rejection.
+
+Published public-default estimates are not account-specific authoritative Quotes, and `max_cost_usd` is not a final settlement cap. See [costs](/en/mcp/billing) and [command/tool reference](/en/mcp/tools).
+
+<span id="tasks-and-recovery" />
+
+### Timeout, running tasks, or unknown outcomes
+
+<Steps>
+  <Step title="Retain and query the original task">
+    Call `get_task` for an existing `task_id`; set `wait_seconds` to 0–45 for a bounded wait. Use `list_tasks` for multiple IDs. Timeout ends that wait only, not generation.
+  </Step>
+  <Step title="Recover an unknown submission with its original identifier">
+    Preserve `client_request_id`, inputs, identity, and error when no task ID returns. Recover through the same tool and identifier; do not change accounts or identifiers and generate again. `list_tasks` accepts only its documented parameters, not invented filters.
+  </Step>
+  <Step title="Establish failure and account outcomes separately">
+    Record actual errors and times, and query the original task and account usage. Failure does not prove no charge or a completed refund; unknown is not failed. There is no usable public queue-cancellation tool. Disconnecting MCP or closing a page does not cancel the task.
+  </Step>
+</Steps>
+
+Changed inputs or prices require new approval for unsubmitted tasks. Recover submitted or unknown requests first. See [task tools](/en/mcp/tools#task-progress-and-results) for parameters and examples.
+
+<span id="uploads" />
+
+### Unreadable attachments, failed uploads, or unknown outcomes
+
+1. Confirm that the host can read the supplied file. Remote MCP cannot directly read a desktop path, and chat attachments do not automatically become model URLs.
+2. Use `upload_file.file_url` for accessible URLs. Remote base64 is limited to 1 MiB. For larger files, call `prepare_upload`, upload from an environment with file access, then call `get_upload`. Single-use uploads allow up to 95 MiB; authorization lasts about 15 minutes and status about one hour.
+3. Local stdio can use `upload_file.file_path` on the MCP process machine. Check path, permissions, format, file-service limits, and model limits; a desktop path is not automatically readable on a cloud host.
+4. Preserve and query the original `upload_id`. Unknown does not mean nothing uploaded, and receipt compatibility depends on file-service deployment. Request a replacement after confirmed failure or expiry. References usually last 72 hours; re-upload expired inputs.
+
+See [upload tools](/en/mcp/tools) for parameters and the [reference workflow](/en/mcp/overview#files) for full steps. Use an accessible URL when the host lacks file capabilities. Do not troubleshoot upload failures by regenerating.
+
+<span id="download" />
+
+### Downloads and previews
+
+Query the original task, confirm completion, and use its original URL. Open originals in a browser or save from a file-capable environment; see [MCP delivery](/en/mcp/overview#delivery).
+
+HTTP/format checks, the Python product User-Agent example, expired links, and gray previews are maintained in [download troubleshooting](/en/cli-mcp/tasks-and-files#download). Recover unknown tasks instead of regenerating or editing previews.
+
+<span id="support" />
+
+### Information for support
+
+Follow the [support checklist](/en/cli-mcp/tasks-and-files#support) with versions, failed stage, IDs, and redacted errors. Preserve diagnostics from this route; do not share Keys, tokens, private URLs, or environment dumps.
+
+<span id="cli-install" />
+
+### Looking for CLI installation troubleshooting
+
+CLI commands, secure storage, SSH callbacks, and skill discovery now live in [CLI troubleshooting](/en/cli/billing#cli-install) and the [CLI setup guide](/en/cli/setup). This entry preserves old-link compatibility. Use this page and your client guide for native MCP setup.

@@ -1,0 +1,236 @@
+---
+title: "CLI sign-in, approval, and troubleshooting"
+description: "Cost boundaries, account access, retention, and step-by-step troubleshooting"
+---
+
+<span id="pricing" />
+
+## CLI costs and approval
+
+This page describes released CLI 0.8.1. The CLI calls platform APIs directly and manages commands and saved estimates locally; sign-in uses Passport. Start with the [complete workflow](/en/cli/workflows).
+
+1. Run `evolink estimate` with the final model and inputs, and show estimated cost.
+2. After approval of this model, parameters, and cost, generate using the saved `quote_id` and `--confirm`.
+3. Re-estimate and obtain approval after input, identity, expiry, or price changes. Do not reuse a different quote.
+4. Query the original task and account usage. An estimate does not establish an actual charge or refund.
+
+See [models, costs, and quotas](/en/cli-mcp/models-and-billing#pricing) for estimate states, public-pricing limitations, approval, and budgets. Released max_cost_usd only compares pre-submission estimates; it does not cap final charges.
+
+Quotes generally last 15 minutes and bind the original identity, model, and inputs. They are not payment receipts. `--confirm` expresses approval for this task; it does not replace sign-in or host execution permission. Model, balance, and task queries do not submit generation. Generation is billed; file-service size and retention limits apply separately. The reference conversion is about 68 credits per $1; use actual returned values and account records.
+
+See [shared access rules](/en/cli-mcp/models-and-billing#authorization); this page retains sign-in and sign-out actions for this route.
+
+<span id="authorization" />
+
+## Sign-in, permissions, and quotas
+
+Passport handles browser sign-in, and the system secure store saves CLI credentials. Business requests use the existing OAuth-linked Key. CLI and remote MCP can share account access, Key quotas, and permissions. Pausing or changing a shared Key affects its consumers; each OAuth session signs out separately.
+
+```bash
+evolink auth status --json
+```
+
+To sign out of this local CLI, run separately:
+
+```bash
+evolink auth logout
+```
+
+A local MCP configured with a personal API Key uses that Key's permissions; CLI sign-in does not authorize a separate MCP process. Balance, daily and total quotas, model access, and tool permissions can prevent submission. Failed tasks, disconnection, or sign-out do not establish that a refund completed.
+
+<span id="retention" />
+
+## Storage and expiry
+
+Default quote, reference, upload-authorization, and original URL lifetimes are maintained in [tasks, references, and results](/en/cli-mcp/tasks-and-files#retention). Actual returned values apply; receipt support depends on file-service deployment.
+
+<span id="faq" />
+
+## CLI troubleshooting: locate the failed stage
+
+Check version and access in the same machine, OS user, and terminal that executes the CLI. These queries do not submit generation:
+
+```bash
+evolink --version
+evolink auth status --json
+evolink doctor --json
+```
+
+| Symptom | Troubleshooting section |
+|---|---|
+| `node`, `npm`, or `evolink` is missing | [Environment and installation](#cli-install) |
+| Sign-in, SSH callback, or secure-store failure | [Sign-in](#login) |
+| Skill installed but agent cannot use it | [Skill discovery](#skills-discovery) |
+| Model missing, inputs rejected, or incomplete price | [Models and pricing](#models-and-pricing) |
+| Generation timed out; submission unknown | [Tasks and recovery](#tasks-and-recovery) |
+| Upload failed or outcome unknown | [Uploads](#uploads) |
+| Download 403, gray preview, or link-only result | [Downloads](#download) |
+| Problem persists after these checks | [Support information](#support) |
+
+Resolve the current stage before continuing. Connection verification does not require paid generation; do not repeatedly generate to test installation.
+
+<span id="cli-install" />
+### Environment and installation: missing commands, permissions, timeouts
+
+**Step 1: check the actual execution environment.** Run in the terminal used by your agent:
+
+```bash
+node --version
+npm --version
+```
+
+The CLI requires Node.js 22+. For `command not found` or an unrecognized Windows command, install [Node.js](https://nodejs.org/en/download) and reopen the terminal. A desktop installation does not install the CLI into SSH, WSL, or a container.
+
+**Step 2: check npm’s installation location.**
+
+```bash
+npm config get prefix
+```
+
+| Symptom | Action |
+|---|---|
+| npm succeeded but evolink is missing | Open a fresh terminal, confirm the same Node/npm environment, and check its global command directory in PATH |
+| EACCES / permission denied | Use a user-writable Node/npm environment following [npm’s permissions guidance](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally/), reinstall the CLI, then check its path and version |
+| Timeout, DNS, certificate, proxy error | Check access to the official npm registry and proxy settings; preserve the error and keep certificate verification enabled |
+| PowerShell blocks scripts | Use Command Prompt in the same Windows environment, or follow the organization’s device policy |
+| Old or multiple evolink commands | Locate the command the agent uses, then update its corresponding Node environment |
+
+Choose the path inspection commands for your system:
+
+<Tabs>
+  <Tab title="macOS / Linux">
+
+```bash
+command -v node
+command -v npm
+command -v evolink
+```
+
+  </Tab>
+  <Tab title="Windows PowerShell">
+
+```powershell
+Get-Command node
+Get-Command npm
+Get-Command evolink
+```
+
+  </Tab>
+</Tabs>
+
+**Step 3: verify again.** After correcting the specific issue, install/update and run `evolink --version`. Continue to sign-in only when the command works. See [full installation](/en/cli/setup#cli-install).
+
+<span id="login" />
+### Sign-in and callbacks: browser missing or login incomplete
+
+1. Keep `evolink auth login` or `setup` running. If no browser opens, manually open this attempt’s link, review the account, and approve.
+2. Return to the original terminal and wait for completion. A browser callback page does not establish verified account connectivity; do not terminate the command early.
+3. Check saved authentication and actual account access separately:
+
+```bash
+evolink auth status --json
+evolink balance --json
+```
+
+Look for `authenticated: true` and actual balance data respectively. After a timeout, start a new attempt with a new link rather than reusing an authorization code. For a longer wait:
+
+```bash
+evolink auth login --timeout 600
+```
+
+| Symptom | Action |
+|---|---|
+| 127.0.0.1 / localhost callback cannot connect | Check that login still runs and where the browser and CLI execute; use [SSH callback forwarding](/en/cli/setup#ssh-login) remotely |
+| credential_store_unavailable | On Linux, check the same user’s D-Bus, Secret Service, and unlocked state; configure secure storage first |
+| Login missing after switching user, container, or server | The original environment owns the session; authorize the new one without copying credential files |
+| Key paused, expired, or over limit | Inspect the shared Key in the dashboard; reauthorizing cannot unpause it or increase limits |
+
+`--no-browser` still requires a browser callback. It is not device-code or browserless authentication. Do not enter an API Key as a remote OAuth token.
+
+<span id="skills-discovery" />
+### Skills and permissions: installed files are not used by the agent
+
+1. Check the directory for the user that runs the agent. Use the matching `--agent`; for Codex:
+
+```bash
+evolink skills status --agent codex --json
+```
+
+2. `current: true` means installed files match the CLI. For missing/outdated files, use `evolink skills install --agent codex`. Preserve local edits when `modified`; resolve a conflicting skill or invalid metadata when `conflict` rather than deleting the entire skills directory.
+3. Ask the agent to confirm discovering and reading `evolink-cli`. Refresh or open a new conversation when needed. Review required command permissions in the host; organization restrictions must be handled in its own settings.
+
+`assistant_discovery: not_checked` means host loading remains unverified. A `SKILL.md` file or a read documentation page does not prove the agent can execute the CLI.
+
+Synchronize skills after updating the CLI. Use `--replace-modified` only after deciding to replace local changes; backups are under `~/.evolink-media/skill-backups/`. Directories and content are listed in [Agent-readable surfaces](/en/cli/skills#skills).
+
+<span id="models-and-pricing" />
+### Models and pricing: empty search, invalid parameters, incomplete estimate
+
+1. Search live models and use the returned canonical ID. A family, display name, or alias may not be a valid submission ID. Broaden search wording without discarding required reference capabilities.
+2. Inspect `models show` / `models schema` for this model. Check required fields, spelling, enums, numeric limits, and mutually exclusive references. Do not copy another model’s `duration`, `size`, or `quality` fields.
+3. Re-estimate and inspect `input_valid`, `problems`, `estimate.status`, `basis`, and `warnings`. Input, price, or identity changes require a new estimate and approval.
+
+Supply missing input for `needs_input`; `no_price` is unusable and `partial` is not a total. Unknown duration or reference multipliers cannot be filled with a starting price. Preserve the budget; do not silently remove caps, switch Keys, or reduce specifications to bypass a rejection.
+
+Published public-default estimates are not account-specific authoritative Quotes, and `max_cost_usd` is not a final settlement cap. See [costs](/en/cli/billing) and [command reference](/en/cli/reference).
+
+<span id="tasks-and-recovery" />
+
+### Generation timeout, running tasks, or unknown submissions
+
+<Steps>
+  <Step title="Query the original task when an ID exists">
+    ```bash
+    evolink tasks get TASK_ID --json
+    evolink tasks wait TASK_ID --timeout 600 --json
+    ```
+    A wait timeout does not cancel generation. Use batch or list for multiple tasks and download originals after completion.
+  </Step>
+  <Step title="Recover the original quote if no task ID returned">
+    ```bash
+    evolink tasks resume --quote QUOTE_ID --json
+    ```
+    Retain the original identity, quote, and request identifier. Do not switch accounts, quotes, or identifiers and generate again. Unknown outcomes do not mean nothing was submitted or charged.
+  </Step>
+  <Step title="Preserve evidence before handling failure">
+    Record the original task ID, error code, and time. After confirmed failure, inspect account records; failure alone does not establish a refund. No usable public cancellation command exists. Closing the terminal or stopping a wait does not cancel the server task.
+  </Step>
+</Steps>
+
+For an expired or changed quote that has not been submitted, estimate and approve again. Recover existing tasks or unknown submissions first. See the [task command reference](/en/cli/reference#cli-reference).
+
+<span id="uploads" />
+
+### Failed, oversized, or unknown uploads
+
+1. Check the absolute path, permissions, and real format on the machine that executes the agent. A remote host or container cannot directly read a desktop path.
+2. Local CLI uploads are limited to 95 MiB; models may impose stricter format, count, or size limits. Check model documentation first. Chat attachments must become readable files or accessible URLs.
+3. Preserve the original `upload_id` after an unknown outcome and query it:
+
+```bash
+evolink uploads get UPLOAD_ID --json
+```
+
+4. Receipt queries depend on file-service deployment. `outcome_unknown` does not establish that nothing uploaded. Request replacement uploads only after confirmed failure or expiry. References usually last 72 hours; re-upload expired inputs, update the request, and re-estimate and approve before generation.
+
+See [reference workflows](/en/cli/workflows#files) for upload methods and the [command reference](/en/cli/reference) for receipt fields. Do not share single-use upload URLs, private signed URLs, or Keys in chat.
+
+<span id="download" />
+
+### Downloads and previews
+
+Query the original task, confirm completion, and use its original URL. Prefer CLI download; see [CLI reference](/en/cli/reference). Downloads already use a product UA.
+
+HTTP/format checks, the Python product User-Agent example, expired links, and gray previews are maintained in [download troubleshooting](/en/cli-mcp/tasks-and-files#download). Recover unknown tasks instead of regenerating or editing previews.
+
+<span id="support" />
+
+### Information for support
+
+Follow the [support checklist](/en/cli-mcp/tasks-and-files#support) with versions, failed stage, IDs, and redacted errors. Preserve diagnostics from this route; do not share Keys, tokens, private URLs, or environment dumps.
+
+<span id="mcp-connection" />
+
+### Troubleshooting a native MCP connection
+
+CLI and MCP are separate entry points. See [MCP troubleshooting](/en/mcp/billing#mcp-connection) for native OAuth, tool discovery, and local stdio. Successful CLI installation does not validate MCP access. This compatibility entry preserves old links; CLI commands, sign-in, and skills are covered above.

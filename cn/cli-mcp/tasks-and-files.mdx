@@ -1,0 +1,97 @@
+---
+title: "任务、素材与结果"
+description: "CLI 与 MCP 共用的任务恢复、素材有效期、下载、预览与问题处理"
+---
+
+本页集中说明任务与文件的共同规则。实际操作见[CLI 媒体流程](/cn/cli/workflows)和[MCP 媒体流程](/cn/mcp/overview#workflows)。
+
+<span id="tasks" />
+## 提交一次，保留原任务编号
+
+生成可能直接返回结果，也可能返回 `task_id`。保存原编号、模型、输入和返回的状态，查询这个任务直到完成或明确失败。按真实返回值解释状态，不把工具等待超时写成生成失败。
+
+| 看到的情况 | 如何处理 |
+|---|---|
+| 已有 `task_id` | 查询或等待原任务，多个编号用批量查询 |
+| 仍在排队或运行 | 继续查询原任务；停止等待不会取消 |
+| 已完成 | 保存所有原件，说明数量、格式、已知费用与有效期 |
+| 明确失败 | 保留安全错误和时间，核对账务，不从失败状态推断已退款 |
+| 提交结果未知，没拿到编号 | 按下一节沿原入口恢复，不新建任务 |
+
+当前已发布 CLI 和 MCP 没有可用的公开取消排队入口。关闭终端、聊天或连接不等于取消，也不证明未扣费。
+
+<span id="recovery" />
+## 超时或结果未知时怎样恢复
+
+<Steps>
+  <Step title="保留原身份和提交记录">
+    CLI 保存 quote_id 和原恢复记录；MCP 保存 client_request_id、原输入及错误。已有 task_id 时优先查询这个编号，不重新调用生成。
+  </Step>
+  <Step title="沿原入口恢复">
+    按[CLI 任务排错](/cn/cli/billing#tasks-and-recovery)或[MCP 任务排错](/cn/mcp/billing#tasks-and-recovery)处理。继续使用原身份、原输入和原请求编号，不换账户、Key 或 CLI/MCP 入口重发。
+  </Step>
+  <Step title="确认任务与账务事实">
+    返回完成结果后保存原件；明确失败后核对实际账务；仍未知时保留错误与时间并联系支持。未知结果不是“没有生成”，也不是“没有扣费”。
+  </Step>
+</Steps>
+
+<span id="files" />
+## 素材要先变成模型可读取的输入
+
+1. 核对模型接受的图片、视频、音频类型、数量、大小和参考组合。
+2. 使用执行环境可以读取的本地文件，或服务端可以访问的 URL。聊天附件和桌面路径不会自动变成远程可读取文件。
+3. 上传后确认回执与文件 URL，再填入模型输入并重新估价。
+4. 上传结果未知时保留原 upload_id 查询。确认失败或授权过期后再申请新上传，回执能力取决于文件服务部署。
+
+| 使用方式 | 输入位置和限制 | 具体步骤 |
+|---|---|---|
+| CLI 本地文件 | CLI 所在机器可读；上限 95 MiB，模型可更严格 | [CLI 素材](/cn/cli/workflows#files) |
+| 远程 MCP URL／内联文件 | URL 由服务端读取；base64 上限 1 MiB | [MCP 上传工具](/cn/mcp/tools) |
+| 远程 MCP 一次性上传 | 先 prepare_upload，由具备文件读取能力的环境上传，再 get_upload；上限 95 MiB | [MCP 素材](/cn/mcp/overview#files) |
+| 本地 stdio | MCP 进程所在机器的 file_path；受文件服务与模型限制 | [本地 MCP](/cn/mcp/other-clients#local-mcp) |
+
+<span id="retention" />
+## 有效期与保存
+
+| 内容 | 当前默认说明 |
+|---|---|
+| 原生成结果 URL | 通常 24 小时，及时保存 |
+| 上传参考文件 | 通常 72 小时，过期重新上传 |
+| CLI 本地报价 | 通常 15 分钟；尚未提交且过期时重新核价确认 |
+| 远程一次性上传授权 | 通常 15 分钟、一次使用 |
+| 远程上传状态地址 | 通常 1 小时，保留原 upload_id |
+
+具体以实际返回值为准，上传回执兼容取决于文件服务部署。本地下载成功的原件由用户保存；临时 URL、文档和聊天附件不能替代长期保存。过期素材需重新上传，更新输入后重新确认。
+
+<span id="download" />
+## 下载与预览排错
+
+1. 查原任务并确认完成，使用任务返回的原件 URL。过期、私有或无效链接不能靠改请求头修复。
+2. CLI 可用 download 命令；MCP 用户可以在浏览器打开原件，或让具备文件能力的环境保存。具体命令见[CLI 下载](/cn/cli/reference)和[MCP 交付](/cn/mcp/overview#delivery)。
+3. 核对 HTTP 状态、Content-Type 和实际文件格式。错误 HTML／JSON 不能作为媒体交付。后缀匹配真实格式，不把所有图片都重命名成 PNG。
+4. 灰色缩略图或只显示链接时先打开原件。原件正常就交付并保存；预览由宿主决定，不能通过未经批准的重新生成或剪辑修复灰框。
+
+### Python 默认请求被拒绝
+
+仅当有效原件能在浏览器或 curl 打开，而默认 Python 下载失败时，受控代码可以明确设置产品 User-Agent。下面是图片示例，result_url 需事先设置为有效原件链接：
+
+```python
+from urllib.request import Request, urlopen
+from shutil import copyfileobj
+
+request = Request(result_url, headers={"User-Agent": "EvoLinkClient/1.0"})
+with urlopen(request, timeout=60) as response:
+    if not response.headers.get_content_type().startswith("image/"):
+        raise ValueError("Expected an image response")
+    with open("result.png", "xb") as output:
+        copyfileobj(response, output)
+```
+
+示例拒绝非图片响应并避免覆盖已有文件；实际格式不是 PNG 时改用匹配的扩展名。视频与音频需对应 MIME 检查、文件名和单独验证。这个方法只在特定元数据／图片场景验证过，不保证所有客户端、文件和出口适用；CLI 下载已带产品 UA。
+
+<span id="support" />
+## 仍未解决时提供什么
+
+提供操作系统、Agent 名称与版本、CLI／MCP 版本、接入方式、失败步骤、时间、错误码和预期／实际结果。附已有 task_id、quote_id／client_request_id、upload_id 与脱敏诊断；说明是否使用 SSH、容器或代理。
+
+隐藏 OAuth 令牌、Key、完整授权链接、一次性上传 URL、签名私有 URL 和私有文件。不要粘贴凭据文件或完整环境变量。先按[CLI 排错](/cn/cli/billing#faq)或[MCP 排错](/cn/mcp/billing#faq)找到具体失败步骤。

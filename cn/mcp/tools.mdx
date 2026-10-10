@@ -1,0 +1,283 @@
+---
+title: "MCP 工具与接口参考"
+description: "15 个工具的参数、示例、结果、协议与后台接口映射"
+---
+
+<span id="mcp-tools" />
+## MCP 工具参考
+
+本页对应远程 OAuth MCP **1.6.1** 的 15 个工具。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
+
+JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 REST 请求体；它们也不代表已批准费用。
+
+| 工具 | 用途 | 生成计费 |
+|---|---|---|
+| search_models | 搜索可用模型与别名 | 无 |
+| recommend_models | 比较符合需求和参考输入的模型 | 无 |
+| search_docs | 搜索版本化官方模型参考索引 | 无 |
+| get_model | 参数、schema、参考输入和价格 | 无 |
+| estimate_cost | 检查输入与估价 | 无 |
+| generate_image | 图片生成/编辑 | 有 |
+| generate_video | 视频生成/编辑/延长 | 有 |
+| generate_audio | 音乐、歌曲或语音 | 有 |
+| get_task | 单任务状态、结果与费用 | 无 |
+| list_tasks | 批量 ID 查询或分页历史 | 无 |
+| get_task_usage | 有限范围的已报告任务费用汇总 | 无 |
+| check_balance | 账户余额和共享额度 | 无 |
+| upload_file | URL/base64 参考上传 | 无，受文件配额限制 |
+| prepare_upload | 本地大文件的一次性上传地址 | 无，受文件配额限制 |
+| get_upload | 原上传状态与链接 | 无 |
+
+### search_models
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| type | string | 否 | image/video/audio/all，默认 all |
+| query | string | 否 | 最多 100 字符的搜索关键词 |
+| limit | integer | 否 | 1–50，默认 20 |
+| page | integer | 否 | 1–100000，默认 1 |
+
+```json
+{"name":"search_models","arguments":{"type":"image","query":"seedream","limit":5,"page":1}}
+```
+
+返回 models、total_matches、page、page_size、next_page；模型含规范 id、aliases、参考输入、文档覆盖和起价。关键词相关性优先，再考虑有无单价、平台偏好和 ID。不是质量/热度排名，起价不是任务总价，分页间可用性可能改变。
+
+### recommend_models
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| type | string | 是 | image/video/audio |
+| query | string | 否 | 最多 100 字符，所有搜索词需匹配 |
+| references | string[] | 否 | image/video/audio，最多 3 项，默认空数组 |
+| limit | integer | 否 | 1–10，默认 3 |
+
+```json
+{"name":"recommend_models","arguments":{"type":"video","query":"seedance","references":["image"],"limit":3}}
+```
+
+返回 documented 模型、reasons、reference_inputs、selection_basis 和单价。要求参考类型有明确输入字段；无匹配时应调整条件，不默默放弃所需参考。平台偏好是编辑规则，不是实时热门/发布日期榜。
+
+### search_docs
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| query | string | 是 | 去空白后 1–100 字符 |
+| type | string | 否 | image/video/audio/all，默认 all |
+| limit | integer | 否 | 1–20，默认 5 |
+
+```json
+{"name":"search_docs","arguments":{"query":"first frame","type":"video","limit":5}}
+```
+
+返回 documents、total_matches、scope 和来源版本。检索当前可用模型的随包官方参考标题、ID 与参数描述，不抓取实时全站内容，也不是账户/账单文档搜索。
+
+### get_model
+
+必填 `model`，string，1–128 字符；使用搜索返回的 ID 或受支持别名。
+
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
+
+返回规范型号、参数要求、示例、公开价格、reference_inputs、parameters_source，存在时给出 input_schema 及 schema 来源。参数与 schema 随版本维护，当前账户可用性实时查询；有缺失信息时遵循警告，不自行推断默认值。
+
+### estimate_cost
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| model | string | 是 | 1–128 字符 |
+| input | object | 否 | 计划提交的模型参数，省略为空对象 |
+| media_seconds | number | 否 | 大于 0、不超过 3600，仅估价用 |
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+返回 input_valid、problems、warnings、estimate、pricing_scope、final_budget_enforced，以及能读取时的余额/额度。estimate.status 可为 estimated、partial、token_billed、needs_input、no_price；见[费用说明](/cn/mcp/billing)。查询成功不等于输入有效或报价完整。
+
+该工具没有 `max_cost_usd`，也不会返回 CLI 本地报价编号。MCP 预算放在生成工具。media_seconds 不改变输出时长，不补全未知参考视频倍率。
+
+### generate_image、generate_video、generate_audio
+
+三工具共用顶层参数，按输出类型选择：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| model | string | 是 | 1–128 字符，对应媒体类型 |
+| input | object | 否 | 按 get_model 的模型参数填，不放 model/callback_url |
+| prompt | string | 否 | input.prompt 的快捷方式，最多 20000 字符，仍受模型限制 |
+| client_request_id | string | 否 | 16–96 字符，字母数字及 . _ -；同一请求恢复时复用 |
+| max_cost_usd | number | 否 | 大于 0、不超过 10000；仅提交前估价检查 |
+| media_seconds | number | 否 | 大于 0、不超过 3600；仅估价提示 |
+
+先查模型/参数、估价、展示限制并等待明确批准，再调用。以下只是调用形状：
+
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
+```
+
+图片最多等待约 40 秒，完成则返回结果，否则给 task_id；视频/音频提交后返回 task_id，继续 get_task。提交可能包含预扣信息，完成后的实际扣费单独确认。
+
+任务还在运行时只查询，不能再调用生成工具“查看进度”。响应丢失时保留原 ID、账户、输入和请求编号；更换编号会创建新的付费意图。客户端重试保护不等于所有生产节点已实现相同后端幂等保证。
+
+### get_task
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| task_id | string | 是 | 原任务 ID，4–128 字符的受支持 ID |
+| wait_seconds | integer | 否 | 0–45，默认 30；0 立即查询 |
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+返回状态、进度、结果、已报告费用或错误。仍未完成时继续同一 ID。任务失败不证明已退款；没有账务证据就报告未知。原件通常 24 小时内保存，缩略图是否展示由客户端决定。
+
+### list_tasks
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| task_ids | string[] | 否 | 1–50 个 ID，批量模式 |
+| status | string | 否 | processing/completed/failed/cancelled |
+| type | string | 否 | image/video/audio |
+| model | string | 否 | 精确模型 ID，1–128 字符 |
+| page | integer | 否 | 1–100000，默认第 1 页 |
+| since / until | string | 否 | ISO 8601、Unix 秒、30m/2h/1d，最多 40 字符 |
+| limit | integer | 否 | 1–50，默认 20 |
+
+```json
+{"name":"list_tasks","arguments":{"type":"video","since":"2h","page":1,"limit":20}}
+```
+
+```json
+{"name":"list_tasks","arguments":{"task_ids":["TASK_ID_ONE","TASK_ID_TWO"]}}
+```
+
+task_ids 不能与 status/type/model/page/since/until 混用。批量返回 tasks 与 missing；历史返回 total/page/page_size/next_page。processing 包含排队，时间过滤只作用于当前页，total 是时间过滤前数量。账户历史不局限于当前聊天，空页不能证明提交没发生。
+
+### get_task_usage
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| since | string | 否 | 默认 30d，创建时间下界 |
+| until | string | 否 | 默认当前时间，含边界 |
+| model | string | 否 | 精确 ID，1–128 字符 |
+| type | string | 否 | image/video/audio |
+| max_pages | integer | 否 | 1–20，默认 5；每页 50 条 |
+
+```json
+{"name":"get_task_usage","arguments":{"since":"7d","type":"video","max_pages":5}}
+```
+
+返回 totals、by_model、by_status、coverage 与 as_of。检查 missing_cost_tasks、truncated、concurrent_change_detected 和 complete_for_retained_tasks。它汇总账户保留的已完成任务报告费用，不是完整账单、支付/退款台账、仅 MCP 用量或结算上限。
+
+### check_balance
+
+无参数：
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+返回 account_balance_credits/usd、spent_scope、spent_credits，以及可用时的总/当日额度与控制台链接。OAuth Key 花费覆盖同账户 CLI 和全部 OAuth MCP 会话，不是本次聊天的金额。
+
+### upload_file
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| file_url | string | 二选一 | 公开 HTTPS 媒体，不接受私网/凭据 URL |
+| base64_data | string | 二选一 | 远程最多 1 MiB 解码后文件 |
+| mime_type | string | 条件必填 | 裸 base64 必填；data URL 自带 MIME |
+| file_name | string | 否 | 纯文件名，不含目录 |
+| upload_path | string | 否 | 相对目录，不含 .. |
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+替换真实可访问 URL。返回 file_url、文件属性和有效期等。参考通常保留 72 小时。远程不接受 file_path；本地 stdio 可用允许目录的绝对路径替代 URL/base64，三个来源只能选一个。接受上传格式不代表模型支持该素材。
+
+### prepare_upload
+
+必填 `file_name`（string，含扩展名决定类型），可选 `upload_path`（相对目录）。
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+返回 upload_id、upload_url、method:PUT、command、max_bytes、expires_at。地址有效约 15 分钟，一次使用，最大 **95 MiB**。在能读取文件的环境执行返回命令，确认成功后用 file_url；网页附件不一定能这样上传。地址含一次性授权，不公开，不追加个人 Key。
+
+### get_upload
+
+必填 `upload_id`，使用原准备返回值：
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
+
+状态有 waiting/uploading/done/failed/expired/outcome_unknown；done 才能使用已确认的 file_url。当前服务内状态约保留 1 小时，兼容文件服务可提供约 72 小时回执；若后端不支持或无法核实，可能返回 outcome_unknown。此查询不会重传原件；保留原 ID，先查状态与文件。
+
+### 返回格式与错误
+
+工具返回可读 text 和 structuredContent，失败可带 isError/error/next_step。完成媒体也可附 resource_link、可选 image 缩略图。不同客户端需支持这些内容；原件链接始终是交付依据，不保证所有宿主都显示预览。
+
+先检查工具错误，再看 input_valid、估价状态、task.status 等业务结果。不要只看到 HTTP 200 就判定生成成功。提交超时可能已经创建任务，不能当作“未收费”；query 的失败也不能当作原任务失败。
+
+## 任务进度和结果
+
+余额与模型查询用于免费验证；get_task/list_tasks 用于已有任务，完成后立即交付原链接和实际费用。[创作与任务指南](/cn/mcp/overview#workflows)包含上传、恢复、保存和灰色缩略图处理，不要为显示问题自动重做付费媒体。
+
+<span id="api" />
+## MCP 协议与后台接口
+
+| 方式 | 执行路径 | 认证与安装 |
+|---|---|---|
+| 远程 MCP | 客户端 → EvoLink 托管 MCP → 平台 API | Streamable HTTP + 浏览器 OAuth，无需安装本地服务 |
+| 本地 stdio | 客户端 → 本机 MCP 进程 → 平台 API | Node.js 18+、npx 启动、个人 API Key |
+
+远程端点为 `https://mcp.evolink.ai/mcp`。Passport 负责 OAuth；服务请求 `https://api.evolink.ai` 和文件服务。MCP URL、平台 `/v1` 路径、文档地址和 llms.txt 是不同入口，不相互替代。
+
+### 初始化与调用
+
+由宿主或 MCP SDK 处理 initialize、协议版本、Accept、认证、会话和内容块。初始化后读取 `tools/list`，再用 `tools/call` 调用工具：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_balance","arguments":{}}}
+```
+
+本页示例中的 name / arguments 是工具输入，不是 REST 请求体。工具可能返回文本、结构化数据、资源链接和缩略图；宿主决定如何展示。检查工具错误和任务 status，不能只看 HTTP 成功。
+
+### 工具与后台能力
+
+| MCP 工具 | 后台接口或实现 |
+|---|---|
+| search_models | `GET /v1/models` 与别名、可用性和参考整合 |
+| get_model、recommend_models、search_docs | 版本化模型参考与账户目录，不是同名 REST 接口 |
+| estimate_cost | `GET /web/api/models/pricing` 与服务内估价规则 |
+| generate_image | `POST /v1/images/generations` |
+| generate_video | `POST /v1/videos/generations` |
+| generate_audio | `POST /v1/audios/generations` |
+| get_task | `GET /v1/tasks/{task_id}` |
+| list_tasks，指定 task_ids | `POST /v1/tasks/batch` |
+| list_tasks、get_task_usage | `GET /v1/tasks`，分页与有界汇总 |
+| check_balance | `GET /v1/credits` |
+| 上传授权 | `POST /v1/files/upload-token` |
+| upload_file | 文件服务 /url 或 /base64；本地 stdio 可读允许目录 |
+| prepare_upload、get_upload | 托管 MCP 的一次性 PUT 地址与状态；回执恢复依文件服务支持 |
+
+模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。已发布 1.6.1 没有最终结算硬上限，也不能因新价格接口存在就声称已接入完整本人报价。
+
+### 上传、恢复与权限
+
+一次性 PUT 地址由 prepare_upload 返回，只在有文件读取能力的环境使用，上传后通过 get_upload 查询。远程服务不能读取用户电脑路径，网页附件也未必能提供原件字节。具体步骤见[素材与上传](/cn/mcp/overview#files)。
+
+付费提交保存 `client_request_id`、规范输入、账户和返回 task_id；未知结果先查询原任务及历史，不换编号重发。不能仅凭客户端保存编号承诺后端所有异常都不会重复扣费。
+
+OAuth 只开放受限媒体能力，不能借工具调用任意 Key 管理或后台接口。当前没有可用的取消工具；停止等待不代表任务取消。CLI 使用独立命令与执行路径，说明见[CLI 参考](/cn/cli/reference#api)。
+
+<span id="cli-reference" />
+
+## CLI 命令资料
+
+CLI 完整命令已移到[独立 CLI 参考](/cn/cli/reference#cli-reference)。本页只描述 MCP 工具和协议。

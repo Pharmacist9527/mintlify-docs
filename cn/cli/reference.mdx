@@ -1,0 +1,174 @@
+---
+title: "CLI 命令与接口参考"
+description: "全部命令、参数、JSON 输出、恢复机制与 REST 执行路径"
+---
+
+<span id="cli-reference" />
+## CLI 命令参考
+
+本页对应 `@evolinkai/cli` **0.8.1**。运行 `evolink --help` 或 `evolink COMMAND --help --json` 看本机帮助。所有业务命令支持 `--json`；MODEL_ID、QUOTE_ID、TASK_ID、UPLOAD_ID 请替换为实际值。
+
+### 登录、诊断与技能
+
+安装集中在[接入指南](/cn/cli/setup#cli-install)。
+
+| 命令 | 行为 |
+|---|---|
+| evolink --version | 查看版本 |
+| evolink setup --agent codex --json | 环境、登录、技能同步与免费连接验证 |
+| evolink auth login [--no-browser] [--timeout SECONDS] | OAuth 登录；30–900 秒，默认 180 |
+| evolink auth status --json | 本地登录状态，不等于网络可用性 |
+| evolink auth logout | 撤销当前 CLI 会话、退出 |
+| evolink doctor --agent codex --json | 环境、安全存储、账户、模型与技能诊断 |
+| evolink skills install [--agent NAME] [--replace-modified] | 安装/同步随包技能，默认保护修改 |
+| evolink skills status [--agent NAME] --json | 缺失、当前、过期、修改或冲突状态 |
+
+agent 为 all/codex/claude-code/cursor/gemini/opencode/copilot/openclaw/hermes，默认 all。技能文件检查完成后，仍需助手确认已加载。
+
+### 模型、参数与文档
+
+```bash
+evolink models search --type image --query seedream --limit 5 --page 1 --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink models recommend --type video --query seedance --references image --limit 3 --json
+evolink docs search --type video --query "first frame" --limit 5 --json
+```
+
+| 命令 | 参数与返回 |
+|---|---|
+| models search | type image/video/audio/all，默认 all；limit 1–50，默认 20；page 1–100000；query 最多 100 字符 |
+| models show MODEL_ID | 规范 ID、别名、参数、价格、参考输入、文档来源与 schema |
+| models schema MODEL_ID | 版本化输入/提交 schema；缺 schema 时明确报错 |
+| models recommend | 必填 type image/video/audio；references 逗号分隔 image/video/audio；limit 1–10 |
+| docs search | 必填 query，最多 100 字符；type 同搜索；limit 1–20，默认 5 |
+
+文档搜索是随版本提供的官方模型参考索引，不是实时全站搜索。推荐基于参数覆盖、关键词与平台偏好，不是热门榜。模型单价不等于任务报价。
+
+### 报价与生成
+
+按模型参数新建 input.json，然后免费报价：
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+| 选项 | 说明 |
+|---|---|
+| --model | 必填，规范 ID 或支持的别名 |
+| --input-file FILE / --input JSON | JSON 对象，二选一；省略从空对象开始 |
+| --prompt TEXT | 补充提示词，不可与 JSON 的不同 prompt 冲突 |
+| --max-cost-usd NUMBER | 大于 0、不超过 10000 美元的提交估价上限 |
+| --media-seconds NUMBER | 大于 0、不超过 3600 秒的计费提示，不改变模型输入 |
+
+成功报价返回 `quote_id`，有效约 **15 分钟**，绑定登录、后端、模型与原始输入。失败或预算拒绝的估价不是可提交报价。展示规格、费用范围和警告，等明确批准后按对应类型运行：
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
+evolink generate video --quote QUOTE_ID --confirm --json
+evolink generate audio --quote QUOTE_ID --confirm --json
+```
+
+以上为独立示例，一个报价只对应一种类型和一个任务。生成不接收新模型/输入；变化后重新报价与确认。`--confirm` 声明已经取得批准，不能替代询问用户。
+
+`--wait` 等结果，timeout 为 1–86400 秒、默认 1800。超时/Ctrl-C 不取消服务端任务。完整估价默认使用报价最大值做提交检查；预算局限见[费用与授权](/cn/cli/billing)。
+
+### 任务、批量与恢复
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --type video --status processing --since 2h --limit 20 --page 1 --json
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+| tasks list 选项 | 约定 |
+|---|---|
+| --status | processing/completed/failed/cancelled；processing 包含排队；省略则全部 |
+| --type | image/video/audio；省略全部媒体 |
+| --model | 规范模型 ID 精确筛选 |
+| --since / --until | 创建时间：ISO 8601、Unix 秒、30m/2h/1d；until 含边界 |
+| --page / --limit | 页 1–100000；每页 1–50，默认 20 |
+
+时间过滤只作用于当前取得的页；历史覆盖整个账户，不限于聊天。空页不能证明提交不存在，total 是服务端筛选后、时间过滤前数量。批量 ID 为 1–50 个，逗号分隔。
+
+已有 ID 继续 get/wait；提交响应丢失用原报价 resume，保留原请求 ID 和登录。报价文件丢失、过期或换账户后先核查历史/控制台，不盲目创建新请求。CLI 无取消命令。
+
+### 余额与任务用量
+
+```bash
+evolink balance --json
+evolink usage --since 7d --until 1h --type video --max-pages 5 --json
+```
+
+balance 返回账户余额与相关额度。usage 可加 model/type/创建时间；默认 since 30d，max-pages 1–20、默认 5，每页 50 条。查看缺失费用、覆盖和截断状态。
+
+用量是账户保留的已完成任务报告费用，不能当完整账单、退款台账、仅 CLI/MCP 的花费或最终预算。
+
+### 上传与原件下载
+
+```bash
+evolink upload ./reference.mp4 --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+evolink download TASK_ID --output ./result.mp4 --index 1 --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+本地上传普通文件 **1 字节至 95 MiB**，提交前保存上传 ID。uploads get 只读查回执；兼容文件服务未上线时可能返回未知，不会重传。参考文件通常保留 72 小时。
+
+单下载 index 从 1 开始、默认 1、范围 1–50。父目录须存在，不覆盖已有文件。每个结果最大 1 GiB，检查类型/内容，不把 HTML 错误页当媒体保存。
+
+批量模式 `--all --output-dir DIR` 可加 `--template NAME` 和 `--resume`。resume 只用于批量，使用原批次记录，不把任意同名文件当正确下载。更多见[任务与交付](/cn/cli/workflows#tasks)。
+
+### JSON、退出码与配置
+
+`--json` 在 stdout 写一行 JSON，顶层 `schema_version: 1` 与 `ok`；进度写 stderr。错误为 ok:false、含 error，进程非零退出；Ctrl-C 通常 130。任务 status:failed 与查询命令失败不同，先查命令 ok，再查任务状态。
+
+本地状态保留在 `~/.evolink-media`，凭据在操作系统安全存储。不要复制状态目录来迁移登录，也不要删除报价/恢复记录来“修复”未知提交。
+
+高级 `--server` 是 OAuth 资源地址/身份绑定，默认 https://mcp.evolink.ai/mcp，不改变 REST 业务路径。`--api-url` / `--files-url` 保持生产默认；任意外部地址会被拒绝。`--token-stdin` 是一次性 OAuth 访问令牌，不是平台 API Key，不用于 setup；不把令牌放命令参数或日志。
+
+CLI 暂无通用 run、文本聊天、取消、充值、Key 管理或自定义别名文件。需要时使用对应控制台/API。
+
+<span id="api" />
+## CLI 执行路径与接口
+
+CLI 0.8.0 起，媒体业务直接走 **终端或 Agent → EvoLink CLI → 平台 REST API**。CLI 在本地执行参数校验、模型参考查询、估价和结果整理，不通过远程 MCP 的 tools/call 执行业务。
+
+| 服务 | 地址与用途 |
+|---|---|
+| 平台 API | https://api.evolink.ai：模型、媒体、任务和余额 |
+| Passport | https://passport.evolink.ai：浏览器授权与令牌刷新 |
+| 文件服务 | https://files-api.evolink.ai：上传和兼容回执 |
+| OAuth 资源标识 | https://mcp.evolink.ai/mcp：身份绑定，不表示媒体业务经过 MCP |
+| 生成原件 | 任务返回的 HTTPS 地址：直接下载，不附平台令牌 |
+
+### 命令与后台接口的对应关系
+
+| CLI 能力 | 后台接口或实现 |
+|---|---|
+| models search | `GET /v1/models`，结合别名、参考与可用性 |
+| models show/schema、models recommend、docs search | 已发布随包参考、共享规则与实时账户目录 |
+| estimate | `GET /web/api/models/pricing` 与客户端估价规则 |
+| generate image | `POST /v1/images/generations` |
+| generate video | `POST /v1/videos/generations` |
+| generate audio | `POST /v1/audios/generations` |
+| tasks get/wait | `GET /v1/tasks/{task_id}` |
+| tasks batch | `POST /v1/tasks/batch` |
+| tasks list、usage | `GET /v1/tasks`，分页查询与有界汇总 |
+| balance | `GET /v1/credits` |
+| upload | 先 `POST /v1/files/upload-token`，再直传文件服务 |
+| uploads get | 兼容文件服务 `GET /api/v1/files/upload-receipts/{upload_id}` |
+| download | 直接下载任务原件地址，检查格式并记录结果 |
+
+CLI 的 `quote_id`、`--confirm`、恢复文件是客户端流程，不是新增后台字段。已发布 0.8.1 仍使用公开默认估价；新价格接口存在不表示此版本已接入本人媒体报价。`--max-cost-usd` 不是最终结算硬上限。
+
+### 请求、恢复与脚本集成
+
+生成前持久保存报价和请求编号；REST 使用 Idempotency-Key / X-Evo-Run-Id 等既有标识。响应丢失时使用原报价恢复，不能换身份、参数或编号重新提交。客户端记录编号不等于所有生产节点已完成同一后端幂等保证。
+
+脚本先检查 `ok`，再读任务 `status`，最后检查结果或费用字段。保存 `quote_id`、`task_id` 和下载清单，避免依赖终端上一行文本。查询失败、任务失败、结果下载失败需要分别处理；不要给付费提交套无条件重试。
+
+CLI 和远程 MCP 会话分别管理，但同账户 OAuth 当前共享 `EvoLink MCP (OAuth)` 的权限、额度与暂停设置。要连接原生 MCP，使用[独立 MCP 文档](/cn/mcp/overview)。
