@@ -1,12 +1,12 @@
 ---
 title: "MCP tool and API reference"
-description: "Parameters, examples, results, protocol, and backend mapping for 15 tools"
+description: "Parameters, examples, results, protocol, and backend mapping for 16 tools"
 ---
 
 <span id="mcp-tools" />
 ## MCP tool reference
 
-This page describes the 15 tools in the **1.6.1** OAuth remote MCP release. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+This page describes the 16 tools in the **1.7.0** OAuth remote MCP release. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
 
 The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
 
@@ -17,6 +17,7 @@ The `name` and `arguments` examples describe MCP tool calls, not REST request bo
 | search_docs | Search the versioned official model-reference index | None |
 | get_model | Inspect parameters, schema, references, and pricing | None |
 | estimate_cost | Validate inputs and estimate cost | None |
+| get_pricing_rules | Read public default pricing rules (reference rates, not a quote) | None |
 | generate_image | Generate or edit images | Paid |
 | generate_video | Generate, edit, or extend video | Paid |
 | generate_audio | Generate music, songs, or speech | Paid |
@@ -97,6 +98,23 @@ Returns the canonical model, requirements, examples, public pricing, reference_i
 Returns input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced, and balance/limits when available. The estimate status can be estimated, partial, token_billed, needs_input, or no_price; see [billing](/en/mcp/billing). A successful query does not prove valid input or a complete quote.
 
 This tool has no `max_cost_usd` argument and does not produce the CLI's local quote_id. MCP budget checks belong to generation tools. media_seconds does not set output duration or fill unknown reference-video multipliers.
+
+### get_pricing_rules
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| model | string | No | One model ID, up to 100 characters |
+| product_id | string | No | Filter by product family |
+| operation | string | No | Filter by operation, such as `text_to_video` |
+| modality | string | No | `text`, `image`, `video`, or `audio` |
+| lifecycle | string | No | `active`, `preview`, or `deprecated` |
+| view | string | No | `summary` or `full`; default `full` |
+
+```json
+{"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
+```
+
+Returns the public default pricing rules: each billing component's unit rate (decimal strings), minimum charge, tiers and full expressions, plus price_scope and price_selection. These are reference rates without account discounts, not a task quote, a bill or a final spending cap; do not multiply unit rates into a bill. Use `estimate_cost` for the expected cost of a specific generation; it evaluates the same rules for the actual input. An empty result means no matching public rules, not a free model.
 
 ### generate_image, generate_video, generate_audio
 
@@ -254,7 +272,8 @@ Examples using name / arguments describe tool input, not REST request bodies. To
 |---|---|
 | search_models | `GET /v1/models` plus aliases, availability, and references |
 | get_model, recommend_models, search_docs | Versioned references and account catalog, not same-name REST routes |
-| estimate_cost | `GET /web/api/models/pricing` and server-side estimation rules |
+| estimate_cost | `GET /v1/catalog/models/{model_id}/pricing-rules?view=full` and server-side estimation rules (since 1.7.0) |
+| get_pricing_rules | `GET /v1/catalog/pricing-rules` and `GET /v1/catalog/models/{model_id}/pricing-rules` (view=full) |
 | generate_image | `POST /v1/images/generations` |
 | generate_video | `POST /v1/videos/generations` |
 | generate_audio | `POST /v1/audios/generations` |
@@ -266,7 +285,7 @@ Examples using name / arguments describe tool input, not REST request bodies. To
 | upload_file | File service /url or /base64; local stdio can read allowed directories |
 | prepare_upload, get_upload | Hosted single-use PUT URL and status; receipt recovery depends on file-service support |
 
-Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.6.1 has no final settlement cap and does not automatically consume complete account quotes merely because new pricing APIs exist.
+Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.7.0 estimates from the public pricing rules (reference rates, no account discounts) and still has no final settlement cap.
 
 ### Uploads, recovery, and access
 
