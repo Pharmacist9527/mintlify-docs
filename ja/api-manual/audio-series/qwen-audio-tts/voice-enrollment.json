@@ -1,0 +1,746 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Voice Enrollment カスタム音声作成 API",
+    "description": "Qwen Audio 3.1 TTS Flash 用のカスタム音声を作成します。人物の録音から音声を複製するか、テキストの説明から音声を設計します。同じモデルで、指定したフィールドによりモードを選択します。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Voice Enrollment カスタム音声の作成",
+        "description": "- モデル `voice-enrollment` で [Qwen Audio 3.1 TTS Flash](/ja/api-manual/audio-series/qwen-audio-tts/qwen-audio-3.1-tts-flash) 用のカスタム音声を作成します。`audio_url` は**音声複製**、`voice_prompt` + `preview_text` は**音声設計**です。両モードの選択フィールドを同時に指定するか、どちらも指定しない場合は `400`\n- 両モードの音声は `qwen-audio-3.1-tts-flash` 専用で、作成したアカウントのみ使用可能です。旧 `qwen-voice-design` の音声は使用できません。移行時はこの API で再作成してください\n- 設計はプレビュー音声（固定 24 kHz WAV）も返します。複製は音声名のみ返します\n- 非同期処理です。タスク ID で[結果を照会](/ja/api-manual/task-management/get-task-detail)してください。複製は約 15～30 秒。設計はプレビューテキスト全体の合成を待ち、30 文字で約 12 秒、200 文字で約 49 秒\n- リクエスト単位の課金で複製と設計は同額。失敗時は全額返還します。プレビュー音声リンクは 24 時間有効なので早めに保存してください\n- 自分の声、または明確な許可を得た声のみ複製できます\n\n**手順：**\n1. `audio_url`（複製）または `voice_prompt` + `preview_text`（設計）と `preferred_name` を指定\n2. タスク結果をポーリングし、`result_data.voice`（音声名）を取得\n3. [Qwen Audio 3.1 TTS Flash](/ja/api-manual/audio-series/qwen-audio-tts/qwen-audio-3.1-tts-flash) の `voice` に完全な音声名を指定\n\n**タスク結果（`status` が `completed` の場合）：**\n\n| フィールド | 音声複製 | 音声設計 |\n|---|---|---|\n| `result_data.voice` | `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}` | `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}`（`vd-` が追加） |\n| `result_data.voice_type` | `voice_clone` | `voice_design` |\n| `result_data.target_model` | `qwen-audio-3.1-tts-flash` | `qwen-audio-3.1-tts-flash` |\n| `results` / `result_data.preview_audio_url` | 返しません | プレビュー音声 URL（24 時間有効）。`sample_rate: 24000` と `response_format: \"wav\"` も返します |\n\n設計のプレビュー音声を取得できない場合も、タスクは完了します（音声は作成・課金済み）。その場合は `preview_audio_unavailable: true` と `preview_audio_warning` を返します。\n\n**音声の有効期限：**\n- 複製・設計のカスタム音声はデフォルトで作成タスク完了から `6 時間`で期限切れになります。合成で使用しても期限は延長されません\n- 期限後の TTS は `404`（`voice_expired`）。この API で新しい音声を作成して合成に使用してください\n\n**音声の上限：** 上流アカウントの Qwen-Audio-TTS シリーズのカスタム音声には総数上限があります（公式は 1000、複製と設計で共有）。上限に達すると作成は失敗し、全額返還されます。\n\n**文字数の計算：** 中国語・英語の文字と句読点はいずれも 1 文字と数えます。",
+        "operationId": "createVoiceEnrollment",
+        "tags": [
+          "カスタム音声の作成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/VoiceCloneRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoiceDesignRequest"
+                  }
+                ]
+              },
+              "examples": {
+                "clone_minimal": {
+                  "summary": "音声複製：最小構成",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "audio_url": "https://your-cdn.com/samples/my-voice.wav",
+                    "preferred_name": "myvoice"
+                  }
+                },
+                "clone_full": {
+                  "summary": "音声複製：全パラメータ",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "audio_url": "https://your-cdn.com/samples/my-voice.wav",
+                    "preferred_name": "myvoice",
+                    "language": "zh",
+                    "target_model": "qwen-audio-3.1-tts-flash",
+                    "callback_url": "https://your-domain.com/webhooks/voice-completed"
+                  }
+                },
+                "design_minimal": {
+                  "summary": "音声設計：最小構成",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "voice_prompt": "沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳，吐字清晰",
+                    "preview_text": "各位听众朋友，大家好，欢迎收听晚间新闻。",
+                    "preferred_name": "announcer"
+                  }
+                },
+                "design_full": {
+                  "summary": "音声設計：全パラメータ",
+                  "value": {
+                    "model": "voice-enrollment",
+                    "voice_prompt": "A calm British female narrator in her thirties, warm and articulate",
+                    "preview_text": "Good evening, and welcome to tonight's programme.",
+                    "preferred_name": "narrator",
+                    "language": "en",
+                    "sample_rate": 24000,
+                    "response_format": "wav",
+                    "target_model": "qwen-audio-3.1-tts-flash",
+                    "callback_url": "https://your-domain.com/webhooks/voice-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "音声作成タスクを受け付けました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceEnrollmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが無効",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "mutually_exclusive": {
+                    "summary": "audio_url と voice_prompt を同時に指定",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url and voice_prompt are mutually exclusive: pass audio_url to clone a voice, or voice_prompt to design one",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_mode": {
+                    "summary": "audio_url と voice_prompt がどちらも未指定",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url (voice cloning) or voice_prompt (voice design) is required for voice-enrollment",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_preferred_name": {
+                    "summary": "preferred_name が未指定",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preferred_name is required for voice-enrollment (e.g. 'announcer', 'narrator')",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "invalid_preferred_name": {
+                    "summary": "preferred_name が規則に違反",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preferred_name must be 1-10 English letters or digits",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "bad_target_model": {
+                    "summary": "target_model が qwen-audio-3.1-tts-flash 以外",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "target_model 'qwen3-tts-vd' is not supported, valid value: qwen-audio-3.1-tts-flash",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "bad_language": {
+                    "summary": "未対応の language",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "language must be one of zh, en, ja, ko, de, fr, it, ru, pt, es",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_too_long": {
+                    "summary": "複製：audio_url が 2048 文字を超過",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url must not exceed 2048 characters, got 2191",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_not_public": {
+                    "summary": "複製：audio_url がプライベートアドレス",
+                    "value": {
+                      "error": {
+                        "code": "invalid_media_url",
+                        "message": "invalid parameter \"audio_url\": points to localhost; provide a publicly accessible URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "audio_url_not_http": {
+                    "summary": "複製：audio_url が FTP などの無効なプロトコル",
+                    "value": {
+                      "error": {
+                        "code": "invalid_media_url",
+                        "message": "invalid parameter \"audio_url\": must be an absolute HTTP(S) URL",
+                        "type": "invalid_request_error",
+                        "param": "audio_url"
+                      }
+                    }
+                  },
+                  "audio_url_base64": {
+                    "summary": "複製：audio_url が Base64 data URI",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "audio_url must be a publicly accessible HTTP(S) URL: must be an absolute HTTP(S) URL",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "clone_with_design_field": {
+                    "summary": "音声複製で設計用フィールドを指定",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text is only supported for voice design (voice_prompt)",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "voice_prompt_too_long": {
+                    "summary": "設計：voice_prompt が 500 文字を超過",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "voice_prompt must not exceed 500 characters, got 501",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "missing_preview_text": {
+                    "summary": "設計：preview_text が未指定",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text is required for voice design",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "preview_text_length": {
+                    "summary": "設計：preview_text が 15～200 文字の範囲外",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "preview_text must be 15-200 characters, got 3",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  },
+                  "design_sample_rate": {
+                    "summary": "設計：サンプルレートが 24000 以外",
+                    "value": {
+                      "error": {
+                        "code": "invalid_parameter",
+                        "message": "sample_rate must be 24000 for voice-enrollment",
+                        "type": "invalid_request_error"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークンが無効または期限切れ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足、チャージが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アクセス権限がありません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: voice-enrollment",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエスト頻度の上限を超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## すべての API で Bearer トークン認証が必要です\n\n**API キーの取得：**\n\n[API キー管理](https://evolink.ai/dashboard/keys)で API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "VoiceCloneRequest": {
+        "title": "音声複製（audio_url）",
+        "type": "object",
+        "description": "人物の録音から音声を作成します。`audio_url` で複製モードになります。設計用の `voice_prompt`、`preview_text`、`sample_rate`、`response_format` は省略してください。空でない設計テキスト、ゼロ以外のサンプルレート、空でない形式は `400`。`sample_rate: 0/null` と `response_format: \"\"/null` は未指定として扱います。",
+        "required": [
+          "model",
+          "audio_url",
+          "preferred_name"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "voice-enrollment"
+            ],
+            "default": "voice-enrollment",
+            "example": "voice-enrollment",
+            "description": "モデル名"
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "example": "https://your-cdn.com/samples/my-voice.wav",
+            "description": "複製する録音の URL。このフィールドは**音声複製**を選択し、`voice_prompt` とは同時に指定できません\n\n**URL の要件：**\n- 認証なしで公開アクセスできる HTTP または HTTPS\n- ローカルやプライベートネットワークのアドレスは `400`（`invalid_media_url`）\n- 最大 `2048` 文字\n- FTP など非 HTTP(S) プロトコルは `400`（`invalid_media_url`）\n- URL のみ対応。Base64 data URI は `400`（`invalid_parameter`）\n\n**音声の要件**（満たさない場合はタスクが失敗することがあります）：\n- WAV、MP3、M4A\n- 最大 60 秒。発話が短すぎても失敗します（テストでは 2 秒の録音が失敗）\n- ファイルサイズは最大 `10 MB`\n- サンプルレートは `16 kHz` 以上\n- 明瞭な人の声が必要です。無音、音楽など発話でない音声は拒否されます\n\n**録音の推奨事項：**\n- 10～20 秒、そのうち少なくとも 5 秒は連続した明瞭な朗読。ポーズは 2 秒以下\n- モノラル。ステレオは最初のチャンネルのみ使用\n- 背景音楽、雑音、他人の声を含めず、歌わずに通常の話し方で録音\n\nダウンロードできない、または要件を満たさない場合はタスクが失敗し、クレジットは全額返還されます\n\n**自分の声、または明確な許可を得た声のみ複製してください**",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "preferred_name": {
+            "type": "string",
+            "maxLength": 10,
+            "pattern": "^[a-zA-Z0-9]+$",
+            "example": "myvoice",
+            "description": "音声名のプレフィックス\n\n**制約：**\n- 英字と数字のみ、1～10 文字。アンダースコアなどの記号は非対応\n- 大文字は小文字に変換\n- 一意である必要はありません\n\n完全な音声名：複製は `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}`、設計は `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}`\n\n`myvoice` の複製例：`qwen-audio-3.1-tts-flash-myvoice-5996beec833d41f4982158347ba97fae`"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "it",
+              "ru",
+              "pt",
+              "es"
+            ],
+            "example": "zh",
+            "description": "複製では録音の言語を指定し、音声の特徴をより正確に抽出します。設計では音声の言語傾向を指定します。`preview_text` と同じ言語を推奨します\n\n未指定時は `zh`"
+          },
+          "target_model": {
+            "type": "string",
+            "enum": [
+              "qwen-audio-3.1-tts-flash"
+            ],
+            "default": "qwen-audio-3.1-tts-flash",
+            "example": "qwen-audio-3.1-tts-flash",
+            "description": "音声を使用する TTS モデル。現在は 1 種類のみで、未指定時もこの値になります。他の値は `400`\n\n| 値 | 説明 |\n|-----|------|\n| `qwen-audio-3.1-tts-flash` | Qwen Audio 3.1 TTS Flash 非ストリーミング（デフォルト、唯一の値） |"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/CallbackUrl"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "voice_prompt"
+              ],
+              "properties": {
+                "voice_prompt": {
+                  "not": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "preview_text"
+              ],
+              "properties": {
+                "preview_text": {
+                  "not": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "sample_rate"
+              ],
+              "properties": {
+                "sample_rate": {
+                  "not": {
+                    "enum": [
+                      0,
+                      null
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "response_format"
+              ],
+              "properties": {
+                "response_format": {
+                  "not": {
+                    "enum": [
+                      "",
+                      null
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "VoiceDesignRequest": {
+        "title": "音声設計（voice_prompt）",
+        "type": "object",
+        "description": "テキストの説明から音声を作成し、`preview_text` 全体をプレビュー音声に合成します。`voice_prompt` で設計モードになるため、`audio_url` は指定できません。",
+        "required": [
+          "model",
+          "voice_prompt",
+          "preview_text",
+          "preferred_name"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "voice-enrollment"
+            ],
+            "default": "voice-enrollment",
+            "example": "voice-enrollment",
+            "description": "モデル名"
+          },
+          "voice_prompt": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳，吐字清晰",
+            "description": "音声の特徴の説明。このフィールドは**音声設計**を選択し、`audio_url` とは同時に指定できません\n\n**制約：**\n- 最大 `500` 文字。中国語・英語とも 1 文字と数えます\n- 中国語または英語の説明を推奨\n\n**記述の観点：** 性別、年齢、ピッチ、話速、感情、特徴（響き、明瞭さ、かすれ、丸み、甘さ、深さ）、用途（ニュース、広告、オーディオブック、アニメキャラクター、音声アシスタント）\n\n**推奨する説明例（英語）：**\n- `A calm middle-aged man with a slow pace and a deep, resonant voice, suitable for news or documentary narration`\n- `A gentle, articulate woman around 30 years old, with an even tone, suitable for audiobooks`",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "preview_text": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 200,
+            "example": "各位听众朋友，大家好，欢迎收听晚间新闻。",
+            "description": "プレビューテキスト。**全体**をプレビュー音声に合成します\n\n**制約：**\n- `15` ～ `200` 文字。中国語・英語とも 1 文字と数えます\n- 長いほど時間がかかります。30 文字で約 12 秒、200 文字で約 49 秒\n- `language` と同じ言語を推奨",
+            "pattern": "[^\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+          },
+          "sample_rate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              24000,
+              0,
+              null
+            ],
+            "default": 24000,
+            "example": 24000,
+            "description": "プレビュー音声のサンプルレート（Hz）。`24000` 固定\n\n- 未指定、`0`、`null` は未指定として扱い、デフォルトの `24000` を使用\n- 他のサンプルレートは `400`（`invalid_parameter`）"
+          },
+          "response_format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "wav",
+              "",
+              null
+            ],
+            "default": "wav",
+            "example": "wav",
+            "description": "プレビュー音声の形式。`wav` 固定\n\n- 未指定、空文字列 `\"\"`、`null` は未指定として扱い、デフォルトの `wav` を使用\n- 他の形式は `400`（`invalid_parameter`）"
+          },
+          "preferred_name": {
+            "type": "string",
+            "maxLength": 10,
+            "pattern": "^[a-zA-Z0-9]+$",
+            "example": "myvoice",
+            "description": "音声名のプレフィックス\n\n**制約：**\n- 英字と数字のみ、1～10 文字。アンダースコアなどの記号は非対応\n- 大文字は小文字に変換\n- 一意である必要はありません\n\n完全な音声名：複製は `qwen-audio-3.1-tts-flash-{preferred_name}-{32-character-id}`、設計は `qwen-audio-3.1-tts-flash-vd-{preferred_name}-{32-character-id}`\n\n`myvoice` の複製例：`qwen-audio-3.1-tts-flash-myvoice-5996beec833d41f4982158347ba97fae`"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en",
+              "ja",
+              "ko",
+              "de",
+              "fr",
+              "it",
+              "ru",
+              "pt",
+              "es"
+            ],
+            "example": "zh",
+            "description": "複製では録音の言語を指定し、音声の特徴をより正確に抽出します。設計では音声の言語傾向を指定します。`preview_text` と同じ言語を推奨します\n\n未指定時は `zh`"
+          },
+          "target_model": {
+            "type": "string",
+            "enum": [
+              "qwen-audio-3.1-tts-flash"
+            ],
+            "default": "qwen-audio-3.1-tts-flash",
+            "example": "qwen-audio-3.1-tts-flash",
+            "description": "音声を使用する TTS モデル。現在は 1 種類のみで、未指定時もこの値になります。他の値は `400`\n\n| 値 | 説明 |\n|-----|------|\n| `qwen-audio-3.1-tts-flash` | Qwen Audio 3.1 TTS Flash 非ストリーミング（デフォルト、唯一の値） |"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/CallbackUrl"
+          }
+        },
+        "not": {
+          "required": [
+            "audio_url"
+          ],
+          "properties": {
+            "audio_url": {
+              "not": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$"
+              }
+            }
+          }
+        }
+      },
+      "CallbackUrl": {
+        "type": "string",
+        "description": "タスク結果の HTTPS コールバック URL\n\n**送信タイミング：**\n- タスク完了（`completed`）または失敗（`failed`）時\n- 課金確定後に送信\n\n**セキュリティ要件：**\n- HTTPS のみ\n- プライベート IP は禁止（127.0.0.1、10.x.x.x、172.16～31.x.x、192.168.x.x など）\n- URL は最大 `2048` 文字\n\n**配信：**\n- タイムアウト：`10` 秒\n- 失敗後は最大 `3` 回、`1` / `2` / `4` 秒後に再試行\n- 本文形式はタスク照会 API のレスポンスと同じ\n- 2xx は成功、それ以外は再試行",
+        "format": "uri",
+        "example": "https://your-domain.com/webhooks/voice-completed"
+      },
+      "VoiceEnrollmentResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成時刻のタイムスタンプ",
+            "example": 1775123456
+          },
+          "id": {
+            "type": "string",
+            "description": "タスク ID",
+            "example": "task-unified-1775123456-abcd1234"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "voice-enrollment"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "タスクオブジェクトの具体的な種類"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗率（0～100）",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクの状態",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "pending"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "音声タスクの詳細"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "タスクの出力タイプ",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AudioUsage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクをキャンセルできるかどうか。音声作成タスクはキャンセルできません",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "推定所要時間（秒）。余裕を見た目安：複製は通常 15～30 秒。設計はプレビューテキストが長いほど時間がかかり、30 文字で約 12 秒、200 文字で約 49 秒",
+            "minimum": 0,
+            "example": 60
+          },
+          "audio_type": {
+            "type": "string",
+            "description": "リクエストのモード。`audio_url` は `voice_clone`、`voice_prompt` は `voice_design` となり、タスク結果の `voice_type` と一致します",
+            "example": "voice_clone",
+            "enum": [
+              "voice_clone",
+              "voice_design"
+            ]
+          }
+        }
+      },
+      "AudioUsage": {
+        "type": "object",
+        "description": "使用量情報",
+        "properties": {
+          "credits_reserved": {
+            "type": "number",
+            "description": "見積もりクレジット。リクエスト単位の課金で、複製と設計は同額。タスク失敗時は全額返還",
+            "minimum": 0,
+            "example": 0.001
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーメッセージ"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラーの種類"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "カスタム音声の作成",
+      "description": "音声複製と音声設計。音声は Qwen Audio 3.1 TTS Flash に紐付きます"
+    }
+  ]
+}
