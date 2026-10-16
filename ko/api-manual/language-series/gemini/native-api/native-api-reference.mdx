@@ -4,9 +4,180 @@ openapi: '/ko/api-manual/language-series/gemini/native-api/native-api-reference.
 ---
 
 <Tip>
-**스트리밍 호출**: URL의 `generateContent`를 `streamGenerateContent`로 변경하세요. 요청 본문 파라미터는 동일합니다. 응답은 스트리밍 방식으로 청크 단위로 반환됩니다. 응답 형식은 아래 「스트리밍 응답」 설명을 참조하세요.
+**스트리밍 호출**: URL의 `generateContent`를 `streamGenerateContent`로 바꾸세요. 요청 본문은 유지하고 응답을 청크 단위로 받습니다. SSE 형식에는 `?alt=sse`를 추가하세요.
 </Tip>
 
 <Note>
 **BaseURL**: 기본 BaseURL은 `https://direct.evolink.ai`이며, 텍스트 모델 지원이 더 우수하고 장시간 연결을 지원합니다. `https://api.evolink.ai`는 멀티모달 서비스의 주력 엔드포인트이며, 텍스트 모델에 대해서는 대체 주소로 사용됩니다.
 </Note>
+
+## 긴 출력 이어 생성하기(Gemini 4 Argon)
+
+`gemini-4-argon`은 요청 한 번에 스트리밍으로 최대 65,536토큰, 비스트리밍으로 최대 32,768토큰을 반환하며, 두 상한 모두 사고와 답변 토큰을 포함합니다. 더 긴 출력은 이어 생성 요청으로 나누어 받습니다. 입력·사고·답변은 1,048,576토큰의 컨텍스트를 공유하므로, 누적 사고와 답변에는 입력을 제외한 나머지 공간만 사용할 수 있습니다. 이어 생성은 네이티브 API에서만 지원하며 OpenAI 호환 형식은 지원하지 않습니다.
+
+| | 스트리밍 `streamGenerateContent` | 비스트리밍 `generateContent` |
+|---|---|---|
+| 요청당 최대 출력 | 65,536 | 32,768 |
+| 종료 시 이어 생성 토큰 위치 | 마지막 청크의 `candidates[0].continuationToken` | `candidates[0].continuationToken` |
+
+긴 응답을 기다릴 때는 클라이언트 읽기 타임아웃을 1,200초(20분)로 설정하는 것이 좋습니다. 이는 클라이언트 설정 권장값이며 서버의 요청 지속 시간을 보장하지 않습니다.
+
+절차:
+
+1. `generationConfig.maxOutputTokens`를 요청당 상한보다 크게 설정합니다(스트리밍 65,536 초과, 비스트리밍 32,768 초과). 파라미터는 최대 1,048,576까지 받지만 실제 출력은 공유 컨텍스트의 제한을 받습니다. 이 값은 모든 이어 생성 요청에 걸친 사고와 답변의 누적 예산입니다.
+2. `candidates[0].finishReason`이 `CONTINUATION`이면 생성이 끝나지 않은 상태이며, 같은 후보에 `continuationToken`이 반환됩니다.
+3. 원래 요청의 `contents`, `systemInstruction`, `tools`, `generationConfig`를 그대로 유지하여 다시 보냅니다. 최상위에 `continuationToken`만 추가하고 가장 최근 응답의 토큰을 그대로 넣습니다.
+4. `finishReason`이 `CONTINUATION`일 때만 3단계를 반복하고 다른 종료 사유에서는 멈춥니다. `STOP`은 정상 완료, `MAX_TOKENS`는 누적 예산 소진을 뜻합니다. 각 응답에는 새로 생성된 내용만 있으므로 순서대로 연결합니다.
+
+<Warning>
+- 이미 생성된 내용을 `contents`에 추가하거나 “계속해” 같은 새 프롬프트를 보내지 마세요.
+- 한 요청이 전부 사고에 사용되어 답변 본문이 비어 있을 수 있습니다. 종료 사유가 `CONTINUATION`이면 계속 요청하세요.
+- `MAX_TOKENS`에서도 `continuationToken`이 반환될 수 있습니다. 재개하려면 `maxOutputTokens`를 수동으로 늘리고 최신 토큰과 함께 원래 요청을 다시 보내야 합니다. 소진된 예산을 그대로 쓰면 400이 반환됩니다. 아래 “예산 소진 후 재개”를 참고하세요.
+- 여러 턴의 대화에서는 `STOP`까지 기다린 뒤 합친 전체 답변을 하나의 `model` 메시지로 이력에 추가하세요.
+</Warning>
+
+### 예제
+
+첫 번째 요청:
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Rust 비동기 런타임의 완전한 설계 문서를 작성해 주세요. 아키텍처, 스케줄러, I/O 드라이버, 타이머와 전체 예제 코드를 포함해 주세요." }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    }
+  }'
+```
+
+요청당 상한에 도달했지만 누적 예산이 남아 있는 경우의 응답 예시입니다(이어 생성 관련 필드만 표시):
+
+```json
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "# Rust 비동기 런타임 설계\n\n## 1. 아키텍처\n…"
+          }
+        ]
+      },
+      "finishReason": "CONTINUATION",
+      "continuationToken": "<긴 문자열이며 그대로 보존>"
+    }
+  ]
+}
+```
+
+이전 응답이 `CONTINUATION`이면 동일한 요청의 최상위에 `continuationToken`을 추가해 다시 보냅니다:
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Rust 비동기 런타임의 완전한 설계 문서를 작성해 주세요. 아키텍처, 스케줄러, I/O 드라이버, 타이머와 전체 예제 코드를 포함해 주세요." }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    },
+    "continuationToken": "<이전 응답의 continuationToken>"
+  }'
+```
+
+다음 Python 함수는 `CONTINUATION`을 자동 처리하고 정상 완료 또는 예산 소진 시 반환합니다. 최신 토큰을 보존하며 `MAX_TOKENS`에서 예산을 자동으로 늘리지 않습니다:
+
+```python
+import os
+from copy import deepcopy
+
+import requests
+
+URL = "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent"
+HEADERS = {"Authorization": f"Bearer {os.environ['EVOLINK_API_KEY']}"}
+
+
+def generate_with_continuation(body):
+    request_body = deepcopy(body)
+    pieces = []
+    while True:
+        # 클라이언트 읽기 타임아웃은 1,200초이며 서버가 20분 연결을 유지한다는 보장은 아닙니다.
+        resp = requests.post(URL, headers=HEADERS, json=request_body, timeout=1200)
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            raise RuntimeError("응답에 후보가 없습니다. promptFeedback을 확인하세요.")
+        candidate = candidates[0]
+        for part in candidate.get("content", {}).get("parts", []):
+            if not part.get("thought"):
+                pieces.append(part.get("text", ""))
+        reason = candidate.get("finishReason")
+        token = candidate.get("continuationToken")
+        if reason == "CONTINUATION":
+            if not token:
+                raise RuntimeError("이어 생성이 필요하지만 continuationToken이 반환되지 않았습니다.")
+            request_body["continuationToken"] = token  # 다른 필드는 그대로 유지
+            continue
+        return {
+            "text": "".join(pieces),
+            "finishReason": reason,
+            "continuationToken": token,
+        }
+
+
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Rust 비동기 런타임의 완전한 설계 문서를 작성해 주세요. 아키텍처, 스케줄러, I/O 드라이버, 타이머와 전체 예제 코드를 포함해 주세요."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 262144, "thinkingConfig": {"thinkingLevel": "high"}},
+}
+
+result = generate_with_continuation(body)
+print(result["text"])
+print("finishReason:", result["finishReason"])
+if result["finishReason"] == "MAX_TOKENS":
+    print("누적 출력 예산이 소진되었습니다. 토큰이 있으면 maxOutputTokens를 수동으로 늘려 재개할 수 있습니다.")
+```
+
+### 예산 소진 후 재개
+
+이 예제는 위의 `generate_with_continuation`, `URL`, `HEADERS`를 재사용합니다. 작은 예산으로 숫자 목록을 만든 뒤 총예산을 명시적으로 64에서 2,048로 늘립니다. 원래 `contents`와 다른 설정을 유지하고, 토큰을 추가하면서 예산을 늘리면 끊긴 위치에서 재개합니다.
+
+```python
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Output integers 1 through 100, one per line. Start immediately."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 64, "thinkingConfig": {"thinkingLevel": "low"}},
+}
+
+first = generate_with_continuation(body)
+print(first["text"], end="")
+if first["finishReason"] == "MAX_TOKENS" and first["continuationToken"]:
+    body["continuationToken"] = first["continuationToken"]
+    body["generationConfig"]["maxOutputTokens"] = 2048  # 호출자가 누적 예산 증가를 명시적으로 지정
+    resumed = generate_with_continuation(body)
+    print(resumed["text"], end="")
+    print("\nfinishReason:", resumed["finishReason"])
+else:
+    print("\nfinishReason:", first["finishReason"])
+```
+
+스트리밍에서는 `finishReason`이 있는 마지막 청크를 읽고 종료 사유에 따라 처리합니다. `CONTINUATION`은 설정을 유지하고 최신 토큰으로 계속합니다. `MAX_TOKENS`는 재개하려는 경우 누적 예산을 수동으로 늘려야 합니다. `STOP`은 정상 완료입니다.
+
+### 과금 및 오류
+
+- 각 요청은 별도로 과금됩니다. 이어 생성에서는 원래 입력과 이전에 생성한 내용이 다시 입력으로 계산됩니다. 암묵적 캐시에 적중한 부분에는 캐시 요금이 적용됩니다.
+- 응답의 `usageMetadata`는 해당 요청만 집계합니다. 총사용량은 요청별 사용량을 더합니다. 같은 스트림 안의 사용량은 누적값이므로 마지막 `usageMetadata`만 사용하고 중간 누적값을 중복 합산하지 마세요.
+- 네이티브 API의 출력 사전 차감 추정에는 비스트리밍에서도 `maxOutputTokens`와 65,536 중 작은 값을 사용하며, 입력은 별도로 추정합니다. 비스트리밍의 실제 요청당 출력 상한은 32,768이므로 그보다 큰 예산에서는 실제 상한 기준보다 많은 금액을 확보할 수 있습니다. 최종 요금은 응답의 실제 사용량으로 정산합니다.
+- 유효하지 않은 토큰은 400을 반환합니다. 형식은 맞지만 내용이 유효하지 않으면 `Invalid continuation token.`이, 형식이 틀리면 다른 파라미터 오류가 반환될 수 있습니다. 다른 모델은 `continuationToken`을 무시합니다.
+- `MAX_TOKENS` 이후 토큰을 보내더라도 소진된 `maxOutputTokens`를 늘리지 않으면 400을 반환합니다.

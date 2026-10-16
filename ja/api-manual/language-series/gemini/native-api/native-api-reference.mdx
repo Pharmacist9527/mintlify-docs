@@ -4,9 +4,180 @@ openapi: '/ja/api-manual/language-series/gemini/native-api/native-api-reference.
 ---
 
 <Tip>
-**ストリーミング**：URL の `generateContent` を `streamGenerateContent` に置き換えてください。リクエストボディのパラメータは同一です。レスポンスはストリーミングでチャンクごとに返されます。レスポンス形式は下記の「ストリーミングレスポンス」を参照してください。
+**ストリーミング**：URLの `generateContent` を `streamGenerateContent` に置き換えます。リクエストボディは変更せず、応答をチャンク単位で受け取ります。SSE形式には `?alt=sse` を追加してください。
 </Tip>
 
 <Note>
 **BaseURL**：デフォルトの BaseURL は `https://direct.evolink.ai` で、テキストモデルへの対応が優れており、長時間接続をサポートします。`https://api.evolink.ai` はマルチモーダルの主力エンドポイントで、テキストモデルに対しては代替アドレスとして使用されます。
 </Note>
+
+## 長い出力の継続生成（Gemini 4 Argon）
+
+`gemini-4-argon` の1回の出力上限は、ストリーミングが65,536トークン、非ストリーミングが32,768トークンで、いずれも思考と回答を含みます。より長い出力は継続リクエストで取得します。入力・思考・回答は1,048,576トークンのコンテキストを共有するため、累計の思考と回答には入力を差し引いた残りの領域のみ使用できます。継続生成に対応するのはネイティブAPIのみで、OpenAI互換形式では利用できません。
+
+| | ストリーミング `streamGenerateContent` | 非ストリーミング `generateContent` |
+|---|---|---|
+| 1回のリクエストの最大出力 | 65,536 | 32,768 |
+| 終了時の継続トークンの位置 | 最終チャンクの `candidates[0].continuationToken` | `candidates[0].continuationToken` |
+
+長い応答を待つ場合は、クライアントの読み取りタイムアウトを1,200秒（20分）に設定することを推奨します。これはクライアント設定の推奨値であり、サーバー側のリクエスト継続時間を保証するものではありません。
+
+手順：
+
+1. `generationConfig.maxOutputTokens` を1回の上限より大きく設定します（ストリーミングは65,536超、非ストリーミングは32,768超）。パラメータには最大1,048,576を指定できますが、実際の出力は共有コンテキストの制約を受けます。この値は全継続リクエストにわたる思考と回答の累計予算です。
+2. `candidates[0].finishReason` が `CONTINUATION` の場合、生成はまだ完了していません。同じ候補に `continuationToken` が返されます。
+3. 元のリクエストを、`contents`、`systemInstruction`、`tools`、`generationConfig` を変えずに再送します。トップレベルに `continuationToken` のみ追加し、直近の応答のトークンをそのまま指定します。
+4. `finishReason` が `CONTINUATION` の間だけ手順3を繰り返し、それ以外では停止します。`STOP` は正常終了、`MAX_TOKENS` は累計予算の消費完了を示します。各応答には新たに生成された内容だけが含まれるので、順番に連結します。
+
+<Warning>
+- 生成済みの内容を `contents` に追加したり、「続きを書いて」などの新しい指示を送ったりしないでください。
+- 1回のリクエストがすべて思考に使われ、回答の本文が空になることがあります。終了理由が `CONTINUATION` なら継続してください。
+- `MAX_TOKENS` でも `continuationToken` が返される場合があります。再開するには `maxOutputTokens` を手動で増やし、最新のトークンを付けて元のリクエストを再送します。消費済みの予算のままでは400になります。下の「予算消費後の再開」を参照してください。
+- 複数ターンの会話では、`STOP` まで待ってから連結した回答全体を1件の `model` メッセージとして履歴に追加してください。
+</Warning>
+
+### 使用例
+
+1回目のリクエスト：
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Rust非同期ランタイムの完全な設計書を書いてください。アーキテクチャ、スケジューラ、I/Oドライバ、タイマー、完全なサンプルコードを含めてください。" }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    }
+  }'
+```
+
+1回の上限に達し、累計予算が残っている場合の応答例です（継続に関係するフィールドのみ）：
+
+```json
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "# Rust非同期ランタイムの設計\n\n## 1. アーキテクチャ\n…"
+          }
+        ]
+      },
+      "finishReason": "CONTINUATION",
+      "continuationToken": "<長い文字列。そのまま保存>"
+    }
+  ]
+}
+```
+
+前の応答が `CONTINUATION` の場合、同じリクエストのトップレベルに `continuationToken` を追加して再送します：
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Rust非同期ランタイムの完全な設計書を書いてください。アーキテクチャ、スケジューラ、I/Oドライバ、タイマー、完全なサンプルコードを含めてください。" }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    },
+    "continuationToken": "<前の応答のcontinuationToken>"
+  }'
+```
+
+次のPython関数は `CONTINUATION` を自動処理し、正常終了または予算消費時に結果を返します。最新のトークンを保持し、`MAX_TOKENS` でも予算を自動的には増やしません：
+
+```python
+import os
+from copy import deepcopy
+
+import requests
+
+URL = "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent"
+HEADERS = {"Authorization": f"Bearer {os.environ['EVOLINK_API_KEY']}"}
+
+
+def generate_with_continuation(body):
+    request_body = deepcopy(body)
+    pieces = []
+    while True:
+        # クライアントの読み取りタイムアウトは1,200秒。サーバーが20分間接続を維持する保証ではありません。
+        resp = requests.post(URL, headers=HEADERS, json=request_body, timeout=1200)
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            raise RuntimeError("応答に候補がありません。promptFeedbackを確認してください。")
+        candidate = candidates[0]
+        for part in candidate.get("content", {}).get("parts", []):
+            if not part.get("thought"):
+                pieces.append(part.get("text", ""))
+        reason = candidate.get("finishReason")
+        token = candidate.get("continuationToken")
+        if reason == "CONTINUATION":
+            if not token:
+                raise RuntimeError("継続が必要ですが、continuationTokenが返されていません。")
+            request_body["continuationToken"] = token  # 他のフィールドは変更しない
+            continue
+        return {
+            "text": "".join(pieces),
+            "finishReason": reason,
+            "continuationToken": token,
+        }
+
+
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Rust非同期ランタイムの完全な設計書を書いてください。アーキテクチャ、スケジューラ、I/Oドライバ、タイマー、完全なサンプルコードを含めてください。"}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 262144, "thinkingConfig": {"thinkingLevel": "high"}},
+}
+
+result = generate_with_continuation(body)
+print(result["text"])
+print("finishReason:", result["finishReason"])
+if result["finishReason"] == "MAX_TOKENS":
+    print("累計出力予算を消費しました。継続トークンがあれば、maxOutputTokensを手動で増やして再開できます。")
+```
+
+### 予算消費後の再開
+
+この例は上の `generate_with_continuation`、`URL`、`HEADERS` を再利用します。小さな予算で数列を生成した後、総予算を明示的に64から2,048へ増やします。元の `contents` とその他の設定を維持し、トークンの追加と予算の増加によって中断箇所から再開します。
+
+```python
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Output integers 1 through 100, one per line. Start immediately."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 64, "thinkingConfig": {"thinkingLevel": "low"}},
+}
+
+first = generate_with_continuation(body)
+print(first["text"], end="")
+if first["finishReason"] == "MAX_TOKENS" and first["continuationToken"]:
+    body["continuationToken"] = first["continuationToken"]
+    body["generationConfig"]["maxOutputTokens"] = 2048  # 呼び出し側が累計予算の増加を明示的に指定
+    resumed = generate_with_continuation(body)
+    print(resumed["text"], end="")
+    print("\nfinishReason:", resumed["finishReason"])
+else:
+    print("\nfinishReason:", first["finishReason"])
+```
+
+ストリーミングでは、`finishReason` を含む最終チャンクを読み取ってから判断します。`CONTINUATION` は設定を変えずに最新トークンで継続し、`MAX_TOKENS` は再開する場合に累計予算を手動で増やします。`STOP` は正常終了です。
+
+### 課金とエラー
+
+- 各リクエストは個別に課金されます。継続時には元の入力と生成済みの内容が再び入力として計上されます。暗黙的キャッシュにヒットした部分にはキャッシュ料金が適用されます。
+- 各応答の `usageMetadata` はそのリクエストのみの使用量です。総使用量はリクエスト間で加算します。同一ストリーム内の値は累計なので、最後の `usageMetadata` だけを使用し、途中の累計値を重複して加算しないでください。
+- ネイティブAPIの出力分の仮引き落とし見積もりには、非ストリーミングでも `maxOutputTokens` と65,536の小さい方を使い、入力分は別途見積もります。非ストリーミングの実際の単発出力上限は32,768なので、それより大きい予算では実際の単発上限に基づく額より多く確保される場合があります。最終料金は応答の使用量に基づいて精算します。
+- 無効なトークンは400になります。形式が正しくても内容が無効なら `Invalid continuation token.`、形式が不正なら別のパラメータエラーが返される場合があります。他のモデルは `continuationToken` を無視します。
+- `MAX_TOKENS` の後にトークンを付けても、消費済みの `maxOutputTokens` を増やさなければ400になります。

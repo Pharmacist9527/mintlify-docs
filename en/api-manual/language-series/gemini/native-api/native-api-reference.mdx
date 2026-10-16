@@ -4,9 +4,180 @@ openapi: '/en/api-manual/language-series/gemini/native-api/native-api-reference.
 ---
 
 <Tip>
-**Streaming**: Replace `generateContent` with `streamGenerateContent` in the URL. The request body parameters are identical. Responses will be returned in streaming chunks. See the "Streaming Response" section below for the response format.
+**Streaming**: Replace `generateContent` with `streamGenerateContent` in the URL. Keep the request body unchanged; responses arrive in chunks. Append `?alt=sse` to request SSE format.
 </Tip>
 
 <Note>
 **BaseURL**: The default BaseURL is `https://direct.evolink.ai`, which has better support for text models and long-lived connections. `https://api.evolink.ai` is the primary endpoint for multimodal services and serves as a fallback address for text models.
 </Note>
+
+## Long-output continuation (Gemini 4 Argon)
+
+A single `gemini-4-argon` streaming request returns up to 65,536 tokens; a non-streaming request returns up to 32,768. Both limits include thinking and answer tokens. Use continuation requests for longer output. Input, thinking, and the answer share a 1,048,576-token context window, so cumulative thinking and answer tokens can only use the space remaining after the input. Only the native API supports continuation; the OpenAI-compatible format does not.
+
+| | Streaming `streamGenerateContent` | Non-streaming `generateContent` |
+|---|---|---|
+| Maximum output per request | 65,536 | 32,768 |
+| Continuation token at completion | In the final chunk: `candidates[0].continuationToken` | `candidates[0].continuationToken` |
+
+Set the client read timeout to 1,200 seconds (20 minutes) for long responses. This is a client configuration recommendation, not a guarantee of server request duration.
+
+Procedure:
+
+1. Set `generationConfig.maxOutputTokens` above the per-request cap: above 65,536 for streaming or 32,768 for non-streaming. The parameter accepts up to 1,048,576, but actual output is still limited by the shared context. This is the cumulative thinking and answer budget across all continuation requests.
+2. When `candidates[0].finishReason` is `CONTINUATION`, generation is not finished. The same candidate includes a `continuationToken`.
+3. Resend the original request with the same `contents`, `systemInstruction`, `tools`, and `generationConfig`. Add only a top-level `continuationToken` containing the latest returned token.
+4. Repeat step 3 only while `finishReason` is `CONTINUATION`; stop for any other finish reason. `STOP` means normal completion, and `MAX_TOKENS` means the cumulative budget is exhausted. Each response contains only newly generated content; concatenate it in order.
+
+<Warning>
+- Do not append partial output to `contents` or send a new prompt such as “continue”.
+- A request may spend its entire budget on thinking and return empty answer text. Continue if the finish reason is `CONTINUATION`.
+- `MAX_TOKENS` may also include a `continuationToken`. To resume, manually raise `maxOutputTokens` and resend the original request with the latest token. Keeping the exhausted budget returns 400. See “Resume after budget exhaustion” below.
+- For multi-turn conversations, wait for `STOP` and then add the combined answer as a single `model` message to the history.
+</Warning>
+
+### Examples
+
+First request:
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Write a complete design document for a Rust async runtime, including the architecture, scheduler, I/O driver, timers, and complete example code." }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    }
+  }'
+```
+
+If generation reaches the per-request cap with budget remaining, the response may look like this (only continuation-related fields are shown):
+
+```json
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "# Rust async runtime design\n\n## 1. Architecture\n…"
+          }
+        ]
+      },
+      "finishReason": "CONTINUATION",
+      "continuationToken": "<a long opaque string; preserve it exactly>"
+    }
+  ]
+}
+```
+
+If the previous response ended with `CONTINUATION`, send the same request again with a top-level `continuationToken`:
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Write a complete design document for a Rust async runtime, including the architecture, scheduler, I/O driver, timers, and complete example code." }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    },
+    "continuationToken": "<continuationToken from the previous response>"
+  }'
+```
+
+This Python function automatically handles `CONTINUATION` and returns on completion or budget exhaustion. It preserves the latest token and does not raise the budget automatically on `MAX_TOKENS`:
+
+```python
+import os
+from copy import deepcopy
+
+import requests
+
+URL = "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent"
+HEADERS = {"Authorization": f"Bearer {os.environ['EVOLINK_API_KEY']}"}
+
+
+def generate_with_continuation(body):
+    request_body = deepcopy(body)
+    pieces = []
+    while True:
+        # Client read timeout: 1,200 seconds; this does not guarantee a 20-minute server connection.
+        resp = requests.post(URL, headers=HEADERS, json=request_body, timeout=1200)
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            raise RuntimeError("No candidates in the response; check promptFeedback.")
+        candidate = candidates[0]
+        for part in candidate.get("content", {}).get("parts", []):
+            if not part.get("thought"):
+                pieces.append(part.get("text", ""))
+        reason = candidate.get("finishReason")
+        token = candidate.get("continuationToken")
+        if reason == "CONTINUATION":
+            if not token:
+                raise RuntimeError("The response requests continuation but has no continuationToken.")
+            request_body["continuationToken"] = token  # Keep all other fields unchanged
+            continue
+        return {
+            "text": "".join(pieces),
+            "finishReason": reason,
+            "continuationToken": token,
+        }
+
+
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Write a complete design document for a Rust async runtime, including the architecture, scheduler, I/O driver, timers, and complete example code."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 262144, "thinkingConfig": {"thinkingLevel": "high"}},
+}
+
+result = generate_with_continuation(body)
+print(result["text"])
+print("finishReason:", result["finishReason"])
+if result["finishReason"] == "MAX_TOKENS":
+    print("The cumulative output budget is exhausted. If a token was returned, you can manually raise maxOutputTokens to resume.")
+```
+
+### Resume after budget exhaustion
+
+This example reuses `generate_with_continuation`, `URL`, and `HEADERS` above. It generates a number list with a small budget, then explicitly raises the total budget from 64 to 2,048. Keep the original `contents` and other settings unchanged; add the token and raise the budget to resume at the cutoff.
+
+```python
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Output integers 1 through 100, one per line. Start immediately."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 64, "thinkingConfig": {"thinkingLevel": "low"}},
+}
+
+first = generate_with_continuation(body)
+print(first["text"], end="")
+if first["finishReason"] == "MAX_TOKENS" and first["continuationToken"]:
+    body["continuationToken"] = first["continuationToken"]
+    body["generationConfig"]["maxOutputTokens"] = 2048  # The caller explicitly raises the cumulative budget
+    resumed = generate_with_continuation(body)
+    print(resumed["text"], end="")
+    print("\nfinishReason:", resumed["finishReason"])
+else:
+    print("\nfinishReason:", first["finishReason"])
+```
+
+For streaming, read the final chunk containing `finishReason`: on `CONTINUATION`, resend the latest token with unchanged settings; on `MAX_TOKENS`, manually raise the cumulative budget if you want to resume; `STOP` means normal completion.
+
+### Billing and errors
+
+- Each request is billed separately. Continuation requests count the original input and all previously generated content as input again. Portions that hit implicit caching are billed at the cache rate.
+- Each response’s `usageMetadata` covers only that request. Add usage across requests for the total. Streaming usage is cumulative within a request: use only the final `usageMetadata`, rather than adding cumulative values from the same stream.
+- For the native API, the output pre-authorization estimate uses the smaller of `maxOutputTokens` and 65,536, including for non-streaming requests; input is estimated separately. Non-streaming output is actually capped at 32,768 per request, so budgets above 32,768 may reserve more than an estimate based on the actual per-request cap. Final charges use the response usage.
+- Invalid tokens return 400. A well-formed but invalid token may return `Invalid continuation token.`, while malformed tokens may produce another parameter error. Other models ignore `continuationToken`.
+- Resuming after `MAX_TOKENS` with a token but without raising the exhausted `maxOutputTokens` also returns 400.
