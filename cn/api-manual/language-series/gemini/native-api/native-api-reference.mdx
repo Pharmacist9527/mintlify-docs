@@ -10,3 +10,167 @@ openapi: '/cn/api-manual/language-series/gemini/native-api/native-api-reference.
 <Note>
 **BaseURL 说明**：默认 BaseURL 为 `https://direct.evolink.ai`，对文本模型支持更好、支持长连接；`https://api.evolink.ai` 为备用地址。
 </Note>
+
+## 长输出续写（Gemini 4 Argon）
+
+`gemini-4-argon` 单次流式请求最多输出 65,536 个 token，非流式最多 32,768 个 token，均包含思考与回答。需要更长的输出时，用续写分多次取。输入、思考与回答共用 1,048,576 个 token 的上下文，累计思考与回答最多使用扣除输入后的剩余空间。只有原生 API 支持续写，OpenAI 兼容格式不支持。
+
+| | 流式 `streamGenerateContent` | 非流式 `generateContent` |
+|---|---|---|
+| 每次请求最多输出 | 65,536 | 32,768 |
+| 结束时续写令牌的位置 | 最后一块的 `candidates[0].continuationToken` | `candidates[0].continuationToken` |
+
+建议将客户端读取超时设为 1,200 秒（20 分钟），用于等待长响应；这是客户端配置建议，不是服务端请求时长保证。
+
+做法：
+
+1. 把 `generationConfig.maxOutputTokens` 设为大于单次上限的值（流式大于 65,536，非流式大于 32,768，参数最大可设为 1,048,576，实际输出仍受共享上下文限制）。这个值是所有续写请求共用的累计思考与回答预算。
+2. 响应的 `candidates[0].finishReason` 为 `CONTINUATION` 时，说明回答还没写完，同一位置会带回 `continuationToken`。
+3. 把上一次的请求体原样再发一次（`contents`、`systemInstruction`、`tools`、`generationConfig` 都不变），只在请求体顶层加上 `continuationToken`，值用最近一次响应返回的令牌。
+4. 仅在 `finishReason` 为 `CONTINUATION` 时重复第 3 步，其他结束原因停止循环。`STOP` 表示正常完成，`MAX_TOKENS` 表示累计预算耗尽。每次响应只包含本次新生成的内容，按顺序拼接即可。
+
+<Warning>
+- 不要把已生成的内容拼进 `contents`，也不要发“请继续”之类的新提示。
+- 某一次请求可能全部用在思考上、正文为空，这时仍要继续续写。
+- `finishReason` 为 `MAX_TOKENS` 时也可能带回 `continuationToken`。如要继续，必须手动提高 `maxOutputTokens`，再带最新令牌重发原请求；沿用已耗尽的预算会返回 400。见下方「预算耗尽后恢复」。
+- 多轮对话时，等到 `STOP` 后再把拼好的完整回答作为一条 `model` 消息放进历史。
+</Warning>
+
+### 示例
+
+第 1 次请求：
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "请写一份完整的 Rust 异步运行时设计文档，包含架构、调度器、I/O 驱动、定时器与完整示例代码。" }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    }
+  }'
+```
+
+如果达到单次上限且仍有累计预算，响应示意如下（只列出与续写有关的字段）：
+
+```json
+{
+  "candidates": [
+    {
+      "content": { "role": "model", "parts": [{ "text": "# Rust 异步运行时设计\n\n## 1. 总体架构\n……" }] },
+      "finishReason": "CONTINUATION",
+      "continuationToken": "<很长的一段字符串，原样保存>"
+    }
+  ]
+}
+```
+
+上一轮为 `CONTINUATION` 时，第 2 次请求与第 1 次相同，顶层加上 `continuationToken`：
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "请写一份完整的 Rust 异步运行时设计文档，包含架构、调度器、I/O 驱动、定时器与完整示例代码。" }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    },
+    "continuationToken": "<上一次响应里的 continuationToken>"
+  }'
+```
+
+用 Python 自动处理 `CONTINUATION`，在正常完成或预算耗尽时返回。函数会保留最新的续写令牌，遇到 `MAX_TOKENS` 不自动提高预算：
+
+```python
+import os
+from copy import deepcopy
+
+import requests
+
+URL = "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent"
+HEADERS = {"Authorization": f"Bearer {os.environ['EVOLINK_API_KEY']}"}
+
+
+def generate_with_continuation(body):
+    request_body = deepcopy(body)
+    pieces = []
+    while True:
+        # 客户端读取超时设为 1,200 秒，不代表服务端保证持续连接 20 分钟。
+        resp = requests.post(URL, headers=HEADERS, json=request_body, timeout=1200)
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            raise RuntimeError("响应中没有候选结果，请检查 promptFeedback。")
+        candidate = candidates[0]
+        for part in candidate.get("content", {}).get("parts", []):
+            if not part.get("thought"):
+                pieces.append(part.get("text", ""))
+        reason = candidate.get("finishReason")
+        token = candidate.get("continuationToken")
+        if reason == "CONTINUATION":
+            if not token:
+                raise RuntimeError("响应要求续写，但没有返回 continuationToken。")
+            request_body["continuationToken"] = token  # 其余字段保持不变
+            continue
+        return {
+            "text": "".join(pieces),
+            "finishReason": reason,
+            "continuationToken": token,
+        }
+
+
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "请写一份完整的 Rust 异步运行时设计文档，包含架构、调度器、I/O 驱动、定时器与完整示例代码。"}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 262144, "thinkingConfig": {"thinkingLevel": "high"}},
+}
+
+result = generate_with_continuation(body)
+print(result["text"])
+print("finishReason:", result["finishReason"])
+if result["finishReason"] == "MAX_TOKENS":
+    print("累计输出预算已耗尽；如有续写令牌，可手动提高 maxOutputTokens 后恢复。")
+```
+
+### 预算耗尽后恢复
+
+下面示例复用上面的 `generate_with_continuation` 函数、`URL` 与 `HEADERS`，先用小预算生成数字列表，再明确将总预算从 64 提高到 2,048。保持原始 `contents` 和其他配置不变，补上令牌并提高预算后，模型会从截断处继续。
+
+```python
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Output integers 1 through 100, one per line. Start immediately."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 64, "thinkingConfig": {"thinkingLevel": "low"}},
+}
+
+first = generate_with_continuation(body)
+print(first["text"], end="")
+if first["finishReason"] == "MAX_TOKENS" and first["continuationToken"]:
+    body["continuationToken"] = first["continuationToken"]
+    body["generationConfig"]["maxOutputTokens"] = 2048  # 调用方明确提高累计预算
+    resumed = generate_with_continuation(body)
+    print(resumed["text"], end="")
+    print("\nfinishReason:", resumed["finishReason"])
+else:
+    print("\nfinishReason:", first["finishReason"])
+```
+
+用流式时，读到带 `finishReason` 的最后一块后按结束原因处理：`CONTINUATION` 带最新令牌并保持配置不变；`MAX_TOKENS` 如需恢复，须手动提高累计预算；`STOP` 表示正常完成。
+
+### 计费与报错
+
+- 每次请求单独计费。续写时，原始输入和此前已生成的内容会作为输入重新计入；命中隐式缓存的部分按缓存价计费。
+- 每次响应的 `usageMetadata` 只统计本次请求，总用量要把各次请求的用量相加。流式中的用量在同一次请求内累计，只取最后一次 `usageMetadata`，不要把同一流里的累计值重复相加。
+- 原生接口的输出预扣估算取 `maxOutputTokens` 与 65,536 中的较小值，非流式也使用这个封顶值；输入部分另计。非流式实际单次最多输出 32,768，因此输出预算高于 32,768 时，预扣可能高于按实际单次上限计算的金额。实际费用按响应中的用量结算。
+- 无效令牌返回 400；令牌格式合法但内容无效时可见 `Invalid continuation token.`，格式错误时可能返回其他参数错误。其他模型会忽略 `continuationToken`。
+- `MAX_TOKENS` 后带令牌续写但不提高已耗尽的 `maxOutputTokens`，也会返回 400。

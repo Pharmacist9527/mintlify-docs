@@ -4,9 +4,180 @@ openapi: '/es/api-manual/language-series/gemini/native-api/native-api-reference.
 ---
 
 <Tip>
-**Streaming**: Reemplace `generateContent` por `streamGenerateContent` en la URL. Los parámetros del cuerpo de la solicitud son idénticos. Las respuestas se devolverán en bloques de streaming. Consulte la sección «Respuesta en streaming» a continuación para el formato de respuesta.
+**Streaming**: sustituye `generateContent` por `streamGenerateContent` en la URL. Mantén el cuerpo de la solicitud; las respuestas llegan por fragmentos. Añade `?alt=sse` para solicitar el formato SSE.
 </Tip>
 
 <Note>
 **BaseURL**: La BaseURL predeterminada es `https://direct.evolink.ai`, que ofrece mejor compatibilidad con modelos de texto y admite conexiones persistentes. `https://api.evolink.ai` es el endpoint principal para servicios multimodales y actúa como dirección de respaldo para los modelos de texto.
 </Note>
+
+## Continuación de salidas largas (Gemini 4 Argon)
+
+Una solicitud de `gemini-4-argon` devuelve como máximo 65,536 tokens con streaming o 32,768 sin streaming; ambos límites incluyen razonamiento y respuesta. Para salidas más largas, usa varias solicitudes de continuación. La entrada, el razonamiento y la respuesta comparten un contexto de 1,048,576 tokens, por lo que el razonamiento y la respuesta acumulados solo pueden usar el espacio restante después de la entrada. Solo la API nativa admite continuación; el formato compatible con OpenAI no la admite.
+
+| | Streaming `streamGenerateContent` | Sin streaming `generateContent` |
+|---|---|---|
+| Salida máxima por solicitud | 65,536 | 32,768 |
+| Ubicación del token de continuación al finalizar | En el último fragmento: `candidates[0].continuationToken` | `candidates[0].continuationToken` |
+
+Para respuestas largas, configura el tiempo de espera de lectura del cliente en 1,200 segundos (20 minutos). Es una recomendación para el cliente, no una garantía de la duración de las solicitudes en el servidor.
+
+Procedimiento:
+
+1. Establece `generationConfig.maxOutputTokens` por encima del límite por solicitud: más de 65,536 con streaming o de 32,768 sin streaming. El parámetro acepta hasta 1,048,576, pero la salida real sigue limitada por el contexto compartido. Este valor es el presupuesto acumulado de razonamiento y respuesta para todas las solicitudes de continuación.
+2. Si `candidates[0].finishReason` es `CONTINUATION`, la generación aún no ha terminado. El mismo candidato incluye un `continuationToken`.
+3. Reenvía la solicitud original manteniendo los mismos `contents`, `systemInstruction`, `tools` y `generationConfig`. Añade únicamente `continuationToken` en el nivel superior, con el último valor recibido, sin modificarlo.
+4. Repite el paso 3 solo mientras `finishReason` sea `CONTINUATION`; detente con cualquier otro motivo. `STOP` indica finalización normal y `MAX_TOKENS` que se agotó el presupuesto acumulado. Cada respuesta contiene solo el contenido nuevo; concatena las respuestas en orden.
+
+<Warning>
+- No añadas la salida parcial a `contents` ni envíes una instrucción nueva como «continúa».
+- Una solicitud puede dedicar toda su generación al razonamiento y devolver un texto de respuesta vacío. Continúa si el motivo de finalización es `CONTINUATION`.
+- `MAX_TOKENS` también puede incluir un `continuationToken`. Para reanudar, aumenta manualmente `maxOutputTokens` y reenvía la solicitud original con el último token. Mantener el presupuesto agotado devuelve 400. Consulta «Reanudar tras agotar el presupuesto» más abajo.
+- En conversaciones de varios turnos, espera a `STOP` y añade después la respuesta completa concatenada al historial como un único mensaje `model`.
+</Warning>
+
+### Ejemplos
+
+Primera solicitud:
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Escribe un documento de diseño completo para un runtime asíncrono de Rust, con arquitectura, planificador, controlador de I/O, temporizadores y ejemplos de código completos." }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    }
+  }'
+```
+
+Si se alcanza el límite por solicitud y queda presupuesto acumulado, la respuesta puede ser como esta (solo se muestran los campos de continuación):
+
+```json
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "# Diseño de un runtime asíncrono de Rust\n\n## 1. Arquitectura\n…"
+          }
+        ]
+      },
+      "finishReason": "CONTINUATION",
+      "continuationToken": "<una cadena larga que debes conservar sin cambios>"
+    }
+  ]
+}
+```
+
+Si la respuesta anterior terminó con `CONTINUATION`, reenvía la misma solicitud añadiendo `continuationToken` en el nivel superior:
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Escribe un documento de diseño completo para un runtime asíncrono de Rust, con arquitectura, planificador, controlador de I/O, temporizadores y ejemplos de código completos." }] }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 262144,
+      "thinkingConfig": { "thinkingLevel": "high" }
+    },
+    "continuationToken": "<continuationToken de la respuesta anterior>"
+  }'
+```
+
+Esta función de Python procesa `CONTINUATION` automáticamente y devuelve el resultado al finalizar o agotar el presupuesto. Conserva el último token y no aumenta automáticamente el presupuesto ante `MAX_TOKENS`:
+
+```python
+import os
+from copy import deepcopy
+
+import requests
+
+URL = "https://direct.evolink.ai/v1beta/models/gemini-4-argon:generateContent"
+HEADERS = {"Authorization": f"Bearer {os.environ['EVOLINK_API_KEY']}"}
+
+
+def generate_with_continuation(body):
+    request_body = deepcopy(body)
+    pieces = []
+    while True:
+        # Espera de lectura del cliente: 1,200 segundos; no garantiza una conexión de 20 minutos con el servidor.
+        resp = requests.post(URL, headers=HEADERS, json=request_body, timeout=1200)
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            raise RuntimeError("La respuesta no contiene candidatos; revisa promptFeedback.")
+        candidate = candidates[0]
+        for part in candidate.get("content", {}).get("parts", []):
+            if not part.get("thought"):
+                pieces.append(part.get("text", ""))
+        reason = candidate.get("finishReason")
+        token = candidate.get("continuationToken")
+        if reason == "CONTINUATION":
+            if not token:
+                raise RuntimeError("La respuesta solicita continuación, pero no incluye continuationToken.")
+            request_body["continuationToken"] = token  # Mantener todos los demás campos sin cambios
+            continue
+        return {
+            "text": "".join(pieces),
+            "finishReason": reason,
+            "continuationToken": token,
+        }
+
+
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Escribe un documento de diseño completo para un runtime asíncrono de Rust, con arquitectura, planificador, controlador de I/O, temporizadores y ejemplos de código completos."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 262144, "thinkingConfig": {"thinkingLevel": "high"}},
+}
+
+result = generate_with_continuation(body)
+print(result["text"])
+print("finishReason:", result["finishReason"])
+if result["finishReason"] == "MAX_TOKENS":
+    print("Se agotó el presupuesto de salida acumulado. Si se devolvió un token, puedes aumentar manualmente maxOutputTokens para reanudar.")
+```
+
+### Reanudar tras agotar el presupuesto
+
+Este ejemplo reutiliza `generate_with_continuation`, `URL` y `HEADERS` de arriba. Genera una lista de números con un presupuesto pequeño y luego aumenta explícitamente el presupuesto total de 64 a 2,048. Mantén los `contents` originales y los demás ajustes; añade el token y aumenta el presupuesto para reanudar desde el punto de corte.
+
+```python
+body = {
+    "contents": [
+        {"role": "user", "parts": [{"text": "Output integers 1 through 100, one per line. Start immediately."}]}
+    ],
+    "generationConfig": {"maxOutputTokens": 64, "thinkingConfig": {"thinkingLevel": "low"}},
+}
+
+first = generate_with_continuation(body)
+print(first["text"], end="")
+if first["finishReason"] == "MAX_TOKENS" and first["continuationToken"]:
+    body["continuationToken"] = first["continuationToken"]
+    body["generationConfig"]["maxOutputTokens"] = 2048  # El cliente aumenta explícitamente el presupuesto acumulado
+    resumed = generate_with_continuation(body)
+    print(resumed["text"], end="")
+    print("\nfinishReason:", resumed["finishReason"])
+else:
+    print("\nfinishReason:", first["finishReason"])
+```
+
+Con streaming, lee el último fragmento que incluya `finishReason`: ante `CONTINUATION`, reenvía el último token con los mismos ajustes; ante `MAX_TOKENS`, aumenta manualmente el presupuesto acumulado si quieres reanudar; `STOP` indica finalización normal.
+
+### Facturación y errores
+
+- Cada solicitud se factura por separado. En cada continuación, la entrada original y todo el contenido ya generado vuelven a contarse como entrada. Las partes que acierten en la caché implícita se facturan a la tarifa de caché.
+- El `usageMetadata` de cada respuesta cubre solo esa solicitud. Suma el uso entre solicitudes para obtener el total. Dentro de un mismo stream, los valores son acumulados: usa solo el último `usageMetadata`, sin sumar repetidamente los acumulados intermedios.
+- En la API nativa, la estimación de la reserva para la salida usa el menor valor entre `maxOutputTokens` y 65,536, también sin streaming; la entrada se estima por separado. El límite real sin streaming es de 32,768 tokens por solicitud, así que un presupuesto superior puede reservar más que una estimación basada en ese límite real. El cargo final se calcula según el uso de la respuesta.
+- Los tokens no válidos devuelven 400. Un token con formato correcto pero contenido no válido puede devolver `Invalid continuation token.`; un formato incorrecto puede producir otro error de parámetro. Los demás modelos ignoran `continuationToken`.
+- Reanudar tras `MAX_TOKENS` con un token sin aumentar el presupuesto `maxOutputTokens` agotado también devuelve 400.
