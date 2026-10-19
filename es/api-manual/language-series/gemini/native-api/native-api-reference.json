@@ -27,7 +27,7 @@
     "/v1beta/models/{model}:generateContent": {
       "post": {
         "summary": "Generación de contenido Gemini (todos los modelos)",
-        "description": "Selecciona el modelo de texto Gemini que deseas invocar mediante `{model}` en la ruta (consulta la tabla de referencia del parámetro `model` para ver todos los valores posibles).\n\n- Usa el formato de API nativa de Google y devuelve el contenido de la conversación de forma síncrona\n- **Entrada de texto plano / multimodal**: entrada mixta de texto + imagen / audio / video\n- **Streaming**: reemplaza `generateContent` por `streamGenerateContent` en la ruta (puedes añadir `?alt=sse` para obtener SSE)\n\n---\n\n**Especificaciones y diferencias de los modelos**\n- **Comportamiento de 3.8**: en comparación con 3.7, mejora la ingeniería de software, los agentes, el razonamiento multipaso y la precisión multimodal; puede consumir más tokens de razonamiento / salida, especialmente con `high`. Usa `low` cuando la latencia sea crítica, el valor predeterminado `medium` para uso general y `high` para código complejo, vídeos largos o razonamiento multipaso.\n- **Parámetros de muestreo** `temperature` / `topP` / `topK`: consistente en toda la serie Gemini 3.x, los valores personalizados no afectan a la salida; `topK` se ignora y no surte efecto, y `temperature` / `topP` devuelven un 400 si están fuera del rango válido.\n- **Control del razonamiento**: la serie Gemini 3.x usa `thinkingConfig.thinkingLevel` (consulta el parámetro `thinkingLevel` para ver los niveles admitidos y el valor por defecto de cada modelo); la serie Gemini 2.5 usa `thinkingConfig.thinkingBudget` (entero, `0`=desactivado). Ambos son mutuamente excluyentes. `gemini-3.8-flash` / `gemini-3.7-flash` y la serie Pro no admiten `minimal`; si se envía, se degrada automáticamente a `low`.\n- **Llamadas a funciones**: en Gemini 3.x, el `FunctionResponse` debe devolver el `id` y el `name` que coincidan con el `FunctionCall` correspondiente; de lo contrario, se produce un error.\n- **Rol del último turno**: el `role` del último mensaje no puede ser `model` (Gemini 3.5+ devuelve un error).\n- **Límite de tokens**: `gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` tienen un contexto de 1,048,576 y una salida máxima de 65,536; el resto de los modelos se rigen por sus propias especificaciones.",
+        "description": "Selecciona el modelo de texto Gemini que deseas invocar mediante `{model}` en la ruta (consulta la tabla de referencia del parámetro `model` para ver todos los valores posibles).\n\n- Usa el formato de API nativa de Google y devuelve el contenido de la conversación de forma síncrona\n- **Entrada de texto plano / multimodal**: entrada mixta de texto + imagen / audio / video\n- **Streaming**: reemplaza `generateContent` por `streamGenerateContent` en la ruta (puedes añadir `?alt=sse` para obtener SSE)\n\n---\n\n**Especificaciones y diferencias de los modelos**\n- **Comportamiento de 3.8**: en comparación con 3.7, mejora la ingeniería de software, los agentes, el razonamiento multipaso y la precisión multimodal; puede consumir más tokens de razonamiento / salida, especialmente con `high`. Usa `low` cuando la latencia sea crítica, el valor predeterminado `medium` para uso general y `high` para código complejo, vídeos largos o razonamiento multipaso.\n- **Comportamiento de Gemini 4 Argon**: el razonamiento se controla únicamente mediante `thinkingConfig.thinkingLevel`, con los niveles `low` / `medium` / `high`; si se omite, el modelo decide cuánto razonar. No admite `minimal` (devuelve 400; usa `low` en su lugar) ni `thinkingBudget` (devuelve 400). `temperature` / `topP` fuera del rango válido devuelven 400. En llamadas a funciones de varios turnos, la `thoughtSignature` devuelta en el turno anterior debe reenviarse sin cambios; de lo contrario, se devuelve 400. La entrada admite texto / imágenes / audio / vídeo / PDF.\n- **Parámetros de muestreo** `temperature` / `topP` / `topK`: consistente en toda la serie Gemini 3.x, los valores personalizados no afectan a la salida; `topK` se ignora y no surte efecto, y `temperature` / `topP` devuelven un 400 si están fuera del rango válido.\n- **Control del razonamiento**: la serie Gemini 3.x / 4 usa `thinkingConfig.thinkingLevel` (consulta el parámetro `thinkingLevel` para ver los niveles admitidos y el valor por defecto de cada modelo); la serie Gemini 2.5 usa `thinkingConfig.thinkingBudget` (entero, `0`=desactivado). Ambos son mutuamente excluyentes. `gemini-3.8-flash` / `gemini-3.7-flash` y la serie Pro no admiten `minimal`; si se envía, se degrada automáticamente a `low`.\n- **Llamadas a funciones**: en Gemini 3.x, el `FunctionResponse` debe devolver el `id` y el `name` que coincidan con el `FunctionCall` correspondiente; de lo contrario, se produce un error.\n- **Rol del último turno**: el `role` del último mensaje no puede ser `model` (Gemini 3.5+ devuelve un error).\n- **Límite de tokens**: `gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` tienen un contexto de 1,048,576 y una salida máxima de 65,536. `gemini-4-argon` comparte un contexto de 1,048,576 entre entrada, razonamiento y salida; cada solicitud devuelve hasta 65,536 tokens con streaming o 32,768 sin streaming, razonamiento y respuesta incluidos. Para salidas más largas, usa continuación; el razonamiento y la respuesta acumulados solo pueden usar el espacio restante después de la entrada. Consulta «Continuación de salidas largas» en esta página. Los demás modelos siguen sus especificaciones.",
         "operationId": "geminiGenerateContent",
         "tags": [
           "Generación de contenido"
@@ -179,6 +179,28 @@
                         ]
                       }
                     ]
+                  }
+                },
+                "long_decode_continuation": {
+                  "summary": "Continuación de salida larga: reenviar el token (solo gemini-4-argon)",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Escribe un documento de diseño completo para un runtime asíncrono de Rust, con arquitectura, planificador, controlador de I/O, temporizadores y ejemplos de código completos."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "maxOutputTokens": 262144,
+                      "thinkingConfig": {
+                        "thinkingLevel": "high"
+                      }
+                    },
+                    "continuationToken": "Copia sin cambios candidates[0].continuationToken de la respuesta anterior"
                   }
                 }
               }
@@ -385,10 +407,11 @@
             "name": "model",
             "in": "path",
             "required": true,
-            "description": "Selecciona el modelo de texto Gemini que deseas invocar:\n\n| ID del modelo | Serie | Posicionamiento |\n|---|---|---|\n| `gemini-3.8-flash` | 3.8 Flash | Ingeniería de software / agentes / razonamiento multipaso / precisión multimodal mejorados |\n| `gemini-3.7-flash` | 3.7 Flash | Agentic de nivel Pro / generación de código / ejecución en terminal |\n| `gemini-3.6-flash` | 3.6 Flash | Orquestación multipaso / refactorización de código / razonamiento general |\n| `gemini-3.5-flash` | 3.5 Flash | Flash general |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | Bajo costo / alto rendimiento / agente ligero |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | Razonamiento avanzado |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | Razonamiento avanzado + herramientas personalizadas |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | Bajo costo |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | Razonamiento avanzado |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | Flash general |\n| `gemini-2.5-pro` | 2.5 Pro | Razonamiento avanzado |\n| `gemini-2.5-flash` | 2.5 Flash | Flash general |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | Bajo costo |",
+            "description": "Selecciona el modelo de texto Gemini que deseas invocar:\n\n| ID del modelo | Serie | Posicionamiento |\n|---|---|---|\n| `gemini-4-argon` | 4 Argon | Informes largos y grandes tareas de código; hasta 65,536 tokens por solicitud con streaming / 32,768 sin streaming; continuación nativa limitada por el contexto compartido |\n| `gemini-3.8-flash` | 3.8 Flash | Ingeniería de software / agentes / razonamiento multipaso / precisión multimodal mejorados |\n| `gemini-3.7-flash` | 3.7 Flash | Agentic de nivel Pro / generación de código / ejecución en terminal |\n| `gemini-3.6-flash` | 3.6 Flash | Orquestación multipaso / refactorización de código / razonamiento general |\n| `gemini-3.5-flash` | 3.5 Flash | Flash general |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | Bajo costo / alto rendimiento / agente ligero |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | Razonamiento avanzado |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | Razonamiento avanzado + herramientas personalizadas |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | Bajo costo |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | Razonamiento avanzado |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | Flash general |\n| `gemini-2.5-pro` | 2.5 Pro | Razonamiento avanzado |\n| `gemini-2.5-flash` | 2.5 Flash | Flash general |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | Bajo costo |",
             "schema": {
               "type": "string",
               "enum": [
+                "gemini-4-argon",
                 "gemini-3.8-flash",
                 "gemini-3.7-flash",
                 "gemini-3.6-flash",
@@ -426,10 +449,6 @@
             },
             "minItems": 1
           },
-          "generationConfig": {
-            "$ref": "#/components/schemas/GenerationConfig",
-            "description": "Generation configuration parameters (optional)"
-          },
           "systemInstruction": {
             "$ref": "#/components/schemas/Content",
             "description": "System instruction (optional), mainly text content"
@@ -456,6 +475,14 @@
               "type": "object"
             },
             "description": "Safety settings list (optional)"
+          },
+          "generationConfig": {
+            "$ref": "#/components/schemas/GenerationConfig",
+            "description": "Generation configuration parameters (optional)"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "Token de continuación de salidas largas (solo `gemini-4-argon`). Copia el último `candidates[0].continuationToken` sin cambios en el nivel superior de la solicitud. Conserva los `contents`, `systemInstruction` y `tools` originales; no añadas la salida parcial.\n\n- `CONTINUATION`: mantén todos los ajustes de generación y reenvía el token.\n- `MAX_TOKENS`: también puede devolver un token; aumenta manualmente el presupuesto acumulado `maxOutputTokens` antes de reanudar, sin cambiar los demás ajustes. Mantener el presupuesto agotado devuelve 400.\n- Los tokens no válidos devuelven 400.\n- Los demás modelos ignoran este campo.\n\nConsulta [Referencia completa de la API nativa](/es/api-manual/language-series/gemini/native-api/native-api-reference), sección «Continuación de salidas largas»."
           },
           "cachedContent": {
             "type": "string",
@@ -580,7 +607,7 @@
           },
           "maxOutputTokens": {
             "type": "integer",
-            "description": "Número máximo de tokens para la respuesta generada\n\n**Descripción**:\n- Un valor demasiado pequeño puede causar truncamiento de la respuesta\n\n`gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` tienen un límite de 65,536 tokens; el resto de los modelos se rigen por sus propias especificaciones.",
+            "description": "Número máximo de tokens generados, incluidos razonamiento y respuesta.\n\n- Un valor pequeño puede truncar la respuesta.\n- `gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` admiten hasta 65,536 tokens; los demás modelos siguen sus especificaciones.\n- Para `gemini-4-argon`, es el presupuesto acumulado de todas las continuaciones. El parámetro acepta hasta 1,048,576, pero entrada, razonamiento y salida comparten ese contexto: la salida real depende del espacio restante. Cada solicitud devuelve hasta 65,536 tokens con streaming o 32,768 sin streaming. Usa continuación con token para salidas más largas.\n- `CONTINUATION` indica un límite por solicitud alcanzado con presupuesto restante; `MAX_TOKENS` indica que se agotó el presupuesto acumulado. Si se devuelve un token, aumenta manualmente el presupuesto para reanudar.",
             "minimum": 1,
             "example": 2000
           },
@@ -612,7 +639,7 @@
           },
           "thinkingConfig": {
             "type": "object",
-            "description": "Configuración de razonamiento; controla el comportamiento de razonamiento del modelo.\n\n- **Serie Gemini 3.x**: usa `thinkingLevel` (consulta el parámetro `thinkingLevel` para ver los niveles admitidos y el valor por defecto de cada modelo)\n- **Serie Gemini 2.5**: usa `thinkingBudget`\n\n`thinkingLevel` y `thinkingBudget` son mutuamente excluyentes; enviar ambos a la vez provoca un error.",
+            "description": "Configuración de razonamiento; controla el comportamiento de razonamiento del modelo.\n\n- **Serie Gemini 3.x / 4**: usa `thinkingLevel` (consulta el parámetro `thinkingLevel` para ver los niveles admitidos y el valor por defecto de cada modelo)\n- **Serie Gemini 2.5**: usa `thinkingBudget`\n\n`thinkingLevel` y `thinkingBudget` son mutuamente excluyentes; enviar ambos a la vez provoca un error.",
             "properties": {
               "thinkingLevel": {
                 "type": "string",
@@ -622,12 +649,12 @@
                   "medium",
                   "high"
                 ],
-                "description": "Nivel de razonamiento; controla la profundidad del razonamiento (no distingue mayúsculas de minúsculas):\n- `minimal`: razonamiento casi nulo, orientado a escenarios de alto rendimiento / baja latencia (clasificación, extracción, enrutamiento, etc.)\n- `low`: menos razonamiento, adecuado para tareas simples\n- `medium`: equilibrio entre calidad y velocidad, adecuado para tareas de complejidad media\n- `high`: razonamiento profundo de múltiples pasos, adecuado para razonamiento complejo, matemáticas y codificación\n\n**Solo lo admite la serie Gemini 3.x**, y los niveles admitidos y el valor por defecto difieren según el modelo (la serie Gemini 2.5 usa `thinkingBudget` en su lugar):\n\n| Modelo | Niveles admitidos | Por defecto |\n|---|---|---|\n| `gemini-3.8-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.7-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.6-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash-lite` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3.1-flash-lite-preview` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3-flash-preview` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.1-pro-preview` | `low` / `medium` / `high` | `high` |\n| `gemini-3.1-pro-preview-customtools` | `low` / `medium` / `high` | `high` |\n| `gemini-3-pro-preview` | `low` / `medium` / `high` | `high` |\n\nEnviar un nivel no admitido por el modelo (por ejemplo, enviar `minimal` a la serie Pro o a `gemini-3.8-flash` / `gemini-3.7-flash`) se degrada automáticamente a `low` y no produce error.",
+                "description": "Nivel de razonamiento; controla la profundidad del razonamiento (no distingue mayúsculas de minúsculas):\n- `minimal`: razonamiento casi nulo, orientado a escenarios de alto rendimiento / baja latencia (clasificación, extracción, enrutamiento, etc.)\n- `low`: menos razonamiento, adecuado para tareas simples\n- `medium`: equilibrio entre calidad y velocidad, adecuado para tareas de complejidad media\n- `high`: razonamiento profundo de múltiples pasos, adecuado para razonamiento complejo, matemáticas y codificación\n\n**Lo admite la serie Gemini 3.x / 4**, y los niveles admitidos y el valor por defecto difieren según el modelo (la serie Gemini 2.5 usa `thinkingBudget` en su lugar):\n\n| Modelo | Niveles admitidos | Por defecto |\n|---|---|---|\n| `gemini-4-argon` | `low` / `medium` / `high` | Informes largos y grandes tareas de código; hasta 65,536 tokens por solicitud con streaming / 32,768 sin streaming; continuación nativa limitada por el contexto compartido |\n| `gemini-3.8-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.7-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.6-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash-lite` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3.1-flash-lite-preview` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3-flash-preview` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.1-pro-preview` | `low` / `medium` / `high` | `high` |\n| `gemini-3.1-pro-preview-customtools` | `low` / `medium` / `high` | `high` |\n| `gemini-3-pro-preview` | `low` / `medium` / `high` | `high` |\n\nEnviar un nivel no admitido por el modelo (por ejemplo, enviar `minimal` a la serie Pro o a `gemini-3.8-flash` / `gemini-3.7-flash`) se degrada automáticamente a `low` y no produce error.\n\n`gemini-4-argon` no admite `minimal`: enviarlo devuelve 400; usa `low` en su lugar.",
                 "example": "minimal"
               },
               "thinkingBudget": {
                 "type": "integer",
-                "description": "Presupuesto de tokens de razonamiento; lo usa la **serie Gemini 2.5** (`gemini-2.5-flash` / `gemini-2.5-flash-lite` / `gemini-2.5-pro`): `0`=desactivar el razonamiento, `-1`=presupuesto dinámico, entero positivo=presupuesto fijo (el rango de valores concreto depende de cada modelo). Es mutuamente excluyente con `thinkingLevel`.",
+                "description": "Presupuesto de tokens de razonamiento; lo usa la **serie Gemini 2.5** (`gemini-2.5-flash` / `gemini-2.5-flash-lite` / `gemini-2.5-pro`): `0`=desactivar el razonamiento, `-1`=presupuesto dinámico, entero positivo=presupuesto fijo (el rango de valores concreto depende de cada modelo). Es mutuamente excluyente con `thinkingLevel`. `gemini-4-argon` no admite este parámetro; enviarlo devuelve 400.",
                 "example": -1
               }
             }
@@ -671,10 +698,11 @@
           },
           "finishReason": {
             "type": "string",
-            "description": "Finish reason",
+            "description": "Motivo de finalización\n\n- `CONTINUATION`: solo `gemini-4-argon`. Se alcanzó el límite por solicitud y queda presupuesto acumulado; reenvía el token manteniendo los ajustes originales.\n- `MAX_TOKENS`: se agotó el presupuesto de salida acumulado. `gemini-4-argon` también puede devolver un token de continuación; aumenta manualmente `maxOutputTokens` antes de reanudar.\n\nConsulta [Referencia completa de la API nativa](/es/api-manual/language-series/gemini/native-api/native-api-reference), sección «Continuación de salidas largas».",
             "enum": [
               "FINISH_REASON_UNSPECIFIED",
               "STOP",
+              "CONTINUATION",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
@@ -694,6 +722,10 @@
               "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "Token de continuación de salidas largas (solo `gemini-4-argon`). Ante `CONTINUATION`, reenvía la solicitud original con el último token y los mismos ajustes de generación. `MAX_TOKENS` también puede devolver un token; aumenta manualmente el presupuesto acumulado `maxOutputTokens` para reanudar.\n\nConsulta [Referencia completa de la API nativa](/es/api-manual/language-series/gemini/native-api/native-api-reference), sección «Continuación de salidas largas»."
           },
           "index": {
             "type": "integer",
@@ -814,10 +846,11 @@
           },
           "finishReason": {
             "type": "string",
-            "description": "Finish reason (only included in last chunk)",
+            "description": "Motivo de finalización (incluido en el último fragmento al finalizar)\n\n- `CONTINUATION`: solo `gemini-4-argon`. Se alcanzó el límite por solicitud y queda presupuesto acumulado; reenvía el token manteniendo los ajustes originales.\n- `MAX_TOKENS`: se agotó el presupuesto de salida acumulado. `gemini-4-argon` también puede devolver un token de continuación; aumenta manualmente `maxOutputTokens` antes de reanudar.\n\nConsulta [Referencia completa de la API nativa](/es/api-manual/language-series/gemini/native-api/native-api-reference), sección «Continuación de salidas largas».",
             "enum": [
               "FINISH_REASON_UNSPECIFIED",
               "STOP",
+              "CONTINUATION",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
@@ -837,6 +870,10 @@
               "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "Token de continuación de salidas largas (solo `gemini-4-argon`). Ante `CONTINUATION`, reenvía la solicitud original con el último token y los mismos ajustes de generación. `MAX_TOKENS` también puede devolver un token; aumenta manualmente el presupuesto acumulado `maxOutputTokens` para reanudar.\n\nConsulta [Referencia completa de la API nativa](/es/api-manual/language-series/gemini/native-api/native-api-reference), sección «Continuación de salidas largas». Al finalizar, lee el último token del fragmento final que contiene `finishReason`."
           }
         }
       },

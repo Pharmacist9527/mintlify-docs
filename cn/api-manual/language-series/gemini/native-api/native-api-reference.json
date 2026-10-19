@@ -27,7 +27,7 @@
     "/v1beta/models/{model}:generateContent": {
       "post": {
         "summary": "Gemini 生成内容（全模型）",
-        "description": "通过路径中的 `{model}` 选择要调用的 Gemini 文本模型（全部可选值见 `model` 参数的对照表）。\n\n- 使用 Google 原生 API 格式，同步返回对话内容\n- **纯文本 / 多模态输入**：文本 + 图像 / 音频 / 视频混合输入\n- **流式**：将路径中的 `generateContent` 替换为 `streamGenerateContent`（可追加 `?alt=sse` 获取 SSE）\n\n---\n\n**模型规格与差异**\n- **3.8 行为**：相比 3.7，软件工程、Agent、多步推理与多模态准确率更强；模型可能消耗更多推理 / 输出 Token，尤其在 `high` 档。延迟敏感场景建议用 `low`，通用场景用默认 `medium`，复杂代码、长视频或多步推理再用 `high`。\n- **采样参数** `temperature` / `topP` / `topK`：Gemini 3.x 全系一致，自定义值不影响输出；`topK` 传入不生效（会被忽略，不报错），`temperature` / `topP` 超出合法范围会返回 400。\n- **思考控制**：Gemini 3.x 系列用 `thinkingConfig.thinkingLevel`（各模型支持档位与默认见 `thinkingLevel` 参数）；Gemini 2.5 系列用 `thinkingConfig.thinkingBudget`（整数，`0`=关闭）。二者互斥。`gemini-3.8-flash` / `gemini-3.7-flash` 与 Pro 系不支持 `minimal`，传入会被自动降级为 `low`。\n- **函数调用**：Gemini 3.x 的 `FunctionResponse` 必须回传与对应 `FunctionCall` 匹配的 `id` 和 `name`，否则报错。\n- **末轮角色**：最后一条消息的 `role` 不能为 `model`（Gemini 3.5+ 会报错）。\n- **Token 上限**：`gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` 上下文 1,048,576、最大输出 65,536；其余模型以各自规格为准。",
+        "description": "通过路径中的 `{model}` 选择要调用的 Gemini 文本模型（全部可选值见 `model` 参数的对照表）。\n\n- 使用 Google 原生 API 格式，同步返回对话内容\n- **纯文本 / 多模态输入**：文本 + 图像 / 音频 / 视频混合输入\n- **流式**：将路径中的 `generateContent` 替换为 `streamGenerateContent`（可追加 `?alt=sse` 获取 SSE）\n\n---\n\n**模型规格与差异**\n- **3.8 行为**：相比 3.7，软件工程、Agent、多步推理与多模态准确率更强；模型可能消耗更多推理 / 输出 Token，尤其在 `high` 档。延迟敏感场景建议用 `low`，通用场景用默认 `medium`，复杂代码、长视频或多步推理再用 `high`。\n- **Gemini 4 Argon 行为**：思考只通过 `thinkingConfig.thinkingLevel` 控制，可选 `low` / `medium` / `high`，不传时由模型自行决定思考量；不支持 `minimal`（传入返回 400，请改用 `low`），也不支持 `thinkingBudget`（传入返回 400）。`temperature` / `topP` 超出合法范围返回 400。函数调用多轮时，上一轮返回的 `thoughtSignature` 必须原样带回，否则返回 400。输入支持文本 / 图像 / 音频 / 视频 / PDF。\n- **采样参数** `temperature` / `topP` / `topK`：Gemini 3.x 全系一致，自定义值不影响输出；`topK` 传入不生效（会被忽略，不报错），`temperature` / `topP` 超出合法范围会返回 400。\n- **思考控制**：Gemini 3.x / 4 系列用 `thinkingConfig.thinkingLevel`（各模型支持档位与默认见 `thinkingLevel` 参数）；Gemini 2.5 系列用 `thinkingConfig.thinkingBudget`（整数，`0`=关闭）。二者互斥。`gemini-3.8-flash` / `gemini-3.7-flash` 与 Pro 系不支持 `minimal`，传入会被自动降级为 `low`。\n- **函数调用**：Gemini 3.x 的 `FunctionResponse` 必须回传与对应 `FunctionCall` 匹配的 `id` 和 `name`，否则报错。\n- **末轮角色**：最后一条消息的 `role` 不能为 `model`（Gemini 3.5+ 会报错）。\n- **Token 上限**：`gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` 上下文 1,048,576、最大输出 65,536；`gemini-4-argon` 上下文 1,048,576（输入、思考与输出共用），单次流式请求最多输出 65,536、非流式 32,768（均含思考 + 回答）；更长的输出用长输出续写分多次取，累计思考与回答最多使用扣除输入后的剩余上下文（见本页「长输出续写」）；其余模型以各自规格为准。",
         "operationId": "geminiGenerateContent",
         "tags": [
           "内容生成"
@@ -179,6 +179,28 @@
                         ]
                       }
                     ]
+                  }
+                },
+                "long_decode_continuation": {
+                  "summary": "长输出续写：带上续写令牌再次请求（仅 gemini-4-argon）",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "请写一份完整的 Rust 异步运行时设计文档，包含架构、调度器、I/O 驱动、定时器与完整示例代码。"
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "maxOutputTokens": 262144,
+                      "thinkingConfig": {
+                        "thinkingLevel": "high"
+                      }
+                    },
+                    "continuationToken": "上一次响应 candidates[0].continuationToken 的值，原样填入"
                   }
                 }
               }
@@ -385,10 +407,11 @@
             "name": "model",
             "in": "path",
             "required": true,
-            "description": "选择要调用的 Gemini 文本模型：\n\n| 模型 ID | 系列 | 定位 |\n|---|---|---|\n| `gemini-3.8-flash` | 3.8 Flash | 增强的软件工程 / Agent / 多步推理 / 多模态准确率 |\n| `gemini-3.7-flash` | 3.7 Flash | Pro 级 agentic / 代码生成 / 终端执行 |\n| `gemini-3.6-flash` | 3.6 Flash | 多步编排 / 代码重构 / 通用推理 |\n| `gemini-3.5-flash` | 3.5 Flash | 通用 Flash |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | 低成本 / 高吞吐 / 轻量 agent |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | 高级推理 |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | 高级推理 + 自定义工具 |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | 低成本 |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | 高级推理 |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | 通用 Flash |\n| `gemini-2.5-pro` | 2.5 Pro | 高级推理 |\n| `gemini-2.5-flash` | 2.5 Flash | 通用 Flash |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | 低成本 |",
+            "description": "选择要调用的 Gemini 文本模型：\n\n| 模型 ID | 系列 | 定位 |\n|---|---|---|\n| `gemini-4-argon` | 4 Argon | 长报告与大型代码任务；单次流式最多 65,536 / 非流式 32,768 Token；原生 API 可分次续写，总量受共享上下文限制 |\n| `gemini-3.8-flash` | 3.8 Flash | 增强的软件工程 / Agent / 多步推理 / 多模态准确率 |\n| `gemini-3.7-flash` | 3.7 Flash | Pro 级 agentic / 代码生成 / 终端执行 |\n| `gemini-3.6-flash` | 3.6 Flash | 多步编排 / 代码重构 / 通用推理 |\n| `gemini-3.5-flash` | 3.5 Flash | 通用 Flash |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | 低成本 / 高吞吐 / 轻量 agent |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | 高级推理 |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | 高级推理 + 自定义工具 |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | 低成本 |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | 高级推理 |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | 通用 Flash |\n| `gemini-2.5-pro` | 2.5 Pro | 高级推理 |\n| `gemini-2.5-flash` | 2.5 Flash | 通用 Flash |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | 低成本 |",
             "schema": {
               "type": "string",
               "enum": [
+                "gemini-4-argon",
                 "gemini-3.8-flash",
                 "gemini-3.7-flash",
                 "gemini-3.6-flash",
@@ -456,6 +479,10 @@
           "generationConfig": {
             "$ref": "#/components/schemas/GenerationConfig",
             "description": "生成配置参数（可选）"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "长输出续写令牌（仅 `gemini-4-argon`）。把最近一次响应的 `candidates[0].continuationToken` 原样放在请求体顶层，保留原始 `contents`、`systemInstruction` 与 `tools`，不要加入已生成的正文。\n\n- `finishReason` 为 `CONTINUATION`：所有生成配置保持不变，带令牌继续生成。\n- `finishReason` 为 `MAX_TOKENS`：也可能返回令牌；恢复前必须手动提高累计 `maxOutputTokens`，其余配置不变。沿用已耗尽的预算会返回 400。\n- 令牌无效时返回 400。\n- 其他模型会忽略此字段。\n\n详见本页「长输出续写」。"
           },
           "cachedContent": {
             "type": "string",
@@ -580,7 +607,7 @@
           },
           "maxOutputTokens": {
             "type": "integer",
-            "description": "生成回复的最大 token 数量\n\n**说明**:\n- 此值过小可能导致回复被截断\n\n`gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` 上限 65,536 tokens；其余模型以各自规格为准。",
+            "description": "生成回复的最大 token 数量，包含思考与回答。\n\n- 此值过小可能导致回复被截断。\n- `gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` 上限 65,536 tokens；其余模型以各自规格为准。\n- `gemini-4-argon` 的此值是所有续写请求共用的累计预算，参数最大可设为 1,048,576；输入、思考与回答共用 1,048,576 的上下文，实际输出仍受剩余空间限制。单次流式最多输出 65,536，非流式 32,768，更长输出须带令牌分次续写。\n- `CONTINUATION` 表示达到单次上限、累计预算尚未耗尽；`MAX_TOKENS` 表示累计预算耗尽，如有令牌，可手动提高预算后恢复。",
             "minimum": 1,
             "example": 2000
           },
@@ -612,7 +639,7 @@
           },
           "thinkingConfig": {
             "type": "object",
-            "description": "思考配置，控制模型的推理行为。\n\n- **Gemini 3.x 系列**：使用 `thinkingLevel`（各模型支持的档位与默认见 `thinkingLevel` 参数）\n- **Gemini 2.5 系列**：使用 `thinkingBudget`\n\n`thinkingLevel` 与 `thinkingBudget` 互斥，同时传入会报错。",
+            "description": "思考配置，控制模型的推理行为。\n\n- **Gemini 3.x / 4 系列**：使用 `thinkingLevel`（各模型支持的档位与默认见 `thinkingLevel` 参数）\n- **Gemini 2.5 系列**：使用 `thinkingBudget`\n\n`thinkingLevel` 与 `thinkingBudget` 互斥，同时传入会报错。",
             "properties": {
               "thinkingLevel": {
                 "type": "string",
@@ -622,12 +649,12 @@
                   "medium",
                   "high"
                 ],
-                "description": "思考层级，控制推理深度（大小写不敏感）：\n- `minimal`：近乎零思考，面向高吞吐 / 低延迟场景（分类、抽取、路由等）\n- `low`：较少思考，适合简单任务\n- `medium`：质量与速度均衡，适合中等复杂度任务\n- `high`：深度多步推理，适合复杂推理、数学、编码\n\n**仅 Gemini 3.x 系列支持**，各模型支持的档位与默认不同（Gemini 2.5 系列改用 `thinkingBudget`）：\n\n| 模型 | 支持档位 | 默认 |\n|---|---|---|\n| `gemini-3.8-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.7-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.6-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash-lite` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3.1-flash-lite-preview` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3-flash-preview` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.1-pro-preview` | `low` / `medium` / `high` | `high` |\n| `gemini-3.1-pro-preview-customtools` | `low` / `medium` / `high` | `high` |\n| `gemini-3-pro-preview` | `low` / `medium` / `high` | `high` |\n\n传入模型不支持的档位（如向 Pro 系或 `gemini-3.8-flash` / `gemini-3.7-flash` 传 `minimal`）会被自动降级为 `low`，不会报错。",
+                "description": "思考层级，控制推理深度（大小写不敏感）：\n- `minimal`：近乎零思考，面向高吞吐 / 低延迟场景（分类、抽取、路由等）\n- `low`：较少思考，适合简单任务\n- `medium`：质量与速度均衡，适合中等复杂度任务\n- `high`：深度多步推理，适合复杂推理、数学、编码\n\n**Gemini 3.x / 4 系列支持**，各模型支持的档位与默认不同（Gemini 2.5 系列改用 `thinkingBudget`）：\n\n| 模型 | 支持档位 | 默认 |\n|---|---|---|\n| `gemini-4-argon` | `low` / `medium` / `high` | 不传时由模型自行决定 |\n| `gemini-3.8-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.7-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.6-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash-lite` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3.1-flash-lite-preview` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3-flash-preview` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.1-pro-preview` | `low` / `medium` / `high` | `high` |\n| `gemini-3.1-pro-preview-customtools` | `low` / `medium` / `high` | `high` |\n| `gemini-3-pro-preview` | `low` / `medium` / `high` | `high` |\n\n传入模型不支持的档位（如向 Pro 系或 `gemini-3.8-flash` / `gemini-3.7-flash` 传 `minimal`）会被自动降级为 `low`，不会报错。\n\n`gemini-4-argon` 不支持 `minimal`：传入会返回 400，请改用 `low`。",
                 "example": "minimal"
               },
               "thinkingBudget": {
                 "type": "integer",
-                "description": "思考 token 预算，**Gemini 2.5 系列**（`gemini-2.5-flash` / `gemini-2.5-flash-lite` / `gemini-2.5-pro`）使用：`0`=关闭思考、`-1`=动态预算、正整数=固定预算（具体取值范围以各模型为准）。与 `thinkingLevel` 互斥。",
+                "description": "思考 token 预算，**Gemini 2.5 系列**（`gemini-2.5-flash` / `gemini-2.5-flash-lite` / `gemini-2.5-pro`）使用：`0`=关闭思考、`-1`=动态预算、正整数=固定预算（具体取值范围以各模型为准）。与 `thinkingLevel` 互斥。`gemini-4-argon` 不支持该参数，传入返回 400。",
                 "example": -1
               }
             }
@@ -671,10 +698,11 @@
           },
           "finishReason": {
             "type": "string",
-            "description": "完成原因",
+            "description": "完成原因\n\n- `CONTINUATION`：仅 `gemini-4-argon`，达到单次输出上限但仍有累计预算，保持原请求配置不变并带 `continuationToken` 续写。\n- `MAX_TOKENS`：累计输出预算耗尽；`gemini-4-argon` 也可能返回续写令牌，恢复前须手动提高 `maxOutputTokens`。\n\n详见本页「长输出续写」。",
             "enum": [
               "FINISH_REASON_UNSPECIFIED",
               "STOP",
+              "CONTINUATION",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
@@ -694,6 +722,10 @@
               "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "长输出续写令牌（仅 `gemini-4-argon`）。`CONTINUATION` 时带最新令牌重发原请求，生成配置保持不变；`MAX_TOKENS` 时也可能返回令牌，必须手动提高累计 `maxOutputTokens` 才能恢复。"
           },
           "index": {
             "type": "integer",
@@ -814,10 +846,11 @@
           },
           "finishReason": {
             "type": "string",
-            "description": "完成原因（仅最后一块包含此字段）",
+            "description": "完成原因（结束时的最后一块包含此字段）\n\n- `CONTINUATION`：仅 `gemini-4-argon`，达到单次输出上限但仍有累计预算，保持原请求配置不变并带 `continuationToken` 续写。\n- `MAX_TOKENS`：累计输出预算耗尽；`gemini-4-argon` 也可能返回续写令牌，恢复前须手动提高 `maxOutputTokens`。\n\n详见本页「长输出续写」。",
             "enum": [
               "FINISH_REASON_UNSPECIFIED",
               "STOP",
+              "CONTINUATION",
               "MAX_TOKENS",
               "SAFETY",
               "RECITATION",
@@ -837,6 +870,10 @@
               "MISSING_THOUGHT_SIGNATURE"
             ],
             "example": "STOP"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "长输出续写令牌（仅 `gemini-4-argon`）。`CONTINUATION` 时带最新令牌重发原请求，生成配置保持不变；`MAX_TOKENS` 时也可能返回令牌，必须手动提高累计 `maxOutputTokens` 才能恢复。结束时从带 `finishReason` 的最后一块读取最新令牌。"
           }
         }
       },
