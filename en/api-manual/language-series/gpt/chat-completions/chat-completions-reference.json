@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "GPT Chat Completions (All Models, Full Parameters)",
-        "description": "- OpenAI-compatible Chat Completions API for GPT series text models; select the specific model via `model` (see the comparison table on the `model` parameter for all allowed values)\n- The whole series consists of reasoning models, with reasoning depth controlled by `reasoning_effort`; reasoning tokens are billed as output tokens\n- Prompt caching applies automatically: cached input tokens are billed at the lower cached rate\n- Supports both synchronous and streaming (SSE) modes\n- Supports mixed text and image input, as well as `function` tool calls\n- Server-side tools (web search, code execution, file search, MCP) are provided only on the [Responses API](/en/api-manual/language-series/gpt/responses/responses-reference)\n- **Note** Model support varies for the sampling parameters (`temperature`, `top_p`, `logprobs`, and so on); see the per-parameter notes below\n\n**GPT-6**: `gpt-6-sol` / `gpt-6-luna` default to `medium` reasoning. Function calling in Chat Completions requires an explicit `reasoning_effort: \"none\"`. `gpt-6-astra` and `gpt-6.1-sol` do not support `none`; use the [Responses API](/en/api-manual/language-series/gpt/responses/responses-reference) for function calling. Use Responses for GPT-6 `max` effort; this endpoint does not support it.",
+        "description": "- OpenAI-compatible Chat Completions API for GPT series text models; select the specific model via `model` (see the comparison table on the `model` parameter for all allowed values)\n- The whole series consists of reasoning models, with reasoning depth controlled by `reasoning_effort`; reasoning tokens are billed as output tokens\n- Prompt caching applies automatically: cached input tokens are billed at the lower cached rate\n- Supports both synchronous and streaming (SSE) modes\n- Supports mixed text, image and PDF file input, as well as `function` tool calls\n- Server-side tools (web search, code execution, file search, MCP) are provided only on the [Responses API](/en/api-manual/language-series/gpt/responses/responses-reference)\n- **Note** Model support varies for the sampling parameters (`temperature`, `top_p`, `logprobs`, and so on); see the per-parameter notes below\n\n**GPT-6**: `gpt-6-sol` / `gpt-6-luna` default to `medium` reasoning. Function calling in Chat Completions requires an explicit `reasoning_effort: \"none\"`. `gpt-6-astra` and `gpt-6.1-sol` do not support `none`; use the [Responses API](/en/api-manual/language-series/gpt/responses/responses-reference) for function calling. Use Responses for GPT-6 `max` effort; this endpoint does not support it.",
         "operationId": "gptChatCompletionsReference",
         "tags": [
           "Chat Completions"
@@ -201,7 +201,7 @@
           },
           "messages": {
             "type": "array",
-            "description": "List of chat messages, supporting multi-turn context and multimodal input.\n\n`role` can be `system` / `developer` / `user` / `assistant` / `tool`.\n\n`content` can be a string or an array of content blocks. Two block types are supported: `text` (text) and `image_url` (image):\n\n```json\n\"content\": [\n  { \"type\": \"text\", \"text\": \"What is in this image?\" },\n  {\n    \"type\": \"image_url\",\n    \"image_url\": { \"url\": \"https://example.com/photo.png\", \"detail\": \"auto\" }\n  }\n]\n```\n\n**Image**\n- Pass the public URL of the image in `image_url.url`\n- `image_url` can also be written directly as a string, equivalent to `{ \"url\": \"...\" }`\n- `detail` controls image analysis fidelity: `auto` (default) / `low` / `high` / `original`\n- The image must be downloadable, otherwise `400` is returned\n\n**Note** The block types on this API differ from those on the Responses API (which uses `input_text` / `input_image`). They cannot be mixed; using the wrong ones returns `400`.\n\nExplicit cache breakpoint for GPT-6 / GPT-5.6, placed on a content block. Up to four writes per request; an implicit breakpoint uses one slot. `prompt_cache_breakpoint: {\"mode\": \"explicit\"}`.",
+            "description": "List of chat messages, supporting multi-turn context and multimodal input.\n\n`role` can be `system` / `developer` / `user` / `assistant` / `tool`.\n\n`content` can be a string or an array of content blocks. Three block types are supported: `text` (text), `image_url` (image) and `file` (PDF file):\n\n```json\n\"content\": [\n  { \"type\": \"text\", \"text\": \"What is in this image?\" },\n  {\n    \"type\": \"image_url\",\n    \"image_url\": { \"url\": \"https://example.com/photo.png\", \"detail\": \"auto\" }\n  }\n]\n```\n\n**Image**\n- Pass the public URL of the image in `image_url.url`\n- `image_url` can also be written directly as a string, equivalent to `{ \"url\": \"...\" }`\n- `detail` controls image analysis fidelity: `auto` (default) / `low` / `high` / `original`\n- The image must be downloadable, otherwise `400` is returned\n\n**Note** The block types on this API differ from those on the Responses API (which uses `input_text` / `input_image` / `input_file`). They cannot be mixed; using the wrong ones returns `400`.\n\nExplicit cache breakpoint for GPT-6 / GPT-5.6, placed on a content block. Up to four writes per request; an implicit breakpoint uses one slot. `prompt_cache_breakpoint: {\"mode\": \"explicit\"}`.",
             "items": {
               "$ref": "#/components/schemas/Message"
             },
@@ -408,7 +408,7 @@
             "example": "user"
           },
           "content": {
-            "description": "Message content: a string, or an array of content blocks (a mix of `text` / `image_url`).",
+            "description": "Message content: a string, or an array of content blocks (a mix of `text` / `image_url` / `file`).",
             "oneOf": [
               {
                 "type": "string"
@@ -634,7 +634,7 @@
       },
       "Usage": {
         "type": "object",
-        "description": "Token usage statistics. Prompt caching applies automatically, and cached input tokens are billed at the lower cached rate.\n\nGPT-6 bills uncached input, cache reads, cache writes, and output separately. Above 272,000 input tokens, the entire request uses 2× the regular input and cache rates and 1.5× the output rate. Built-in image generation is billed separately. See current [model pricing](https://evolink.ai/pricing).",
+        "description": "Token usage statistics. Prompt caching applies automatically, and cached input tokens are billed at the lower cached rate.\n\nGPT-6 bills uncached input, cache reads, cache writes, and output separately. For models with a 1,050,000-token context window (GPT-6, GPT-5.6, GPT-5.5, GPT-5.4), above 272,000 input tokens the entire request uses 2× the regular input and cache rates and 1.5× the output rate. Built-in image generation is billed separately. See current [model pricing](https://evolink.ai/pricing).",
         "properties": {
           "prompt_tokens": {
             "type": "integer",
