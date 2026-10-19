@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "Complétion de conversation Gemini (tous modèles)",
-        "description": "Sélectionnez le modèle de texte Gemini à appeler via `model` dans le corps de la requête (voir le tableau de correspondance du paramètre `model` pour toutes les valeurs possibles).\n\n- Utilise le format OpenAI SDK / Chat Completions, retourne le contenu de la conversation de manière synchrone\n- **Entrée texte brut / multimodale** : entrée mixte texte + image (`messages[].content`)\n- **Streaming** : définissez `stream: true` pour un retour bloc par bloc\n\n---\n\n**Spécifications et différences des modèles**\n- **Comportement de 3.8** : par rapport à 3.7, le modèle améliore l’ingénierie logicielle, les agents, le raisonnement multi-étapes et la précision multimodale ; il peut consommer davantage de tokens de raisonnement / sortie, surtout avec `high`. Utilisez `low` si la latence est critique, la valeur par défaut `medium` pour un usage général et `high` pour le code complexe, les longues vidéos ou le raisonnement multi-étapes.\n- **Paramètres d'échantillonnage / de pénalité** `temperature` / `top_p` / `frequency_penalty` / `presence_penalty` : identiques pour toute la série Gemini 3.x, les valeurs personnalisées n'affectent pas la sortie ; `temperature` / `top_p` renvoient une erreur 400 si elles sont hors plage, et `frequency_penalty` / `presence_penalty` sont ignorées et sans effet (sans générer d'erreur).\n- **Contrôle du raisonnement** `reasoning_effort` : `minimal` / `low` / `medium` / `high` (voir le paramètre `reasoning_effort` pour les niveaux pris en charge et la valeur par défaut de chaque modèle) ; effectif uniquement pour la série Gemini 3.x. `gemini-3.8-flash` / `gemini-3.7-flash` et la série Pro ne prennent pas en charge `minimal` ; la valeur transmise est automatiquement rétrogradée en `low`.\n- **Rôle du dernier tour** : le `role` du dernier message ne peut pas être `assistant` (Gemini 3.5+ génère une erreur).\n- **Limite de tokens** : `gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` contexte 1,048,576, sortie maximale 65,536 ; les autres modèles selon leurs propres spécifications.",
+        "description": "Sélectionnez le modèle de texte Gemini à appeler via `model` dans le corps de la requête (voir le tableau de correspondance du paramètre `model` pour toutes les valeurs possibles).\n\n- Utilise le format OpenAI SDK / Chat Completions, retourne le contenu de la conversation de manière synchrone\n- **Entrée texte brut / multimodale** : entrée mixte texte + image (`messages[].content`)\n- **Streaming** : définissez `stream: true` pour un retour bloc par bloc\n\n---\n\n**Spécifications et différences des modèles**\n- **Comportement de 3.8** : par rapport à 3.7, le modèle améliore l’ingénierie logicielle, les agents, le raisonnement multi-étapes et la précision multimodale ; il peut consommer davantage de tokens de raisonnement / sortie, surtout avec `high`. Utilisez `low` si la latence est critique, la valeur par défaut `medium` pour un usage général et `high` pour le code complexe, les longues vidéos ou le raisonnement multi-étapes.\n- **Comportement de Gemini 4 Argon** : `reasoning_effort` accepte `low` / `medium` / `high` ; sans valeur, le modèle détermine l’effort. `minimal` est ramené à `low`. Utilisez `max_tokens` pour limiter la sortie ; les routes Gemini actuelles ne garantissent pas l’application de `max_completion_tokens`. `max_tokens` accepte jusqu’à 1,048,576, mais une requête renvoie au maximum 65,536 tokens en streaming ou 32,768 sans streaming, raisonnement et réponse compris ; la limite renvoie `finish_reason: length`. Le format compatible OpenAI ne permet pas la continuation des sorties longues : utilisez [Référence complète de l’API native](/fr/api-manual/language-series/gemini/native-api/native-api-reference). `extra_body.google.thinking_config.thinking_budget` n’a pas d’effet sur ce modèle. Dans les appels d’outils à plusieurs tours, renvoyez à l’identique le `thought_signature` des `tool_calls[]` précédents, sinon la requête renvoie 400.\n- **Paramètres d'échantillonnage / de pénalité** `temperature` / `top_p` / `frequency_penalty` / `presence_penalty` : identiques pour toute la série Gemini 3.x, les valeurs personnalisées n'affectent pas la sortie ; `temperature` / `top_p` renvoient une erreur 400 si elles sont hors plage, et `frequency_penalty` / `presence_penalty` sont ignorées et sans effet (sans générer d'erreur).\n- **Contrôle du raisonnement** `reasoning_effort` : `minimal` / `low` / `medium` / `high` (voir le paramètre `reasoning_effort` pour les niveaux pris en charge et la valeur par défaut de chaque modèle) ; effectif pour la série Gemini 3.x / 4. `gemini-4-argon` / `gemini-3.8-flash` / `gemini-3.7-flash` et la série Pro ne prennent pas en charge `minimal` ; la valeur transmise est automatiquement rétrogradée en `low`.\n- **Rôle du dernier tour** : le `role` du dernier message ne peut pas être `assistant` (Gemini 3.5+ génère une erreur).\n- **Limite de tokens** : `gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` ont un contexte de 1,048,576 et une sortie maximale de 65,536. `gemini-4-argon` partage un contexte de 1,048,576 entre entrée, raisonnement et sortie ; chaque requête renvoie jusqu’à 65,536 tokens en streaming ou 32,768 sans streaming, raisonnement et réponse compris. La sortie dépend aussi de l’espace restant dans le contexte. Ce format ne prend pas en charge la continuation. Les autres modèles suivent leurs spécifications.",
         "operationId": "geminiChatCompletions",
         "tags": [
           "Complétion de chat"
@@ -138,6 +138,20 @@
                         ]
                       }
                     ]
+                  }
+                },
+                "output_limit": {
+                  "summary": "Limiter la sortie (Gemini 4 Argon ; troncature possible)",
+                  "value": {
+                    "model": "gemini-4-argon",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Output integers 1 through 100, one per line. Start immediately."
+                      }
+                    ],
+                    "max_tokens": 64,
+                    "reasoning_effort": "low"
                   }
                 }
               }
@@ -350,8 +364,9 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Sélectionnez le modèle de texte Gemini à appeler :\n\n| Modèle ID | Série | Positionnement |\n|---|---|---|\n| `gemini-3.8-flash` | 3.8 Flash | Ingénierie logicielle / agents / raisonnement multi-étapes / précision multimodale améliorés |\n| `gemini-3.7-flash` | 3.7 Flash | Agentique de niveau Pro / Génération de code / Exécution en terminal |\n| `gemini-3.6-flash` | 3.6 Flash | Orchestration multi-étapes / Refactorisation de code / Raisonnement général |\n| `gemini-3.5-flash` | 3.5 Flash | Flash générique |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | Faible coût / Haut débit / Agent léger |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | Raisonnement avancé |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | Raisonnement avancé + Outils personnalisés |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | Faible coût |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | Raisonnement avancé |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | Flash générique |\n| `gemini-2.5-pro` | 2.5 Pro | Raisonnement avancé |\n| `gemini-2.5-flash` | 2.5 Flash | Flash générique |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | Faible coût |",
+            "description": "Sélectionnez le modèle de texte Gemini à appeler :\n\n| Modèle ID | Série | Positionnement |\n|---|---|---|\n| `gemini-4-argon` | 4 Argon | Rapports longs et grands projets de code ; jusqu’à 65,536 tokens par requête en streaming / 32,768 sans streaming ; API native requise pour continuer une sortie plus longue |\n| `gemini-3.8-flash` | 3.8 Flash | Ingénierie logicielle / agents / raisonnement multi-étapes / précision multimodale améliorés |\n| `gemini-3.7-flash` | 3.7 Flash | Agentique de niveau Pro / Génération de code / Exécution en terminal |\n| `gemini-3.6-flash` | 3.6 Flash | Orchestration multi-étapes / Refactorisation de code / Raisonnement général |\n| `gemini-3.5-flash` | 3.5 Flash | Flash générique |\n| `gemini-3.5-flash-lite` | 3.5 Flash-Lite | Faible coût / Haut débit / Agent léger |\n| `gemini-3.1-pro-preview` | 3.1 Pro (Preview) | Raisonnement avancé |\n| `gemini-3.1-pro-preview-customtools` | 3.1 Pro · CustomTools | Raisonnement avancé + Outils personnalisés |\n| `gemini-3.1-flash-lite-preview` | 3.1 Flash-Lite (Preview) | Faible coût |\n| `gemini-3-pro-preview` | 3.0 Pro (Preview) | Raisonnement avancé |\n| `gemini-3-flash-preview` | 3.0 Flash (Preview) | Flash générique |\n| `gemini-2.5-pro` | 2.5 Pro | Raisonnement avancé |\n| `gemini-2.5-flash` | 2.5 Flash | Flash générique |\n| `gemini-2.5-flash-lite` | 2.5 Flash-Lite | Faible coût |",
             "enum": [
+              "gemini-4-argon",
               "gemini-3.8-flash",
               "gemini-3.7-flash",
               "gemini-3.6-flash",
@@ -382,20 +397,21 @@
             "example": false,
             "default": false
           },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Nombre maximal de tokens générés, raisonnement et réponse compris. Utilisez ce paramètre pour limiter la sortie sur les routes Gemini actuelles.\n\n`gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` acceptent jusqu’à 65,536 tokens. Pour `gemini-4-argon`, le paramètre accepte jusqu’à 1,048,576, mais chaque requête renvoie au maximum 65,536 tokens en streaming ou 32,768 sans streaming, sous réserve de l’espace restant dans le contexte partagé. Atteindre la limite renvoie `finish_reason: length` ; ce format ne permet pas la continuation. Les autres modèles suivent leurs spécifications.",
+            "minimum": 1,
+            "example": 2000,
+            "maximum": 1048576
+          },
           "max_completion_tokens": {
             "type": "integer",
             "nullable": true,
-            "description": "Maximum number of completion tokens for the generated response, corresponding to Gemini's maxOutputTokens.\n\n`gemini-3.8-flash` / `gemini-3.7-flash` / `gemini-3.6-flash` / `gemini-3.5-flash-lite` limite de 65,536 tokens ; les autres modèles selon leurs propres spécifications.",
+            "description": "Champ de compatibilité OpenAI. Les routes Gemini actuelles ne garantissent pas que ce champ limite la longueur de sortie : celle-ci peut dépasser la valeur spécifiée. Utilisez `max_tokens` pour contrôler la sortie.",
             "minimum": 1,
             "example": 2000,
-            "maximum": 65536
-          },
-          "max_tokens": {
-            "type": "integer",
-            "description": "Maximum number of tokens for the generated response, compatible with the legacy OpenAI parameter.",
-            "minimum": 1,
-            "example": 2000,
-            "maximum": 65536
+            "maximum": 1048576,
+            "deprecated": true
           },
           "temperature": {
             "type": "number",
@@ -416,7 +432,7 @@
           "frequency_penalty": {
             "type": "number",
             "nullable": true,
-            "description": "Frequency penalty coefficient. Range: -2.0 to 2.0. Corresponds to Gemini's frequencyPenalty.\n\n**Identique pour toute la série Gemini 3.x** : les valeurs transmises sont ignorées et sans effet (sans générer d'erreur).",
+            "description": "Frequency penalty coefficient. Range: -2.0 to 2.0. Corresponds to Gemini's frequencyPenalty.\n\n**Identique pour toute la série Gemini 3.x / 4** : les valeurs transmises sont ignorées et sans effet (sans générer d'erreur).",
             "minimum": -2,
             "maximum": 2,
             "default": 0,
@@ -425,7 +441,7 @@
           "presence_penalty": {
             "type": "number",
             "nullable": true,
-            "description": "Presence penalty coefficient. Range: -2.0 to 2.0. Corresponds to Gemini's presencePenalty.\n\n**Identique pour toute la série Gemini 3.x** : les valeurs transmises sont ignorées et sans effet (sans générer d'erreur).",
+            "description": "Presence penalty coefficient. Range: -2.0 to 2.0. Corresponds to Gemini's presencePenalty.\n\n**Identique pour toute la série Gemini 3.x / 4** : les valeurs transmises sont ignorées et sans effet (sans générer d'erreur).",
             "minimum": -2,
             "maximum": 2,
             "default": 0,
@@ -449,7 +465,7 @@
           "n": {
             "type": "integer",
             "nullable": true,
-            "description": "Nombre de candidats à générer\n\nGemini 3.x ne prend en charge que `1` ; transmettre une valeur >1 renvoie une erreur 400 (équivalent au `candidateCount` déjà supprimé du format natif).",
+            "description": "Nombre de candidats à générer\n\nGemini 3.x ne prend en charge que `1` ; transmettre une valeur >1 renvoie une erreur 400 (équivalent au `candidateCount` déjà supprimé du format natif).\n\n`gemini-4-argon` : transmettre >1 ne génère pas d’erreur ; un seul candidat est renvoyé.",
             "minimum": 1,
             "default": 1,
             "example": 1,
@@ -458,7 +474,7 @@
           "reasoning_effort": {
             "type": "string",
             "nullable": true,
-            "description": "Limite l'effort de raisonnement, correspond au niveau de raisonnement de Gemini :\n- `minimal` : raisonnement quasi nul, haut débit / faible latence\n- `low` : raisonnement réduit, tâches simples\n- `medium` : équilibre entre qualité et vitesse\n- `high` : raisonnement approfondi multi-étapes\n\n**Effectif uniquement pour la série Gemini 3.x**, les niveaux pris en charge et la valeur par défaut diffèrent selon les modèles (identique au format natif) :\n\n| Modèle | Niveaux pris en charge | Par défaut |\n|---|---|---|\n| `gemini-3.8-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.7-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.6-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash-lite` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3.1-flash-lite-preview` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3-flash-preview` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.1-pro-preview` | `low` / `medium` / `high` | `high` |\n| `gemini-3.1-pro-preview-customtools` | `low` / `medium` / `high` | `high` |\n| `gemini-3-pro-preview` | `low` / `medium` / `high` | `high` |\n\nTransmettre un niveau non pris en charge par le modèle (par ex., transmettre `minimal` à la série Pro ou à `gemini-3.8-flash` / `gemini-3.7-flash`) est automatiquement rétrogradé en `low` et ne génère pas d'erreur.",
+            "description": "Limite l'effort de raisonnement, correspond au niveau de raisonnement de Gemini :\n- `minimal` : raisonnement quasi nul, haut débit / faible latence\n- `low` : raisonnement réduit, tâches simples\n- `medium` : équilibre entre qualité et vitesse\n- `high` : raisonnement approfondi multi-étapes\n\n**Effectif pour la série Gemini 3.x / 4**, les niveaux pris en charge et la valeur par défaut diffèrent selon les modèles (identique au format natif) :\n\n| Modèle | Niveaux pris en charge | Par défaut |\n|---|---|---|\n| `gemini-4-argon` | `low` / `medium` / `high` | Rapports longs et grands projets de code ; jusqu’à 65,536 tokens par requête en streaming / 32,768 sans streaming ; API native requise pour continuer une sortie plus longue |\n| `gemini-3.8-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.7-flash` | `low` / `medium` / `high` | `medium` |\n| `gemini-3.6-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.5-flash-lite` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3.1-flash-lite-preview` | `minimal` / `low` / `medium` / `high` | `minimal` |\n| `gemini-3-flash-preview` | `minimal` / `low` / `medium` / `high` | `medium` |\n| `gemini-3.1-pro-preview` | `low` / `medium` / `high` | `high` |\n| `gemini-3.1-pro-preview-customtools` | `low` / `medium` / `high` | `high` |\n| `gemini-3-pro-preview` | `low` / `medium` / `high` | `high` |\n\nTransmettre un niveau non pris en charge par le modèle (par ex., transmettre `minimal` à la série Pro ou à `gemini-4-argon` / `gemini-3.8-flash` / `gemini-3.7-flash`) est automatiquement rétrogradé en `low` et ne génère pas d'erreur.",
             "enum": [
               "minimal",
               "low",
