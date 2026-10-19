@@ -1,0 +1,931 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API de MiniMax-M3.1-Flash compatible con Anthropic",
+    "description": "Referencia completa de la API de MiniMax-M3.1-Flash mediante el protocolo Messages de Anthropic.\n\n**Compatibilidad**:\n- Ruta: `/v1/messages` (ruta estándar de Anthropic)\n- Estructuras de solicitud y respuesta compatibles con la API Messages de Anthropic\n- Campos admitidos: `model` y `messages` (obligatorios), `system`, `max_tokens`, `temperature`, `top_p`, `stream`, `thinking`, `output_config`, `tools`, `tool_choice`, `metadata`\n\n**Capacidades del modelo**:\n- Ventana de contexto: **1,000,000 tokens** (1M)\n- Salida máxima: **524,288 tokens** (512K); se recomiendan **131,072 tokens** (128K), incluidos los tokens de razonamiento\n- Razonamiento: siempre activado; `output_config.effort` controla la profundidad, con `max` como valor predeterminado. El razonamiento se devuelve en bloques `content[type=thinking]`\n- Entrada multimodal: bloques de texto, imagen y video\n- Caché de contexto: los prefijos idénticos se reutilizan automáticamente; los tokens reutilizados se indican en `usage.cache_read_input_tokens`\n\nEn conversaciones de varios turnos, reenvía todos los bloques de contenido del asistente sin modificar, incluidos `thinking` (con `signature`) y `tool_use`.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Producción (recomendado)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "URL alternativa"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "API Messages de MiniMax-M3.1-Flash (compatible con Anthropic)",
+        "description": "- Invoca MiniMax-M3.1-Flash mediante el protocolo Messages de Anthropic\n- Estructuras de solicitud y respuesta compatibles con la API de Anthropic\n- **Conversación multimodal**: `content` admite bloques de texto, imagen y video\n- **Indicación de sistema**: se pasa mediante el campo `system` de nivel superior\n- **Razonamiento**: siempre activado; `output_config.effort` controla la profundidad. El razonamiento se devuelve en bloques `content[type=thinking]`\n- **Streaming**: flujo de eventos SSE\n- **Herramientas**: compatible con el flujo `tool_use` / `tool_result` de Anthropic\n\n**Eventos de streaming**: `message_start` → `content_block_start` → `content_block_delta` (`thinking_delta` / `signature_delta` / `text_delta` / `input_json_delta`) → `content_block_stop` → `message_delta` → `message_stop`. Pueden intercalarse eventos `ping`. El uso final corresponde al campo `usage` del evento `message_delta`.",
+        "operationId": "createMessageMiniMaxM31Flash",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Solicitud mínima ejecutable",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello! How can you help me?"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "Uso de indicaciones de sistema",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "system": "You are a technical editor. Keep your answers clear and concise.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Describe the benefits of clear technical documentation in three sentences."
+                      }
+                    ]
+                  }
+                },
+                "effort": {
+                  "summary": "Ajuste de la profundidad de razonamiento (output_config.effort)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "output_config": {
+                      "effort": "high"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "A bat and a ball cost 1.10 in total. The bat costs 1.00 more than the ball. How much does the ball cost?"
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "Comprensión de imágenes (bloques de contenido multimodal)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "What is shown in this image?"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "video_understanding": {
+                  "summary": "Comprensión de video (bloques de contenido multimodal)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Summarize this video."
+                          },
+                          {
+                            "type": "video",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/video.mp4",
+                              "fps": 1
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "Llamada a herramientas (estilo tool_use de Anthropic)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Check the stock for product demo-item-001."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_product_stock",
+                        "description": "Get the current stock level for a product.",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "product_id": {
+                              "type": "string",
+                              "description": "Product identifier."
+                            }
+                          },
+                          "required": [
+                            "product_id"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "Salida en streaming (SSE)",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Write a short poem about spring."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Objeto de mensaje",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "with_thinking": {
+                    "summary": "Respuesta con razonamiento (bloque thinking)",
+                    "value": {
+                      "id": "072514f09a86ce2abb0c5c3930f924fb",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "thinking": "Let the ball cost x. Then 2x + 1 = 1.10, so x = 0.05.",
+                          "signature": "84eddf556420e0cc237f8f50212216543e8add2ddd931c9a271d2a5a95689333",
+                          "type": "thinking"
+                        },
+                        {
+                          "text": "0.05",
+                          "type": "text"
+                        }
+                      ],
+                      "usage": {
+                        "input_tokens": 55,
+                        "output_tokens": 66,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 174,
+                        "output_tokens_details": {
+                          "thinking_tokens": 63
+                        }
+                      },
+                      "stop_reason": "end_turn",
+                      "base_resp": {
+                        "status_code": 0,
+                        "status_msg": ""
+                      }
+                    }
+                  },
+                  "direct_answer": {
+                    "summary": "Respuesta directa (sin contenido de razonamiento)",
+                    "value": {
+                      "id": "072514d15927960e42b730074205a1c6",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "text": "Recursion is a technique in which a function calls itself to solve smaller instances of a problem.",
+                          "type": "text"
+                        }
+                      ],
+                      "usage": {
+                        "input_tokens": 23,
+                        "output_tokens": 6,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 184
+                      },
+                      "stop_reason": "end_turn",
+                      "base_resp": {
+                        "status_code": 0,
+                        "status_msg": ""
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "Llamada a herramienta activada (stop_reason=tool_use)",
+                    "value": {
+                      "id": "072514d3fb0f7ce9f7c9fdd22755fffc",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "call_function_ih2iv0ggec0p_1",
+                          "name": "get_product_stock",
+                          "input": {
+                            "product_id": "demo-item-001"
+                          }
+                        }
+                      ],
+                      "usage": {
+                        "input_tokens": 283,
+                        "output_tokens": 31,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 174
+                      },
+                      "stop_reason": "tool_use",
+                      "base_resp": {
+                        "status_code": 0,
+                        "status_msg": ""
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud no válidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error de autenticación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Cuota insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error de permisos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Modelo o recurso no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de frecuencia superado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Puerta de enlace no válida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio temporalmente no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modelo a llamar",
+            "enum": [
+              "MiniMax-M3.1-Flash"
+            ],
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Límite de tokens de generación, **incluidos el razonamiento y la respuesta**\n\n**Notas**:\n- Recomendado: **131,072** (128K); máximo: **524,288** (512K)\n- Un valor demasiado bajo puede agotar el límite durante el razonamiento y devolver `stop_reason=max_tokens` sin contenido text",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 131072
+          },
+          "messages": {
+            "type": "array",
+            "description": "Lista de mensajes de la conversación, alternando turnos de user / assistant\n\n**Notas**:\n- Debe contener al menos 1 mensaje\n- El último mensaje normalmente es `role=user`",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "Indicación de sistema para definir el rol y el comportamiento de la IA. Admite una cadena o un arreglo de bloques de texto y se pasa mediante el campo `system` de nivel superior.",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "Indicación de sistema como arreglo de bloques de contenido.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Temperatura de muestreo\n\n**Notas**:\n- Rango `[0, 2]`; valor predeterminado: 1\n- Los valores más altos producen respuestas más variadas; los más bajos, respuestas más deterministas\n- Evita ajustar temperature y top_p al mismo tiempo",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Umbral de muestreo de núcleo\n\n**Notas**:\n- Rango `[0, 1]`; valor predeterminado: 0.95\n- Evita ajustar temperature y top_p al mismo tiempo",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Si se debe devolver mediante streaming SSE\n\n- `true`: respuesta en streaming Server-Sent Events\n- `false`: espera la respuesta completa antes de devolverla (predeterminado)",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "Modo de razonamiento. MiniMax-M3.1-Flash siempre realiza razonamiento. Solo admite `adaptive`; el campo es opcional. El razonamiento se devuelve en bloques `type=\"thinking\"` y se factura como tokens de salida.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "adaptive"
+                ],
+                "default": "adaptive"
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "Configuración de salida",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "Profundidad de razonamiento; el valor predeterminado es `max`. Los niveles más altos suelen aumentar el consumo de tokens de razonamiento y el tiempo de respuesta.",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "max",
+                "example": "high"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Lista de definiciones de herramientas\n\n**Notas**:\n- Sigue la especificación de definición de herramientas de Anthropic\n- `input_schema` usa un objeto JSON Schema",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "Estrategia de selección de herramientas. Solo admite `auto`: el modelo decide si debe invocar una herramienta.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto"
+                ]
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Metadatos de la solicitud",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "Identificador único que representa al usuario final, puede usarse para monitoreo por usuario y detección de abuso (se recomienda usar un ID con hash)"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "Rol del remitente; los mensajes alternan entre user y assistant\n\n- `user`: mensaje del usuario; también se usa para devolver bloques `tool_result`\n- `assistant`: respuestas anteriores del asistente; pueden contener bloques `text` / `thinking` / `tool_use`\n\nLas indicaciones de sistema se pasan mediante el campo `system` de nivel superior."
+          },
+          "content": {
+            "description": "Contenido del mensaje\n\n**Notas**:\n- Para texto sin formato, pasa una cadena directamente\n- Para contenido estructurado, pasa un arreglo de bloques de contenido (`text` / `image` / `video` / `tool_use` / `tool_result` / `thinking`)",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "Bloque de contenido del mensaje\n\n**Valores de type admitidos**:\n- `text`: contenido de texto\n- `image`: entrada de imagen por URL o base64; JPEG / PNG / GIF / WEBP\n- `video`: entrada de video por URL, base64 o `mm_file://{file_id}`; MP4 / AVI / MOV / MKV\n- `tool_use`: llamada a herramienta del asistente del turno anterior\n- `tool_result`: resultado de la ejecución de una herramienta\n- `thinking`: razonamiento del asistente del turno anterior, incluida `signature`",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "tool_use",
+              "tool_result",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenido de texto cuando type=`text`"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaSource",
+            "description": "Fuente de imagen o video; se usa con type=`image` o type=`video`."
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de la llamada a la herramienta (obligatorio para tool_use)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta (obligatorio para tool_use)"
+          },
+          "input": {
+            "type": "object",
+            "description": "Parámetros de entrada de la herramienta (objeto JSON para tool_use)"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "ID de la llamada a la herramienta correspondiente (obligatorio para tool_result, se asigna a tool_use.id)"
+          },
+          "content": {
+            "description": "Resultado de la ejecución de la herramienta (tool_result), cadena o arreglo de bloques de contenido",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Razonamiento de un mensaje anterior del asistente; se usa con `type=thinking`."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Firma del razonamiento. En conversaciones de varios turnos, debe reenviarse sin modificar."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta\n\n**Notas**:\n- Solo se permite `a-zA-Z0-9_-`\n- Máximo 64 caracteres"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripción de la herramienta, ayuda al modelo a determinar cuándo llamarla"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "Objeto JSON Schema para los parámetros de entrada de la herramienta\n\n**Notas**:\n- `type` debe ser `object`\n- Debe declarar `properties` y `required`"
+          }
+        }
+      },
+      "MediaSource": {
+        "type": "object",
+        "description": "Fuente de medios de un bloque de imagen o video\n\n- Imágenes: JPEG / PNG / GIF / WEBP; máximo 10 MB por imagen\n- Videos: MP4 / AVI / MOV / MKV; máximo 50 MB mediante URL / Base64. Para videos más grandes, usa una referencia de archivo `mm_file://{file_id}`\n- Tamaño máximo del cuerpo de la solicitud: 64 MB",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "url"
+            ],
+            "description": "Tipo de fuente de medios"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "Obligatorio para la entrada en base64, por ejemplo `image/png` o `video/mp4`"
+          },
+          "data": {
+            "type": "string",
+            "description": "Bytes de medios codificados en Base64"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL pública; los videos también pueden usar referencias de archivo con el formato `mm_file://{file_id}`"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "low",
+              "default",
+              "high"
+            ],
+            "default": "default",
+            "description": "Precisión de comprensión, valor predeterminado default. Una resolución más alta consume más tokens"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0.2,
+            "maximum": 5,
+            "default": 1,
+            "description": "Frecuencia de extracción de fotogramas de video; valor predeterminado: 1, rango: [0.2, 5]. Una frecuencia mayor permite captar mejor los cambios en la imagen y suele aumentar el consumo de tokens."
+          },
+          "max_long_side_pixel": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Restricción máxima de píxeles para el lado más largo de las imágenes o los fotogramas del video"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Respuesta de mensaje al estilo de Anthropic",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único del mensaje"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "Tipo de objeto de respuesta"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "Modelo realmente utilizado",
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "content": {
+            "type": "array",
+            "description": "Lista de bloques de contenido de la respuesta\n\n**Tipos de bloque posibles**:\n- `thinking`: razonamiento; puede omitirse en preguntas sencillas\n- `text`: texto de la respuesta final\n- `tool_use`: llamada a herramienta iniciada por el modelo",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "Razón de parada\n\n- `end_turn`: finalización natural\n- `max_tokens`: se alcanzó el límite de max_tokens\n- `tool_use`: el modelo activó una llamada a herramienta",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          },
+          "base_resp": {
+            "type": "object",
+            "description": "Código de estado y detalles del error",
+            "properties": {
+              "status_code": {
+                "type": "integer",
+                "description": "Código de estado; `0` indica éxito."
+              },
+              "status_msg": {
+                "type": "string",
+                "description": "Detalles del error"
+              }
+            }
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "Bloque de contenido en la respuesta",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Texto cuando type=`text`"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Texto del proceso de razonamiento cuando type=`thinking`"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Firma de integridad cuando type=`thinking`, usada para la verificación del contexto de múltiples turnos"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de la llamada a la herramienta cuando type=`tool_use`"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la herramienta cuando type=`tool_use`"
+          },
+          "input": {
+            "type": "object",
+            "description": "Parámetros de entrada JSON generados por el modelo cuando type=`tool_use`"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Estadísticas de uso de tokens (especificación de Anthropic)",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de entrada no reutilizados de la caché, sin incluir `cache_read_input_tokens`.",
+            "example": 55
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de salida (incluido el pensamiento)",
+            "example": 66
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de entrada usados para crear la caché; es 0 con la caché automática.",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Número de tokens de entrada reutilizados de la caché, facturados a la tarifa de acierto de caché. Entrada total = `input_tokens + cache_read_input_tokens`.",
+            "example": 174
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "Desglose detallado de los tokens de salida",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer",
+                "description": "Número de tokens generados durante el razonamiento, ya incluidos en `output_tokens`.",
+                "example": 63
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Tipo de error (p. ej. invalid_request_error / authentication_error / billing_error, etc.)"
+              },
+              "message": {
+                "type": "string",
+                "description": "Descripción del error"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "ID de seguimiento de la solicitud"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Todas las API requieren autenticación con Bearer Token\n\n**Obtener la API Key:**\n\nVisita la [Página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Añadir al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**Nota**: EvoLink utiliza de forma uniforme la autenticación con Bearer Token para `/v1/messages`."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Endpoints del protocolo Anthropic Messages"
+    }
+  ]
+}
