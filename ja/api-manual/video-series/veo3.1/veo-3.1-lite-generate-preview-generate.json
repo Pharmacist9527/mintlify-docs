@@ -1,0 +1,448 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Veo-3.1-Lite-Generate-Preview API",
+    "description": "Veo 3.1 Lite で動画生成タスクを作成し、テキストから動画、最初のフレーム画像から動画、最初と最後のフレーム画像から動画をサポート",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "Veo-3.1-Lite-Generate-Preview API",
+        "description": "- Veo 3.1 Lite は Veo 3.1 の低価格版です。テキストから動画、最初のフレーム / 最初と最後のフレームからの動画生成に対応。参照画像と `4k` は非対応\n- 出力動画の秒数で課金され、単価は解像度と音声生成の有無で決まります。料金は [EvoLink モデル料金](https://evolink.ai/veo-3-1?model=veo-3.1-lite-generate-preview) を参照\n- 非同期処理です。返されたタスク ID を使用して[タスクの状態を確認](/ja/api-manual/task-management/get-task-detail)してください\n- 生成された動画リンクは24時間有効です。速やかに保存してください",
+        "operationId": "createVideoGeneration",
+        "tags": [
+          "動画生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "テキストから動画",
+                  "value": {
+                    "model": "veo-3.1-lite-generate-preview",
+                    "prompt": "A golden retriever puppy running through a sunlit meadow, slow motion, cinematic lighting"
+                  }
+                },
+                "first_and_last_frames": {
+                  "summary": "最初と最後のフレーム画像から動画",
+                  "value": {
+                    "model": "veo-3.1-lite-generate-preview",
+                    "prompt": "A time-lapse transition from sunrise to sunset over a mountain lake",
+                    "image_urls": [
+                      "https://example.com/first-frame.jpg",
+                      "https://example.com/last-frame.jpg"
+                    ],
+                    "generation_type": "FIRST&LAST",
+                    "quality": "1080p",
+                    "duration": 8,
+                    "callback_url": "https://your-domain.com/webhooks/video-task-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "動画生成タスクが正常に作成されました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_parameter",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足のため、チャージが必要です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アクセスが拒否されました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: veo-3.1-lite-generate-preview",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限を超えました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "動画生成モデル名。このモデルは `image_start`、`image_end`、`model_params` を受け付けません（`400` を返します）",
+            "enum": [
+              "veo-3.1-lite-generate-preview"
+            ],
+            "default": "veo-3.1-lite-generate-preview",
+            "example": "veo-3.1-lite-generate-preview"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "動画を説明するプロンプト。最大 `2000` トークン。cl100k で計数します。トークン数は文字数とは異なります. Google が公式にサポートするプロンプト言語は英語です。EvoLink はプロンプトの言語を理由にリクエストを拒否しませんが、他の言語での生成結果は保証されません.",
+            "example": "A golden retriever puppy running through a sunlit meadow, slow motion, cinematic lighting"
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "画像から動画生成用の入力画像 URL\n\n**注意：**\n- 1 回のリクエストで最大 `2` 枚：`1` 枚は最初のフレーム、`2` 枚は最初と最後のフレームとして使用されます\n- 画像サイズ：`10 MB` 以下\n- サポートされるファイル形式：`.jpg`、`.jpeg`、`.png`",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": [
+              "https://example.com/first-frame.jpg"
+            ]
+          },
+          "generation_type": {
+            "type": "string",
+            "description": "生成モード。省略した場合は画像の枚数から自動で判定します：\n- `TEXT`: テキストから動画（画像を渡しても使用されません）\n- `FIRST&LAST`: 最初と最後のフレーム、1〜2枚の画像\n\n本モデルは `REFERENCE`（参照画像）をサポートせず、`400` を返します",
+            "enum": [
+              "TEXT",
+              "FIRST&LAST"
+            ]
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "動画のアスペクト比。`auto` は `aspect_ratio` を省略した場合と同じで、比率を指定せずモデルが決定します",
+            "enum": [
+              "auto",
+              "16:9",
+              "9:16"
+            ]
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "description": "音声を生成するかどうか、デフォルト `true`。音声を生成すると 1 秒あたりの単価が上がります",
+            "default": true
+          },
+          "duration": {
+            "type": "integer",
+            "description": "動画の長さ（秒）、デフォルト `4`。長い動画ほど料金が高くなります",
+            "enum": [
+              4,
+              6,
+              8
+            ],
+            "default": 4
+          },
+          "n": {
+            "type": "integer",
+            "description": "生成する動画数、デフォルト `1`。各動画は個別に課金されます",
+            "minimum": 1,
+            "maximum": 4,
+            "default": 1
+          },
+          "quality": {
+            "type": "string",
+            "description": "出力解像度、デフォルト `720p`。`1080p` は 1 秒あたりの単価が高くなります。本モデルは `4k` をサポートしません",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "default": "720p"
+          },
+          "seed": {
+            "type": "integer",
+            "description": "生成結果を再現するためのランダムシード",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "動画に含めたくない内容を指定するネガティブプロンプト"
+          },
+          "person_generation": {
+            "type": "string",
+            "description": "人物生成の制御。省略時は上流のデフォルト値 `allow_adult` が使用されます。`allow_adult`：成人のみ許可。`dont_allow`：人物や顔を含む動画の生成を禁止",
+            "enum": [
+              "allow_adult",
+              "dont_allow"
+            ]
+          },
+          "resize_mode": {
+            "type": "string",
+            "description": "画像から動画を生成する際の画像調整モード。省略時は上流のデフォルト値 `pad` が使用されます。`pad`：余白を追加して出力のアスペクト比に合わせます。`crop`：中央を基準に切り抜いて出力のアスペクト比に合わせます。入力画像が必要です。画像なしでこのパラメータを指定すると `400` が返されます",
+            "enum": [
+              "pad",
+              "crop"
+            ]
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "タスク完了後の HTTPS コールバックアドレス\n\n**コールバックタイミング：**\n- タスクが完了または失敗した時にトリガーされます\n- 課金確認完了後に送信されます\n\n**セキュリティ制限：**\n- HTTPS プロトコルのみサポート\n- 内部 IP アドレスへのコールバックは禁止（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x など）\n- URL の長さは `2048` UTF-8 バイト以内\n\n**コールバックメカニズム：**\n- タイムアウト：`10` 秒\n- 失敗時最大 `3` 回リトライ（`1` 秒/`2` 秒/`4` 秒後にリトライ）\n- コールバックレスポンスボディの形式はタスククエリ API のレスポンス形式と一致\n- コールバックアドレスが 2xx ステータスコードを返した場合は成功とみなされ、その他のステータスコードはリトライをトリガーします",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "タスク作成タイムスタンプ",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "タスクID",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル名",
+            "example": "veo-3.1-lite-generate-preview"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "タスクの具体的なタイプ"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "タスク進捗パーセンテージ (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "タスクステータス",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "processing"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "動画タスクの詳細情報"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "タスクの出力タイプ",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "使用量と課金情報"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "タスクがキャンセル可能かどうか",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "推定完了時間（秒）",
+            "minimum": 0,
+            "example": 600
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "動画の再生時間（秒）",
+            "example": 4
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "使用量と課金情報",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "課金ルール",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "推定消費クレジット数",
+            "minimum": 0,
+            "example": 12.24
+          },
+          "user_group": {
+            "type": "string",
+            "description": "ユーザーグループカテゴリ",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード識別子"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明"
+              },
+              "type": {
+                "type": "string",
+                "description": "エラータイプ"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべてのAPIにBearer Token認証が必要です##\n\n**APIキーの取得：**\n\n[APIキー管理ページ](https://evolink.ai/dashboard/keys)にアクセスしてAPIキーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "動画生成",
+      "description": "AI動画生成API"
+    }
+  ]
+}
