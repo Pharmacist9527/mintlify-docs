@@ -1,0 +1,448 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API Veo-3.1-Lite-Generate-Preview",
+    "description": "Créer des tâches de génération vidéo avec Veo 3.1 Lite, prenant en charge texte-vers-vidéo, image-vers-vidéo à partir de la première image et à partir des première et dernière images",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "API Veo-3.1-Lite-Generate-Preview",
+        "description": "- Veo 3.1 Lite est le niveau économique de Veo 3.1 : texte vers vidéo et image vers vidéo avec première image / première et dernière images ; pas d'images de référence ni de `4k`\n- Facturé à la seconde de vidéo générée ; le tarif dépend de la résolution et de la génération audio, voir [les tarifs des modèles EvoLink](https://evolink.ai/veo-3-1?model=veo-3.1-lite-generate-preview)\n- Traitement asynchrone : utilisez l'ID de tâche renvoyé pour [consulter son état](/fr/api-manual/task-management/get-task-detail)\n- Les liens vidéo générés sont valides pendant 24 heures, veuillez les enregistrer rapidement",
+        "operationId": "createVideoGeneration",
+        "tags": [
+          "Génération vidéo"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "text_to_video": {
+                  "summary": "Texte-vers-vidéo",
+                  "value": {
+                    "model": "veo-3.1-lite-generate-preview",
+                    "prompt": "A golden retriever puppy running through a sunlit meadow, slow motion, cinematic lighting"
+                  }
+                },
+                "first_and_last_frames": {
+                  "summary": "Image-vers-vidéo (première et dernière images)",
+                  "value": {
+                    "model": "veo-3.1-lite-generate-preview",
+                    "prompt": "A time-lapse transition from sunrise to sunset over a mountain lake",
+                    "image_urls": [
+                      "https://example.com/first-frame.jpg",
+                      "https://example.com/last-frame.jpg"
+                    ],
+                    "generation_type": "FIRST&LAST",
+                    "quality": "1080p",
+                    "duration": 8,
+                    "callback_url": "https://your-domain.com/webhooks/video-task-completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tâche de génération vidéo créée avec succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoGenerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_parameter",
+                    "message": "Invalid request parameters",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Quota insuffisant, recharge requise",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès refusé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: veo-3.1-lite-generate-preview",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de débit dépassée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle de génération vidéo. Ce modèle n'accepte pas `image_start`, `image_end` ni `model_params` (réponse `400`)",
+            "enum": [
+              "veo-3.1-lite-generate-preview"
+            ],
+            "default": "veo-3.1-lite-generate-preview",
+            "example": "veo-3.1-lite-generate-preview"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt décrivant la vidéo, jusqu’à `2000` tokens. Comptés avec cl100k ; les tokens ne sont pas des caractères. Google indique l’anglais comme langue de prompt prise en charge. EvoLink ne rejette pas les requêtes selon la langue du prompt ; les résultats dans d’autres langues ne sont pas garantis.",
+            "example": "A golden retriever puppy running through a sunlit meadow, slow motion, cinematic lighting"
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "URLs des images d'entrée pour image-vers-vidéo\n\n**Remarques :**\n- Maximum `2` images par requête : `1` image est utilisée comme première image, `2` images comme première et dernière images\n- Taille d'image : pas plus de `10 MB`\n- Formats de fichier pris en charge : `.jpg`, `.jpeg`, `.png`",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 2,
+            "example": [
+              "https://example.com/first-frame.jpg"
+            ]
+          },
+          "generation_type": {
+            "type": "string",
+            "description": "Mode de génération. S'il est omis, il est déduit du nombre d'images :\n- `TEXT` : Texte vers vidéo (les images envoyées ne sont pas utilisées)\n- `FIRST&LAST` : Première-dernière image, 1-2 images\n\n`REFERENCE` (image de référence) n'est pas pris en charge par ce modèle et renvoie `400`",
+            "enum": [
+              "TEXT",
+              "FIRST&LAST"
+            ]
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Rapport d'aspect de la vidéo. `auto` équivaut à omettre `aspect_ratio` : aucun rapport n'est imposé, le modèle décide",
+            "enum": [
+              "auto",
+              "16:9",
+              "9:16"
+            ]
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "description": "Générer l'audio, par défaut `true`. La génération audio augmente le prix par seconde",
+            "default": true
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Durée de la vidéo en secondes, par défaut `4`. Les vidéos plus longues coûtent plus cher",
+            "enum": [
+              4,
+              6,
+              8
+            ],
+            "default": 4
+          },
+          "n": {
+            "type": "integer",
+            "description": "Nombre de vidéos à générer, par défaut `1`. Chaque vidéo est facturée séparément",
+            "minimum": 1,
+            "maximum": 4,
+            "default": 1
+          },
+          "quality": {
+            "type": "string",
+            "description": "Résolution de sortie, par défaut `720p`. `1080p` a un prix par seconde plus élevé ; `4k` n'est pas pris en charge par ce modèle",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "default": "720p"
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Graine aléatoire pour reproduire les résultats de génération",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "Prompt négatif décrivant le contenu à exclure de la vidéo"
+          },
+          "person_generation": {
+            "type": "string",
+            "description": "Contrôle de la génération de personnes. Si le paramètre est omis, la valeur par défaut du fournisseur est `allow_adult`. `allow_adult` : autoriser uniquement les adultes ; `dont_allow` : ne pas générer de vidéos contenant des personnes ou des visages",
+            "enum": [
+              "allow_adult",
+              "dont_allow"
+            ]
+          },
+          "resize_mode": {
+            "type": "string",
+            "description": "Mode d’ajustement de l’image pour la génération image-vers-vidéo. Si le paramètre est omis, la valeur par défaut du fournisseur est `pad`. `pad` : ajouter des marges pour adapter l’image au format de sortie ; `crop` : effectuer un recadrage centré pour l’adapter. Une image d’entrée est requise ; fournir ce paramètre sans image renvoie `400`",
+            "enum": [
+              "pad",
+              "crop"
+            ]
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "Adresse de rappel HTTPS après l'achèvement de la tâche\n\n**Moment du rappel :**\n- Déclenché lorsque la tâche est terminée ou échouée\n- Envoyé après confirmation de la facturation\n\n**Restrictions de sécurité :**\n- Seul le protocole HTTPS est pris en charge\n- Les rappels vers les adresses IP internes sont interdits (127.0.0.1, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, etc.)\n- La longueur de l'URL ne doit pas dépasser `2048` octets UTF-8\n\n**Mécanisme de rappel :**\n- Délai d'expiration : `10` secondes\n- Maximum `3` tentatives en cas d'échec (tentatives après `1` seconde/`2` secondes/`4` secondes)\n- Le format du corps de réponse du rappel est cohérent avec le format de réponse de l'API de requête de tâche\n- Un code de statut 2xx renvoyé par l'adresse de rappel est considéré comme un succès, les autres codes de statut déclenchent une nouvelle tentative",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/video-task-completed"
+          }
+        }
+      },
+      "VideoGenerationResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "Horodatage de creation de la tache",
+            "example": 1757169743
+          },
+          "id": {
+            "type": "string",
+            "description": "ID de la tache",
+            "example": "task-unified-1757169743-7cvnl5zw"
+          },
+          "model": {
+            "type": "string",
+            "description": "Nom du modele effectivement utilise",
+            "example": "veo-3.1-lite-generate-preview"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "video.generation.task"
+            ],
+            "description": "Type specifique de la tache"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "Pourcentage de progression de la tache (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Statut de la tache",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "processing"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/VideoTaskInfo",
+            "description": "Informations detaillees de la tache video"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video"
+            ],
+            "description": "Type de sortie de la tache",
+            "example": "video"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VideoUsage",
+            "description": "Informations d'utilisation et de facturation"
+          }
+        }
+      },
+      "VideoTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "Indique si la tache peut etre annulee",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "Temps estime d'achevement (secondes)",
+            "minimum": 0,
+            "example": 600
+          },
+          "video_duration": {
+            "type": "integer",
+            "description": "Duree de la video (secondes)",
+            "example": 4
+          }
+        }
+      },
+      "VideoUsage": {
+        "type": "object",
+        "description": "Informations d'utilisation et de facturation",
+        "properties": {
+          "billing_rule": {
+            "type": "string",
+            "description": "Regle de facturation",
+            "enum": [
+              "per_call",
+              "per_token",
+              "per_second"
+            ],
+            "example": "per_call"
+          },
+          "credits_reserved": {
+            "type": "number",
+            "description": "Nombre de credits estimes consommes",
+            "minimum": 0,
+            "example": 12.24
+          },
+          "user_group": {
+            "type": "string",
+            "description": "Categorie du groupe utilisateur",
+            "example": "default"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Identifiant du code d'erreur"
+              },
+              "message": {
+                "type": "string",
+                "description": "Description de l'erreur"
+              },
+              "type": {
+                "type": "string",
+                "description": "Type d'erreur"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API :**\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête :**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Génération vidéo",
+      "description": "APIs de génération de vidéos IA"
+    }
+  ]
+}
