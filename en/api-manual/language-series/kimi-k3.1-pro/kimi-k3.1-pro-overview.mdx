@@ -1,0 +1,196 @@
+---
+title: "Kimi K3.1 Pro / Highspeed"
+description: "Three APIs, reasoning levels, context caching, and web search for both models."
+---
+
+Kimi K3.1 Pro and Highspeed share the same request format and support a 1,048,576-token context, always-on reasoning, streaming, function tools, strict JSON Schema, and context caching. Highspeed offers faster generation with separate input, output, and cache-write prices.
+
+<Note>
+Recommended BaseURL: `https://direct.evolink.ai`, with support for long-lived text-model connections. Fallback: `https://api.evolink.ai`. Authenticate with your EvoLink API key: `Authorization: Bearer YOUR_API_KEY`.
+</Note>
+
+## Models and pricing
+
+| Model | Model ID |
+| --- | --- |
+| Kimi K3.1 Pro | `kimi-k3.1-pro` |
+| Kimi K3.1 Pro Highspeed | `kimi-k3.1-pro-highspeed` |
+
+The original USD prices and EvoLink access prices below are identical. Token prices are per million tokens. Search tool fees are charged separately per call; the actual bill takes precedence.
+
+| Billing item | Pro | Highspeed |
+| --- | --- | --- |
+| Uncached input | $2.00 | $4.00 |
+| Output (including reasoning) | $10.00 | $20.00 |
+| Cache read | $0.20 | $0.20 |
+| 5m cache write | $2.00 | $4.00 |
+| 1h cache write | $4.00 | $8.00 |
+| Web search | $0.005 / call | $0.005 / call |
+
+Each category is billed by actual token count without rounding up to a thousand tokens. A minimum charge still applies to very small requests. Highspeed and Pro have the same cache-read price.
+
+## Choose an API
+
+Both models support all three protocols below. Switch models by replacing the `model` value.
+
+<CardGroup cols={3}>
+  <Card title="Chat Completions" icon="comments" href="/en/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-chat">
+    OpenAI Chat format, `POST /v1/chat/completions`.
+  </Card>
+  <Card title="Messages" icon="message" href="/en/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-messages">
+    Anthropic format, `POST /v1/messages`.
+  </Card>
+  <Card title="Responses" icon="reply" href="/en/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-responses">
+    OpenAI Responses format, `POST /v1/responses`.
+  </Card>
+</CardGroup>
+
+```bash
+curl https://direct.evolink.ai/v1/chat/completions \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kimi-k3.1-pro",
+    "messages": [{"role": "user", "content": "Explain context caching in one sentence."}],
+    "reasoning_effort": "low",
+    "max_completion_tokens": 1024
+  }'
+```
+
+## Reasoning and output limits
+
+Native reasoning levels are `low`, `high`, and `max`, with `max` as the default. Both models always reason. Reasoning tokens are included in output usage and the output limit. If the budget is too small, you may receive reasoning without a final answer.
+
+| API | Reasoning field | Output-limit field |
+| --- | --- | --- |
+| Chat Completions | `reasoning_effort` | `max_completion_tokens` |
+| Messages | `output_config.effort` | `max_tokens` (required) |
+| Responses | `reasoning.effort` | `max_output_tokens` |
+
+Chat / Responses default to an output limit of 131,072 tokens, with a maximum of 1,048,576, also subject to the remaining context. For short questions requiring a quick response, explicitly choose `low` and a suitable output budget.
+
+For general client compatibility, the following values map to native levels:
+
+| Client value | Effective level |
+| --- | --- |
+| `medium` | `high` |
+| `xhigh` | `max` |
+| `minimal`, `none` | `low` |
+
+`none` does not disable reasoning. The K2 `thinking` / `enable_thinking` switches are unnecessary. Sampling is fixed at `temperature=1`, `top_p=0.95`, `n=1`, and `presence_penalty=frequency_penalty=0`; you do not need to set them.
+
+Preserve complete reasoning and tool history across turns: keep the assistant's `reasoning_content` and `tool_calls` in Chat; keep `thinking`, `signature`, and tool blocks in Messages; replay the complete `output` in its original order in Responses. Keeping only the final text may break subsequent reasoning or tool continuation.
+
+## Context caching
+
+Repeated prefixes automatically participate in caching, with 5m writes by default. The request TTL controls the write policy; actual cache hits and write classifications follow returned usage and billing. Cache reads and writes are billed separately.
+
+For Chat / Responses, send at the top level:
+
+```json
+{
+  "prompt_cache_options": {"mode": "implicit", "ttl": "1h"}
+}
+```
+
+For Messages, send at the top level:
+
+```json
+{
+  "cache_control": {"type": "ephemeral", "ttl": "1h"}
+}
+```
+
+Cache markers inside Messages content blocks do not replace top-level `cache_control`.
+
+| API | Input usage accounting |
+| --- | --- |
+| Chat | `prompt_tokens` includes ordinary input, cache reads, and cache writes; details are in `prompt_tokens_details`. |
+| Responses | `input_tokens` includes ordinary input, cache reads, and cache writes; details are in `input_tokens_details`. |
+| Messages | `input_tokens`, `cache_read_input_tokens`, and `cache_creation_input_tokens` are mutually exclusive. `cache_creation` splits writes into 5m / 1h. |
+
+For Chat / Responses, subtract cache reads and writes from total input to get ordinary input. Messages `input_tokens` already excludes both. Do not count cache writes twice or add another output charge for reasoning tokens.
+
+## Web search
+
+Only actual search calls are billed. Declaring a tool without calling it incurs no search fee. Search results also incur input-token charges when included in subsequent model context. Ordinary custom functions incur no search fee.
+
+<Tabs>
+  <Tab title="Chat Completions">
+    Recommended unified syntax:
+
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    Native Moonshot syntax is also supported:
+
+    ```json
+    {"tools": [{"type": "builtin_function", "function": {"name": "$web_search"}}]}
+    ```
+
+    Built-in search returns tool calls with `function.name=$web_search`, with search-result references in `arguments`. Append the complete assistant message to history, then pass each call's `arguments` as the content of a tool message with the same `tool_call_id`. Request again to generate the final answer. Do not display only the first turn's empty `content`.
+
+    ```python
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ["EVOLINK_API_KEY"],
+        base_url="https://direct.evolink.ai/v1",
+    )
+    messages = [{"role": "user", "content": "Use web search to find the official Kimi homepage URL."}]
+
+    while True:
+        result = client.chat.completions.create(
+            model="kimi-k3.1-pro",
+            messages=messages,
+            reasoning_effort="low",
+            max_completion_tokens=4096,
+            tools=[{"type": "builtin_function", "function": {"name": "$web_search"}}],
+        )
+        message = result.choices[0].message
+        if not message.tool_calls:
+            print(message.content)
+            break
+        messages.append(message.model_dump(exclude_none=True))
+        for call in message.tool_calls:
+            if call.function.name != "$web_search":
+                raise RuntimeError(f"Unexpected tool: {call.function.name}")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": call.function.name,
+                "content": call.function.arguments,
+            })
+    ```
+
+    The returned built-in call type may be `builtin_function`; replay it in full and the server will handle it. Streaming search usage is also added to standard `usage` so SDKs can read the actual token counts.
+  </Tab>
+  <Tab title="Messages">
+    ```json
+    {"tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}]}
+    ```
+
+    The server returns blocks such as `server_tool_use` and `web_search_tool_result` and can continue generating an answer. Preserve these blocks across turns. The upstream may omit the `usage.server_tool_use` summary; successful searches are still billed.
+  </Tab>
+  <Tab title="Responses">
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    Search is returned as `web_search_call` output items, and the server can continue to the final message. Handle reasoning, tool output, and the final message. Do not assume `output[0]` is the answer text.
+  </Tab>
+</Tabs>
+
+<Note>
+Moonshot has announced a retirement plan for the legacy `$web_search` in its [official built-in search documentation](https://platform.kimi.ai/docs/guide/use-web-search). Tests on 2026-10-24 confirmed that both models still worked through domestic and overseas channels. This page covers model-integrated tools, excluding the separate REST Search / Search Pro / Fetch products.
+</Note>
+
+## Streaming and structured output
+
+For Chat, set `stream=true`; also set `stream_options.include_usage=true` when usage is needed, and detect completion with `[DONE]`. Messages uses Anthropic SSE events: handle `message_start`, `content_block_delta`, `message_delta`, and `message_stop`.
+
+Responses uses semantic events. Handle `response.output_text.delta` and reasoning events, then check for `response.completed`, `response.incomplete`, or `response.failed`. If the output limit causes `incomplete`, increase the output budget and retry; do not treat it as a complete answer.
+
+Choose strict JSON Schema fields by protocol: Chat uses `response_format.json_schema`, Messages uses `output_config.format`, and Responses uses `text.format`. Process final text separately from reasoning and parse JSON only from the final answer. Full request examples are available on each API reference page.

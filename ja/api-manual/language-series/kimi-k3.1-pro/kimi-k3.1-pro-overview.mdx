@@ -1,0 +1,196 @@
+---
+title: "Kimi K3.1 Pro / Highspeed"
+description: "両モデルの 3 種類の API、推論強度、コンテキストキャッシュ、Web 検索。"
+---
+
+Kimi K3.1 Pro と Highspeed はリクエスト形式を共有し、1,048,576 tokens のコンテキスト、常時有効な推論、ストリーミング、関数ツール、厳密な JSON Schema、コンテキストキャッシュに対応します。Highspeed は生成が速く、入力、出力、キャッシュ書き込みに独自の単価が設定されています。
+
+<Note>
+推奨 BaseURL：`https://direct.evolink.ai`。テキストモデルの長時間接続に対応します。代替アドレス：`https://api.evolink.ai`。EvoLink API キーで認証します：`Authorization: Bearer YOUR_API_KEY`。
+</Note>
+
+## モデルと料金
+
+| モデル | Model ID |
+| --- | --- |
+| Kimi K3.1 Pro | `kimi-k3.1-pro` |
+| Kimi K3.1 Pro Highspeed | `kimi-k3.1-pro-highspeed` |
+
+以下の米ドル建ての元価格と EvoLink の利用価格は同額です。トークン単価は 100 万 tokens あたりです。検索ツール料金は実行ごとに別途計算され、実際の請求内容が優先されます。
+
+| 課金項目 | Pro | Highspeed |
+| --- | --- | --- |
+| 未キャッシュ入力 | $2.00 | $4.00 |
+| 出力（推論を含む） | $10.00 | $20.00 |
+| キャッシュ読み取り | $0.20 | $0.20 |
+| 5m キャッシュ書き込み | $2.00 | $4.00 |
+| 1h キャッシュ書き込み | $4.00 | $8.00 |
+| Web 検索 | $0.005 / 回 | $0.005 / 回 |
+
+各項目は実際のトークン数で課金され、千トークン単位への切り上げはありません。非常に小さいリクエストには最低利用料金が適用されます。Highspeed のキャッシュ読み取り単価は Pro と同じです。
+
+## API の選択
+
+両モデルとも以下の 3 つのプロトコルに対応し、`model` の値を置き換えて利用できます。
+
+<CardGroup cols={3}>
+  <Card title="Chat Completions" icon="comments" href="/ja/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-chat">
+    OpenAI Chat 形式。`POST /v1/chat/completions`。
+  </Card>
+  <Card title="Messages" icon="message" href="/ja/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-messages">
+    Anthropic 形式。`POST /v1/messages`。
+  </Card>
+  <Card title="Responses" icon="reply" href="/ja/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-responses">
+    OpenAI Responses 形式。`POST /v1/responses`。
+  </Card>
+</CardGroup>
+
+```bash
+curl https://direct.evolink.ai/v1/chat/completions \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kimi-k3.1-pro",
+    "messages": [{"role": "user", "content": "Explain context caching in one sentence."}],
+    "reasoning_effort": "low",
+    "max_completion_tokens": 1024
+  }'
+```
+
+## 推論と出力上限
+
+ネイティブの推論強度は `low`、`high`、`max` で、デフォルトは `max` です。両モデルとも常に推論します。推論トークンは出力使用量と出力上限に含まれます。出力予算が小さすぎると、推論だけで最終回答が得られない場合があります。
+
+| API | 推論強度フィールド | 出力上限フィールド |
+| --- | --- | --- |
+| Chat Completions | `reasoning_effort` | `max_completion_tokens` |
+| Messages | `output_config.effort` | `max_tokens`（必須） |
+| Responses | `reasoning.effort` | `max_output_tokens` |
+
+Chat / Responses のデフォルト出力上限は 131,072、最大は 1,048,576 で、残りのコンテキストにも制限されます。短い質問に素早く答えたい場合は、`low` と適切な出力予算を明示的に指定してください。
+
+汎用クライアントとの互換性のため、以下の値をネイティブの強度に変換します。
+
+| クライアントの値 | 実際の強度 |
+| --- | --- |
+| `medium` | `high` |
+| `xhigh` | `max` |
+| `minimal`, `none` | `low` |
+
+`none` でも推論は無効になりません。K2 の `thinking` / `enable_thinking` スイッチは不要です。サンプリングは `temperature=1`、`top_p=0.95`、`n=1`、`presence_penalty=frequency_penalty=0` に固定されており、指定は不要です。
+
+複数ターンでは推論とツールの履歴を完全に保持してください。Chat では assistant の `reasoning_content` と `tool_calls`、Messages では `thinking`、`signature`、ツールブロックを保持します。Responses では完全な `output` を元の順序で再送します。最終テキストだけを残すと、後続の推論やツール結果を使う継続処理が失敗する場合があります。
+
+## コンテキストキャッシュ
+
+繰り返されるプレフィックスは自動的にキャッシュの対象となり、デフォルトは 5m 書き込みです。リクエストの TTL は書き込み方針を指定し、実際のヒットと書き込み区分は応答の使用量と請求内容に従います。キャッシュの読み取りと書き込みは別々に課金されます。
+
+Chat / Responses ではトップレベルに指定します。
+
+```json
+{
+  "prompt_cache_options": {"mode": "implicit", "ttl": "1h"}
+}
+```
+
+Messages ではトップレベルに指定します。
+
+```json
+{
+  "cache_control": {"type": "ephemeral", "ttl": "1h"}
+}
+```
+
+Messages のメッセージブロック内のキャッシュ指定は、トップレベルの `cache_control` の代わりにはなりません。
+
+| API | 入力使用量の計算方法 |
+| --- | --- |
+| Chat | `prompt_tokens` は通常入力、キャッシュ読み取りと書き込みを含みます。内訳は `prompt_tokens_details` にあります。 |
+| Responses | `input_tokens` は通常入力、キャッシュ読み取りと書き込みを含みます。内訳は `input_tokens_details` にあります。 |
+| Messages | `input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens` は重複しません。書き込みは `cache_creation` で 5m / 1h に分かれます。 |
+
+Chat / Responses の通常入力は、総入力からキャッシュ読み取りと書き込みを差し引いて求めます。Messages の `input_tokens` はすでに両方を除外しています。キャッシュ書き込みや推論トークンの出力料金を重複計上しないでください。
+
+## Web 検索
+
+実際に実行した検索だけが課金対象です。ツールを宣言しても呼び出さなければ検索料金は発生しません。検索結果が後続のモデルのコンテキストに入ると、入力トークンとしても課金されます。通常のカスタム関数に検索料金は発生しません。
+
+<Tabs>
+  <Tab title="Chat Completions">
+    推奨する統一形式：
+
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    Moonshot ネイティブ形式にも対応します。
+
+    ```json
+    {"tools": [{"type": "builtin_function", "function": {"name": "$web_search"}}]}
+    ```
+
+    内蔵検索は `function.name=$web_search` のツール呼び出しを返し、`arguments` に検索結果の参照が含まれます。完全な assistant メッセージを履歴に追加し、各呼び出しの `arguments` を同じ `tool_call_id` の tool メッセージの内容として戻します。再度リクエストして最終回答を生成してください。最初のターンの空の `content` だけを表示しないでください。
+
+    ```python
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ["EVOLINK_API_KEY"],
+        base_url="https://direct.evolink.ai/v1",
+    )
+    messages = [{"role": "user", "content": "Use web search to find the official Kimi homepage URL."}]
+
+    while True:
+        result = client.chat.completions.create(
+            model="kimi-k3.1-pro",
+            messages=messages,
+            reasoning_effort="low",
+            max_completion_tokens=4096,
+            tools=[{"type": "builtin_function", "function": {"name": "$web_search"}}],
+        )
+        message = result.choices[0].message
+        if not message.tool_calls:
+            print(message.content)
+            break
+        messages.append(message.model_dump(exclude_none=True))
+        for call in message.tool_calls:
+            if call.function.name != "$web_search":
+                raise RuntimeError(f"Unexpected tool: {call.function.name}")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": call.function.name,
+                "content": call.function.arguments,
+            })
+    ```
+
+    内蔵呼び出しの型は `builtin_function` の場合があります。完全な形で再送すればサーバーが処理します。ストリーミング検索の使用量も標準の `usage` に追加され、SDK で実際のトークン数を取得できます。
+  </Tab>
+  <Tab title="Messages">
+    ```json
+    {"tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}]}
+    ```
+
+    サーバーは `server_tool_use` や `web_search_tool_result` などのブロックを返し、そのまま回答を続けられます。複数ターンではこれらのブロックを保持してください。上流サービスが `usage.server_tool_use` の集計を省略しても、成功した検索は課金されます。
+  </Tab>
+  <Tab title="Responses">
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    検索は `web_search_call` 出力項目として返され、サーバーは最終メッセージの生成を続けられます。推論、ツール出力、最終メッセージをすべて処理し、`output[0]` が必ず回答テキストだと仮定しないでください。
+  </Tab>
+</Tabs>
+
+<Note>
+Moonshot は[公式の内蔵検索ドキュメント](https://platform.kimi.ai/docs/guide/use-web-search)で旧 `$web_search` の提供終了計画を案内しています。2026-10-24 のテストでは、両モデルとも中国国内・海外のチャネルで利用できることを確認済みです。このページはモデル内蔵ツールを扱い、独立した REST Search / Search Pro / Fetch 製品は含みません。
+</Note>
+
+## ストリーミングと構造化出力
+
+Chat は `stream=true` を使用し、使用量が必要な場合は `stream_options.include_usage=true` も指定します。`[DONE]` で終了を判定してください。Messages は Anthropic SSE イベントを使用し、`message_start`、`content_block_delta`、`message_delta`、`message_stop` を処理します。
+
+Responses は意味別のイベントを使用します。`response.output_text.delta` と推論イベントを処理し、`response.completed`、`response.incomplete`、`response.failed` を確認してください。出力上限による `incomplete` は完全な回答として扱わず、出力予算を増やして再試行できます。
+
+厳密な JSON Schema の指定フィールドはプロトコルごとに異なります。Chat は `response_format.json_schema`、Messages は `output_config.format`、Responses は `text.format` です。最終テキストと推論を分け、最終回答の JSON のみを解析してください。完全なリクエスト例は各 API のパラメータページにあります。

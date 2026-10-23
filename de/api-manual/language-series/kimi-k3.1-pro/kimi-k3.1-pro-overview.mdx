@@ -1,0 +1,196 @@
+---
+title: "Kimi K3.1 Pro / Highspeed"
+description: "Drei APIs, Denkstufen, Kontext-Caching und Websuche für beide Modelle."
+---
+
+Kimi K3.1 Pro und Highspeed verwenden dasselbe Anfrageformat und unterstützen 1.048.576 Token Kontext, stets aktive Schlussfolgerungen, Streaming, Funktionswerkzeuge, striktes JSON Schema und Kontext-Caching. Highspeed generiert schneller und hat eigene Preise für Eingabe, Ausgabe und Cache-Schreiben.
+
+<Note>
+Empfohlene BaseURL: `https://direct.evolink.ai`, unterstützt langlebige Verbindungen für Textmodelle. Ersatzadresse: `https://api.evolink.ai`. Authentifizierung mit EvoLink-API-Schlüssel: `Authorization: Bearer YOUR_API_KEY`.
+</Note>
+
+## Modelle und Preise
+
+| Modell | Model ID |
+| --- | --- |
+| Kimi K3.1 Pro | `kimi-k3.1-pro` |
+| Kimi K3.1 Pro Highspeed | `kimi-k3.1-pro-highspeed` |
+
+Die folgenden Originalpreise in USD entsprechen den EvoLink-Zugangspreisen. Token-Preise gelten pro Million Token. Suchgebühren werden separat pro Aufruf berechnet; maßgeblich ist die tatsächliche Abrechnung.
+
+| Abrechnungsposten | Pro | Highspeed |
+| --- | --- | --- |
+| Nicht gecachte Eingabe | $2.00 | $4.00 |
+| Ausgabe (einschließlich Schlussfolgerungen) | $10.00 | $20.00 |
+| Cache-Lesen | $0.20 | $0.20 |
+| 5m-Cache-Schreiben | $2.00 | $4.00 |
+| 1h-Cache-Schreiben | $4.00 | $8.00 |
+| Websuche | $0.005 / Aufruf | $0.005 / Aufruf |
+
+Jede Kategorie wird nach tatsächlicher Token-Anzahl ohne Aufrundung auf tausend Token berechnet. Für sehr kleine Anfragen gilt weiterhin ein Mindestbetrag. Highspeed und Pro haben denselben Cache-Lesepreis.
+
+## API auswählen
+
+Beide Modelle unterstützen die folgenden drei Protokolle. Zum Wechseln einfach den Wert von `model` ersetzen.
+
+<CardGroup cols={3}>
+  <Card title="Chat Completions" icon="comments" href="/de/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-chat">
+    OpenAI-Chat-Format, `POST /v1/chat/completions`.
+  </Card>
+  <Card title="Messages" icon="message" href="/de/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-messages">
+    Anthropic-Format, `POST /v1/messages`.
+  </Card>
+  <Card title="Responses" icon="reply" href="/de/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-responses">
+    OpenAI-Responses-Format, `POST /v1/responses`.
+  </Card>
+</CardGroup>
+
+```bash
+curl https://direct.evolink.ai/v1/chat/completions \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kimi-k3.1-pro",
+    "messages": [{"role": "user", "content": "Explain context caching in one sentence."}],
+    "reasoning_effort": "low",
+    "max_completion_tokens": 1024
+  }'
+```
+
+## Schlussfolgerungen und Ausgabelimits
+
+Native Denkstufen sind `low`, `high` und `max`, Standard ist `max`. Beide Modelle denken immer. Denk-Token sind in Ausgabenutzung und Ausgabelimit enthalten. Bei zu kleinem Budget können nur Schlussfolgerungen ohne endgültige Antwort erscheinen.
+
+| API | Denkstufenfeld | Ausgabelimitfeld |
+| --- | --- | --- |
+| Chat Completions | `reasoning_effort` | `max_completion_tokens` |
+| Messages | `output_config.effort` | `max_tokens` (erforderlich) |
+| Responses | `reasoning.effort` | `max_output_tokens` |
+
+Chat / Responses haben ein Standard-Ausgabelimit von 131.072 Token, maximal 1.048.576, zusätzlich begrenzt durch den verbleibenden Kontext. Für kurze Fragen mit schneller Antwort `low` und ein angemessenes Ausgabebudget wählen.
+
+Für die Kompatibilität mit allgemeinen Clients werden folgende Werte nativen Stufen zugeordnet:
+
+| Client-Wert | Tatsächliche Stufe |
+| --- | --- |
+| `medium` | `high` |
+| `xhigh` | `max` |
+| `minimal`, `none` | `low` |
+
+`none` deaktiviert das Denken nicht. Die K2-Schalter `thinking` / `enable_thinking` sind unnötig. Sampling ist fest auf `temperature=1`, `top_p=0.95`, `n=1` und `presence_penalty=frequency_penalty=0` eingestellt; eigene Angaben sind nicht nötig.
+
+In weiteren Gesprächsrunden den vollständigen Denk- und Werkzeugverlauf erhalten: bei Chat `reasoning_content` und `tool_calls` des Assistant; bei Messages `thinking`, `signature` und Werkzeugblöcke; bei Responses das gesamte `output` in ursprünglicher Reihenfolge. Nur den endgültigen Text zu behalten kann weitere Schlussfolgerungen oder Werkzeugfortsetzungen beeinträchtigen.
+
+## Kontext-Caching
+
+Wiederholte Präfixe werden automatisch gecacht, standardmäßig für 5m. Die Anfrage-TTL steuert die Schreibstrategie; tatsächliche Treffer und Schreibkategorien ergeben sich aus Nutzungsdaten und Abrechnung. Cache-Lesen und -Schreiben werden getrennt berechnet.
+
+Bei Chat / Responses auf oberster Ebene angeben:
+
+```json
+{
+  "prompt_cache_options": {"mode": "implicit", "ttl": "1h"}
+}
+```
+
+Bei Messages auf oberster Ebene angeben:
+
+```json
+{
+  "cache_control": {"type": "ephemeral", "ttl": "1h"}
+}
+```
+
+Cache-Markierungen innerhalb von Messages-Inhaltsblöcken ersetzen `cache_control` auf oberster Ebene nicht.
+
+| API | Erfassung der Eingabenutzung |
+| --- | --- |
+| Chat | `prompt_tokens` enthält normale Eingabe, Cache-Lesen und -Schreiben; Details in `prompt_tokens_details`. |
+| Responses | `input_tokens` enthält normale Eingabe, Cache-Lesen und -Schreiben; Details in `input_tokens_details`. |
+| Messages | `input_tokens`, `cache_read_input_tokens` und `cache_creation_input_tokens` überschneiden sich nicht. `cache_creation` teilt Schreibvorgänge in 5m / 1h auf. |
+
+Bei Chat / Responses Cache-Lesen und -Schreiben von der Gesamteingabe abziehen, um normale Eingabe zu erhalten. Bei Messages schließt `input_tokens` beides bereits aus. Cache-Schreiben nicht doppelt zählen und Denk-Token nicht zusätzlich als Ausgabe berechnen.
+
+## Websuche
+
+Nur tatsächlich ausgeführte Suchen werden berechnet. Eine Werkzeugdeklaration ohne Aufruf verursacht keine Suchgebühr. Suchergebnisse zählen zusätzlich als Eingabe-Token, wenn sie in den weiteren Modellkontext eingehen. Normale eigene Funktionen verursachen keine Suchgebühr.
+
+<Tabs>
+  <Tab title="Chat Completions">
+    Empfohlene einheitliche Syntax:
+
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    Auch native Moonshot-Syntax wird unterstützt:
+
+    ```json
+    {"tools": [{"type": "builtin_function", "function": {"name": "$web_search"}}]}
+    ```
+
+    Die integrierte Suche liefert Werkzeugaufrufe mit `function.name=$web_search`; `arguments` enthält Verweise auf Suchergebnisse. Die vollständige Assistant-Nachricht in den Verlauf aufnehmen und `arguments` jedes Aufrufs als Inhalt einer tool-Nachricht mit derselben `tool_call_id` zurückgeben. Erneut anfragen, um die endgültige Antwort zu erzeugen. Nicht nur das leere `content` der ersten Runde anzeigen.
+
+    ```python
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ["EVOLINK_API_KEY"],
+        base_url="https://direct.evolink.ai/v1",
+    )
+    messages = [{"role": "user", "content": "Use web search to find the official Kimi homepage URL."}]
+
+    while True:
+        result = client.chat.completions.create(
+            model="kimi-k3.1-pro",
+            messages=messages,
+            reasoning_effort="low",
+            max_completion_tokens=4096,
+            tools=[{"type": "builtin_function", "function": {"name": "$web_search"}}],
+        )
+        message = result.choices[0].message
+        if not message.tool_calls:
+            print(message.content)
+            break
+        messages.append(message.model_dump(exclude_none=True))
+        for call in message.tool_calls:
+            if call.function.name != "$web_search":
+                raise RuntimeError(f"Unexpected tool: {call.function.name}")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": call.function.name,
+                "content": call.function.arguments,
+            })
+    ```
+
+    Der zurückgegebene integrierte Aufruftyp kann `builtin_function` sein; vollständig zurückgeben, der Server verarbeitet ihn. Suchnutzung beim Streaming wird auch in das standardmäßige `usage` aufgenommen, damit SDKs die tatsächlichen Token-Zahlen lesen können.
+  </Tab>
+  <Tab title="Messages">
+    ```json
+    {"tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}]}
+    ```
+
+    Der Server liefert Blöcke wie `server_tool_use` und `web_search_tool_result` und kann die Antwort weiter generieren. Diese Blöcke in weiteren Gesprächsrunden erhalten. Der Upstream kann die Zusammenfassung `usage.server_tool_use` weglassen; erfolgreiche Suchen werden trotzdem berechnet.
+  </Tab>
+  <Tab title="Responses">
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    Suchaufrufe werden als `web_search_call`-Ausgabeelemente geliefert; der Server kann bis zur endgültigen Nachricht fortfahren. Schlussfolgerungen, Werkzeugausgabe und endgültige Nachricht verarbeiten. Nicht annehmen, dass `output[0]` den Antworttext enthält.
+  </Tab>
+</Tabs>
+
+<Note>
+Moonshot hat in der [offiziellen Dokumentation zur integrierten Suche](https://platform.kimi.ai/docs/guide/use-web-search) die Abschaltung des älteren `$web_search` angekündigt. Tests vom 2026-10-24 bestätigten die Verfügbarkeit beider Modelle über chinesische und internationale Kanäle. Diese Seite beschreibt modellintegrierte Werkzeuge, nicht die separaten Produkte REST Search / Search Pro / Fetch.
+</Note>
+
+## Streaming und strukturierte Ausgabe
+
+Für Chat `stream=true` setzen; für Nutzungsdaten zusätzlich `stream_options.include_usage=true`, Ende an `[DONE]` erkennen. Messages verwendet Anthropic-SSE-Ereignisse: `message_start`, `content_block_delta`, `message_delta` und `message_stop` verarbeiten.
+
+Responses verwendet semantische Ereignisse. `response.output_text.delta` und Denkereignisse verarbeiten und auf `response.completed`, `response.incomplete` oder `response.failed` prüfen. Bei `incomplete` durch das Ausgabelimit das Budget erhöhen und erneut anfragen; nicht als vollständige Antwort behandeln.
+
+Felder für striktes JSON Schema je nach Protokoll wählen: Chat nutzt `response_format.json_schema`, Messages `output_config.format`, Responses `text.format`. Endgültigen Text und Schlussfolgerungen getrennt verarbeiten; nur JSON aus der endgültigen Antwort parsen. Vollständige Anfragebeispiele stehen auf den jeweiligen API-Referenzseiten.

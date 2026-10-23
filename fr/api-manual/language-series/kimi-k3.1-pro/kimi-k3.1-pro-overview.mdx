@@ -1,0 +1,196 @@
+---
+title: "Kimi K3.1 Pro / Highspeed"
+description: "Trois API, niveaux de raisonnement, cache de contexte et recherche web pour les deux modèles."
+---
+
+Kimi K3.1 Pro et Highspeed partagent le format de requête et prennent en charge un contexte de 1 048 576 tokens, le raisonnement permanent, le streaming, les outils de fonction, JSON Schema strict et le cache de contexte. Highspeed génère plus vite avec des tarifs distincts d’entrée, de sortie et d’écriture en cache.
+
+<Note>
+BaseURL recommandée : `https://direct.evolink.ai`, adaptée aux connexions longues des modèles de texte. Adresse de secours : `https://api.evolink.ai`. Utilisez votre clé API EvoLink : `Authorization: Bearer YOUR_API_KEY`.
+</Note>
+
+## Modèles et tarifs
+
+| Modèle | Model ID |
+| --- | --- |
+| Kimi K3.1 Pro | `kimi-k3.1-pro` |
+| Kimi K3.1 Pro Highspeed | `kimi-k3.1-pro-highspeed` |
+
+Les prix d’origine en USD et les tarifs d’accès EvoLink ci-dessous sont identiques. Les prix des tokens sont par million de tokens. La recherche est facturée séparément par appel ; la facture réelle fait foi.
+
+| Poste de facturation | Pro | Highspeed |
+| --- | --- | --- |
+| Entrée hors cache | $2.00 | $4.00 |
+| Sortie (raisonnement inclus) | $10.00 | $20.00 |
+| Lecture du cache | $0.20 | $0.20 |
+| Écriture en cache 5m | $2.00 | $4.00 |
+| Écriture en cache 1h | $4.00 | $8.00 |
+| Recherche web | $0.005 / appel | $0.005 / appel |
+
+Chaque catégorie est facturée selon le nombre réel de tokens, sans arrondi au millier. Un montant minimum s’applique aux très petites requêtes. Le tarif de lecture du cache est identique pour Highspeed et Pro.
+
+## Choisir une API
+
+Les deux modèles prennent en charge les trois protocoles ci-dessous. Remplacez la valeur de `model` pour changer de modèle.
+
+<CardGroup cols={3}>
+  <Card title="Chat Completions" icon="comments" href="/fr/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-chat">
+    Format OpenAI Chat, `POST /v1/chat/completions`.
+  </Card>
+  <Card title="Messages" icon="message" href="/fr/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-messages">
+    Format Anthropic, `POST /v1/messages`.
+  </Card>
+  <Card title="Responses" icon="reply" href="/fr/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-responses">
+    Format OpenAI Responses, `POST /v1/responses`.
+  </Card>
+</CardGroup>
+
+```bash
+curl https://direct.evolink.ai/v1/chat/completions \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kimi-k3.1-pro",
+    "messages": [{"role": "user", "content": "Explain context caching in one sentence."}],
+    "reasoning_effort": "low",
+    "max_completion_tokens": 1024
+  }'
+```
+
+## Raisonnement et limites de sortie
+
+Les niveaux natifs sont `low`, `high` et `max`, avec `max` par défaut. Les deux modèles raisonnent toujours. Les tokens de raisonnement sont inclus dans l’usage et la limite de sortie. Un budget trop faible peut produire uniquement du raisonnement, sans réponse finale.
+
+| API | Champ de raisonnement | Champ de limite de sortie |
+| --- | --- | --- |
+| Chat Completions | `reasoning_effort` | `max_completion_tokens` |
+| Messages | `output_config.effort` | `max_tokens` (obligatoire) |
+| Responses | `reasoning.effort` | `max_output_tokens` |
+
+La limite de sortie par défaut de Chat / Responses est de 131 072 tokens, avec un maximum de 1 048 576, dans la limite du contexte restant. Pour une réponse rapide à une question courte, choisissez explicitement `low` et un budget adapté.
+
+Pour assurer la compatibilité avec les clients génériques, les valeurs suivantes sont converties en niveaux natifs :
+
+| Valeur client | Niveau effectif |
+| --- | --- |
+| `medium` | `high` |
+| `xhigh` | `max` |
+| `minimal`, `none` | `low` |
+
+`none` ne désactive pas le raisonnement. Les options K2 `thinking` / `enable_thinking` sont inutiles. L’échantillonnage est fixé à `temperature=1`, `top_p=0.95`, `n=1` et `presence_penalty=frequency_penalty=0` ; inutile de les définir.
+
+Conservez tout l’historique du raisonnement et des outils : `reasoning_content` et `tool_calls` de l’assistant pour Chat ; `thinking`, `signature` et les blocs d’outils pour Messages ; l’intégralité de `output` dans son ordre initial pour Responses. Ne garder que le texte final peut interrompre le raisonnement ou la suite des appels d’outils.
+
+## Cache de contexte
+
+Les préfixes répétés sont automatiquement mis en cache, avec une durée d’écriture par défaut de 5m. Le TTL de la requête contrôle l’écriture ; les accès réels et leur classification suivent l’usage renvoyé et la facturation. Lectures et écritures sont facturées séparément.
+
+Pour Chat / Responses, transmettez au premier niveau :
+
+```json
+{
+  "prompt_cache_options": {"mode": "implicit", "ttl": "1h"}
+}
+```
+
+Pour Messages, transmettez au premier niveau :
+
+```json
+{
+  "cache_control": {"type": "ephemeral", "ttl": "1h"}
+}
+```
+
+Les marqueurs de cache dans les blocs Messages ne remplacent pas `cache_control` au premier niveau.
+
+| API | Comptabilisation de l’entrée |
+| --- | --- |
+| Chat | `prompt_tokens` inclut l’entrée ordinaire, les lectures et les écritures du cache ; détails dans `prompt_tokens_details`. |
+| Responses | `input_tokens` inclut l’entrée ordinaire, les lectures et les écritures du cache ; détails dans `input_tokens_details`. |
+| Messages | `input_tokens`, `cache_read_input_tokens` et `cache_creation_input_tokens` sont disjoints. `cache_creation` répartit les écritures en 5m / 1h. |
+
+Pour Chat / Responses, soustrayez les lectures et écritures du cache de l’entrée totale pour obtenir l’entrée ordinaire. Dans Messages, `input_tokens` les exclut déjà. Ne comptez pas deux fois les écritures ni les tokens de raisonnement dans les frais de sortie.
+
+## Recherche web
+
+Seules les recherches effectuées sont facturées. Déclarer un outil sans l’appeler ne génère aucun frais de recherche. Les résultats sont aussi facturés comme tokens d’entrée lorsqu’ils entrent dans le contexte suivant. Les fonctions personnalisées ordinaires ne génèrent pas de frais de recherche.
+
+<Tabs>
+  <Tab title="Chat Completions">
+    Syntaxe unifiée recommandée :
+
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    La syntaxe native Moonshot est également prise en charge :
+
+    ```json
+    {"tools": [{"type": "builtin_function", "function": {"name": "$web_search"}}]}
+    ```
+
+    La recherche intégrée renvoie des appels avec `function.name=$web_search` et des références de résultats dans `arguments`. Ajoutez le message assistant complet à l’historique, puis renvoyez les `arguments` de chaque appel dans un message tool avec le même `tool_call_id`. Relancez la requête pour générer la réponse finale. N’affichez pas seulement le `content` vide du premier tour.
+
+    ```python
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ["EVOLINK_API_KEY"],
+        base_url="https://direct.evolink.ai/v1",
+    )
+    messages = [{"role": "user", "content": "Use web search to find the official Kimi homepage URL."}]
+
+    while True:
+        result = client.chat.completions.create(
+            model="kimi-k3.1-pro",
+            messages=messages,
+            reasoning_effort="low",
+            max_completion_tokens=4096,
+            tools=[{"type": "builtin_function", "function": {"name": "$web_search"}}],
+        )
+        message = result.choices[0].message
+        if not message.tool_calls:
+            print(message.content)
+            break
+        messages.append(message.model_dump(exclude_none=True))
+        for call in message.tool_calls:
+            if call.function.name != "$web_search":
+                raise RuntimeError(f"Unexpected tool: {call.function.name}")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": call.function.name,
+                "content": call.function.arguments,
+            })
+    ```
+
+    Le type d’appel intégré peut être `builtin_function` ; renvoyez-le intégralement, le serveur le gère. L’usage de recherche en streaming est aussi ajouté à `usage` pour permettre aux SDK de lire les vrais nombres de tokens.
+  </Tab>
+  <Tab title="Messages">
+    ```json
+    {"tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}]}
+    ```
+
+    Le serveur renvoie notamment `server_tool_use` et `web_search_tool_result`, puis peut poursuivre la réponse. Conservez ces blocs entre les tours. Le fournisseur peut omettre le récapitulatif `usage.server_tool_use` ; les recherches réussies restent facturées.
+  </Tab>
+  <Tab title="Responses">
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    La recherche apparaît dans des éléments `web_search_call`, et le serveur peut poursuivre jusqu’au message final. Traitez le raisonnement, les sorties d’outils et le message final. Ne supposez pas que `output[0]` contient la réponse textuelle.
+  </Tab>
+</Tabs>
+
+<Note>
+Moonshot a annoncé le retrait de l’ancien `$web_search` dans sa [documentation officielle de recherche intégrée](https://platform.kimi.ai/docs/guide/use-web-search). Les tests du 2026-10-24 ont confirmé que les deux modèles fonctionnaient encore via les canaux chinois et internationaux. Cette page décrit les outils intégrés aux modèles, à l’exclusion des produits distincts REST Search / Search Pro / Fetch.
+</Note>
+
+## Streaming et sortie structurée
+
+Pour Chat, définissez `stream=true` et, si nécessaire, `stream_options.include_usage=true`. `[DONE]` marque la fin. Messages utilise les événements SSE Anthropic : traitez `message_start`, `content_block_delta`, `message_delta` et `message_stop`.
+
+Responses utilise des événements sémantiques. Traitez `response.output_text.delta` et les événements de raisonnement, puis vérifiez `response.completed`, `response.incomplete` ou `response.failed`. Si la limite de sortie produit `incomplete`, augmentez le budget et réessayez ; ne considérez pas la réponse comme complète.
+
+Choisissez les champs JSON Schema strict selon le protocole : `response_format.json_schema` pour Chat, `output_config.format` pour Messages, `text.format` pour Responses. Séparez le texte final du raisonnement et analysez le JSON uniquement dans la réponse finale. Consultez chaque référence d’API pour les exemples complets.

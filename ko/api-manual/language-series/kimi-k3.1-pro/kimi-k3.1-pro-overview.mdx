@@ -1,0 +1,196 @@
+---
+title: "Kimi K3.1 Pro / Highspeed"
+description: "두 모델의 세 가지 API, 추론 강도, 컨텍스트 캐싱 및 웹 검색."
+---
+
+Kimi K3.1 Pro와 Highspeed는 요청 형식을 공유하며 1,048,576 tokens 컨텍스트, 항상 활성화된 추론, 스트리밍, 함수 도구, 엄격한 JSON Schema 및 컨텍스트 캐싱을 지원합니다. Highspeed는 생성 속도가 더 빠르며 입력, 출력, 캐시 쓰기에 별도 단가가 적용됩니다.
+
+<Note>
+권장 BaseURL: `https://direct.evolink.ai`. 텍스트 모델의 장시간 연결을 지원합니다. 대체 주소: `https://api.evolink.ai`. EvoLink API 키로 인증하세요: `Authorization: Bearer YOUR_API_KEY`.
+</Note>
+
+## 모델 및 요금
+
+| 모델 | Model ID |
+| --- | --- |
+| Kimi K3.1 Pro | `kimi-k3.1-pro` |
+| Kimi K3.1 Pro Highspeed | `kimi-k3.1-pro-highspeed` |
+
+아래 USD 원가와 EvoLink 이용가는 동일합니다. 토큰 단가는 백만 tokens 기준입니다. 검색 도구 요금은 호출당 별도로 계산하며 실제 청구 내역을 기준으로 합니다.
+
+| 과금 항목 | Pro | Highspeed |
+| --- | --- | --- |
+| 캐시되지 않은 입력 | $2.00 | $4.00 |
+| 출력 (추론 포함) | $10.00 | $20.00 |
+| 캐시 읽기 | $0.20 | $0.20 |
+| 5m 캐시 쓰기 | $2.00 | $4.00 |
+| 1h 캐시 쓰기 | $4.00 | $8.00 |
+| 웹 검색 | $0.005 / 회 | $0.005 / 회 |
+
+항목별로 실제 토큰 수에 따라 과금하며 천 토큰 단위로 올림하지 않습니다. 매우 작은 요청에는 최소 요금이 적용됩니다. Highspeed의 캐시 읽기 단가는 Pro와 같습니다.
+
+## API 선택
+
+두 모델은 아래 세 프로토콜을 모두 지원합니다. `model` 값만 바꿔 모델을 전환할 수 있습니다.
+
+<CardGroup cols={3}>
+  <Card title="Chat Completions" icon="comments" href="/ko/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-chat">
+    OpenAI Chat 형식, `POST /v1/chat/completions`.
+  </Card>
+  <Card title="Messages" icon="message" href="/ko/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-messages">
+    Anthropic 형식, `POST /v1/messages`.
+  </Card>
+  <Card title="Responses" icon="reply" href="/ko/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-responses">
+    OpenAI Responses 형식, `POST /v1/responses`.
+  </Card>
+</CardGroup>
+
+```bash
+curl https://direct.evolink.ai/v1/chat/completions \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kimi-k3.1-pro",
+    "messages": [{"role": "user", "content": "Explain context caching in one sentence."}],
+    "reasoning_effort": "low",
+    "max_completion_tokens": 1024
+  }'
+```
+
+## 추론 및 출력 한도
+
+기본 추론 강도는 `low`, `high`, `max`이며 기본값은 `max`입니다. 두 모델은 항상 추론합니다. 추론 토큰은 출력 사용량과 출력 한도에 포함됩니다. 예산이 너무 작으면 추론만 나오고 최종 답변이 없을 수 있습니다.
+
+| API | 추론 필드 | 출력 한도 필드 |
+| --- | --- | --- |
+| Chat Completions | `reasoning_effort` | `max_completion_tokens` |
+| Messages | `output_config.effort` | `max_tokens` (필수) |
+| Responses | `reasoning.effort` | `max_output_tokens` |
+
+Chat / Responses의 기본 출력 한도는 131,072, 최대값은 1,048,576이며 남은 컨텍스트의 제한도 받습니다. 짧은 질문에 빠른 응답이 필요하면 `low`와 적절한 출력 예산을 명시하세요.
+
+일반 클라이언트 호환성을 위해 다음 값을 기본 추론 강도로 변환합니다:
+
+| 클라이언트 값 | 실제 강도 |
+| --- | --- |
+| `medium` | `high` |
+| `xhigh` | `max` |
+| `minimal`, `none` | `low` |
+
+`none`도 추론을 끄지 않습니다. K2의 `thinking` / `enable_thinking` 스위치는 필요 없습니다. 샘플링은 `temperature=1`, `top_p=0.95`, `n=1`, `presence_penalty=frequency_penalty=0`으로 고정되어 별도 설정이 필요 없습니다.
+
+멀티턴에서는 추론과 도구 기록을 완전히 보존하세요. Chat은 assistant의 `reasoning_content`와 `tool_calls`, Messages는 `thinking`, `signature` 및 도구 블록을 보존합니다. Responses는 전체 `output`을 원래 순서대로 재전송합니다. 최종 텍스트만 남기면 후속 추론이나 도구 결과를 이용한 응답이 깨질 수 있습니다.
+
+## 컨텍스트 캐싱
+
+반복되는 접두사는 자동으로 캐싱 대상이 되며 기본 쓰기는 5m입니다. 요청 TTL은 쓰기 정책을 제어하고 실제 적중 및 쓰기 분류는 반환된 사용량과 청구 내역을 따릅니다. 캐시 읽기와 쓰기는 별도로 과금됩니다.
+
+Chat / Responses는 최상위에 전달합니다:
+
+```json
+{
+  "prompt_cache_options": {"mode": "implicit", "ttl": "1h"}
+}
+```
+
+Messages는 최상위에 전달합니다:
+
+```json
+{
+  "cache_control": {"type": "ephemeral", "ttl": "1h"}
+}
+```
+
+Messages 블록 내부의 캐시 표시는 최상위 `cache_control`을 대체할 수 없습니다.
+
+| API | 입력 사용량 계산 |
+| --- | --- |
+| Chat | `prompt_tokens`는 일반 입력, 캐시 읽기 및 쓰기를 포함합니다. 세부 내역은 `prompt_tokens_details`에 있습니다. |
+| Responses | `input_tokens`는 일반 입력, 캐시 읽기 및 쓰기를 포함합니다. 세부 내역은 `input_tokens_details`에 있습니다. |
+| Messages | `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`는 중복되지 않습니다. 쓰기는 `cache_creation`에서 5m / 1h로 나뉩니다. |
+
+Chat / Responses의 일반 입력은 총 입력에서 캐시 읽기와 쓰기를 빼서 계산합니다. Messages의 `input_tokens`는 이미 둘 다 제외합니다. 캐시 쓰기나 추론 토큰의 출력 요금을 중복 계산하지 마세요.
+
+## 웹 검색
+
+실제 검색 호출만 과금됩니다. 도구를 선언해도 호출하지 않으면 검색 요금은 없습니다. 검색 결과가 후속 모델 컨텍스트에 포함되면 입력 토큰 요금도 발생합니다. 일반 사용자 정의 함수에는 검색 요금이 없습니다.
+
+<Tabs>
+  <Tab title="Chat Completions">
+    권장 통합 형식:
+
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    Moonshot 기본 형식도 지원합니다:
+
+    ```json
+    {"tools": [{"type": "builtin_function", "function": {"name": "$web_search"}}]}
+    ```
+
+    내장 검색은 `function.name=$web_search`인 도구 호출을 반환하며 `arguments`에 검색 결과 참조가 들어 있습니다. 전체 assistant 메시지를 기록에 넣고 각 호출의 `arguments`를 동일한 `tool_call_id`를 가진 tool 메시지의 내용으로 전달하세요. 다시 요청하면 최종 답변이 생성됩니다. 첫 턴의 빈 `content`만 표시하지 마세요.
+
+    ```python
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ["EVOLINK_API_KEY"],
+        base_url="https://direct.evolink.ai/v1",
+    )
+    messages = [{"role": "user", "content": "Use web search to find the official Kimi homepage URL."}]
+
+    while True:
+        result = client.chat.completions.create(
+            model="kimi-k3.1-pro",
+            messages=messages,
+            reasoning_effort="low",
+            max_completion_tokens=4096,
+            tools=[{"type": "builtin_function", "function": {"name": "$web_search"}}],
+        )
+        message = result.choices[0].message
+        if not message.tool_calls:
+            print(message.content)
+            break
+        messages.append(message.model_dump(exclude_none=True))
+        for call in message.tool_calls:
+            if call.function.name != "$web_search":
+                raise RuntimeError(f"Unexpected tool: {call.function.name}")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": call.function.name,
+                "content": call.function.arguments,
+            })
+    ```
+
+    내장 호출 유형은 `builtin_function`일 수 있습니다. 전체를 재전송하면 서버가 처리합니다. 스트리밍 검색 사용량도 표준 `usage`에 추가되어 SDK가 실제 토큰 수를 읽을 수 있습니다.
+  </Tab>
+  <Tab title="Messages">
+    ```json
+    {"tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}]}
+    ```
+
+    서버는 `server_tool_use`, `web_search_tool_result` 등의 블록을 반환하고 답변 생성을 이어갈 수 있습니다. 멀티턴에서는 이 블록을 보존하세요. 업스트림이 `usage.server_tool_use` 요약을 생략하더라도 성공한 검색은 과금됩니다.
+  </Tab>
+  <Tab title="Responses">
+    ```json
+    {"tools": [{"type": "web_search"}]}
+    ```
+
+    검색은 `web_search_call` 출력 항목으로 반환되며 서버는 최종 메시지 생성을 이어갈 수 있습니다. 추론, 도구 출력, 최종 메시지를 모두 처리하세요. `output[0]`이 항상 답변 텍스트라고 가정하지 마세요.
+  </Tab>
+</Tabs>
+
+<Note>
+Moonshot은 [공식 내장 검색 문서](https://platform.kimi.ai/docs/guide/use-web-search)에 기존 `$web_search`의 종료 계획을 안내했습니다. 2026-10-24 테스트에서는 두 모델 모두 중국 내 및 해외 채널에서 사용 가능함을 확인했습니다. 이 페이지는 모델 내장 도구를 다루며 별도 REST Search / Search Pro / Fetch 제품은 포함하지 않습니다.
+</Note>
+
+## 스트리밍 및 구조화 출력
+
+Chat은 `stream=true`를 사용하며 사용량이 필요하면 `stream_options.include_usage=true`도 전달합니다. `[DONE]`으로 종료를 판단하세요. Messages는 Anthropic SSE 이벤트를 사용하므로 `message_start`, `content_block_delta`, `message_delta`, `message_stop`을 처리하세요.
+
+Responses는 의미별 이벤트를 사용합니다. `response.output_text.delta`와 추론 이벤트를 처리하고 `response.completed`, `response.incomplete`, `response.failed`를 확인하세요. 출력 한도로 `incomplete`가 되면 예산을 늘려 재시도하고 완전한 답변으로 취급하지 마세요.
+
+엄격한 JSON Schema 필드는 프로토콜에 따라 선택합니다. Chat은 `response_format.json_schema`, Messages는 `output_config.format`, Responses는 `text.format`을 사용합니다. 최종 텍스트와 추론을 분리하고 최종 답변의 JSON만 파싱하세요. 전체 요청 예제는 각 API 매개변수 페이지에 있습니다.
