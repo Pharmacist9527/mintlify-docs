@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed - API compatible Anthropic",
-    "description": "Prend en charge kimi-k3.1-pro et kimi-k3.1-pro-highspeed avec une fenêtre de contexte de 1 048 576 tokens. Les deux modèles raisonnent toujours ; niveaux natifs : low / high / max, par défaut : max.\n\nPrend en charge l’historique multi-tours, SSE, les outils de fonction, la recherche web, JSON Schema strict et le cache de contexte 5m / 1h. Paramètres d’échantillonnage fixes : temperature=1, top_p=0.95, n=1, presence_penalty=frequency_penalty=0. Il est inutile de les transmettre.\n\n[Modèles, tarifs et guide d’utilisation](/fr/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview).",
+    "description": "Appelez Kimi K3.1 Pro / Highspeed via Anthropic Messages avec `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`. Les deux modèles offrent un contexte de 1 048 576 tokens et prennent en charge les conversations multi-tours, le streaming, les outils, la recherche web, la sortie structurée et le cache de contexte.\n\nLe raisonnement reste actif. `output_config.effort` accepte `low` / `high` / `max`, avec `max` par défaut. Conservez tout l’historique du raisonnement et des appels d’outils entre les tours.",
     "license": {
       "name": "MIT"
     },
@@ -217,7 +217,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro et Highspeed partagent les points de terminaison et les paramètres. Les tarifs d’entrée, de sortie et d’écriture en cache diffèrent ; le tarif de lecture du cache est identique."
+            "description": "Utilisez `kimi-k3.1-pro` ou `kimi-k3.1-pro-highspeed` ; Highspeed génère plus vite."
           },
           "max_tokens": {
             "type": "integer",
@@ -274,7 +274,7 @@
             "properties": {
               "user_id": {
                 "type": "string",
-                "description": "ID stable d’utilisateur final ou de session pour le cache et la détection d’abus. Utilisez une valeur hachée sans données personnelles identifiables. Pour les agents de code, gardez le même ID pendant la session."
+                "description": "Identifiant anonyme d’utilisateur ou de session ; une valeur hachée est recommandée."
               }
             }
           },
@@ -304,7 +304,7 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "TTL d’écriture du cache. Les caches 5m et 1h sont indépendants. Un accès au même préfixe pendant la validité renouvelle le cache avec son TTL initial."
+                "description": "TTL du cache : 5m ou 1h ; par défaut : 5m."
               }
             },
             "required": [
@@ -459,7 +459,7 @@
                   "base64",
                   "url"
                 ],
-                "description": "Type de source : `base64` pour un encodage en ligne, ou `url` pour un lien."
+                "description": "Source d’image : base64 pour les données intégrées, url pour une référence de fichier."
               },
               "media_type": {
                 "type": "string",
@@ -477,7 +477,7 @@
               },
               "url": {
                 "type": "string",
-                "description": "Adresse de l'image lorsque `type=url` ; prend aussi en charge la référence de fichier Kimi `ms://<file_id>`."
+                "description": "Référence de fichier image, uniquement lorsque type=url."
               }
             }
           }
@@ -558,8 +558,25 @@
             "description": "ID du bloc tool_use correspondant."
           },
           "content": {
-            "type": "string",
-            "description": "Résultat de l'exécution de l'outil."
+            "description": "Résultat d’outil sous forme de chaîne ou de tableau de blocs texte et image.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextBlock"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImageBlock"
+                    }
+                  ]
+                }
+              }
+            ]
           },
           "is_error": {
             "type": "boolean",
@@ -598,16 +615,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "Stratégie de sélection : auto laisse le modèle décider, any impose un outil et tool impose l'outil nommé.",
+            "description": "Choix d’outil : auto laisse décider le modèle, any impose un appel et none désactive les appels d’outils.",
             "enum": [
               "auto",
               "any",
-              "tool"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "Nom de l'outil à appeler lorsque type=tool."
+              "none"
+            ],
+            "default": "auto"
           }
         }
       },
@@ -640,11 +654,16 @@
             }
           },
           "stop_reason": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "end_turn",
               "max_tokens",
-              "tool_use"
+              "tool_use",
+              "refusal",
+              null
             ]
           },
           "stop_sequence": {
@@ -707,7 +726,7 @@
                 "minimum": 0
               }
             },
-            "description": "Le fournisseur peut omettre le récapitulatif du nombre de recherches. Les résultats de recherche réussis restent facturés selon le nombre réel de recherches."
+            "description": "Utilisation de la recherche pour cette réponse."
           }
         }
       },

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed - API compatible con Anthropic",
-    "description": "Admite kimi-k3.1-pro y kimi-k3.1-pro-highspeed con una ventana de contexto de 1.048.576 tokens. Ambos modelos siempre razonan; niveles nativos: low / high / max, con max como valor predeterminado.\n\nAdmite historial de varios turnos, SSE, herramientas de función, búsqueda web, JSON Schema estricto y caché de contexto de 5m / 1h. El muestreo usa valores fijos: temperature=1, top_p=0.95, n=1, presence_penalty=frequency_penalty=0. No es necesario enviarlos.\n\n[Modelos, precios y guía de uso](/es/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview).",
+    "description": "Llame a Kimi K3.1 Pro / Highspeed mediante Anthropic Messages con `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`. Ambos ofrecen un contexto de 1.048.576 tokens y admiten conversaciones de varios turnos, streaming, herramientas, búsqueda web, salida estructurada y caché de contexto.\n\nEl razonamiento siempre está activo. `output_config.effort` admite `low` / `high` / `max`, con `max` como predeterminado. Conserve todo el historial de razonamiento y herramientas entre turnos.",
     "license": {
       "name": "MIT"
     },
@@ -217,7 +217,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro y Highspeed comparten endpoints y parámetros. Los precios de entrada, salida y escritura en caché de Highspeed son distintos; el precio de lectura es el mismo."
+            "description": "Use `kimi-k3.1-pro` o `kimi-k3.1-pro-highspeed`; Highspeed genera más rápido."
           },
           "max_tokens": {
             "type": "integer",
@@ -274,7 +274,7 @@
             "properties": {
               "user_id": {
                 "type": "string",
-                "description": "ID estable de usuario final o sesión para mejorar la caché y detectar abusos. Use un valor hash sin información personal identificable. Para agentes de código, mantenga el mismo ID de sesión durante toda la sesión."
+                "description": "Identificador anónimo de usuario o sesión; se recomienda un valor hash."
               }
             }
           },
@@ -304,7 +304,7 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "TTL de escritura en caché. Las cachés de 5m y 1h son independientes. Un acierto con el mismo prefijo dentro de la vigencia renueva la caché con su TTL original."
+                "description": "TTL de caché: 5m o 1h; predeterminado: 5m."
               }
             },
             "required": [
@@ -459,7 +459,7 @@
                   "base64",
                   "url"
                 ],
-                "description": "Tipo de origen: `base64` codificado en línea, o enlace `url`."
+                "description": "Origen de imagen: base64 para datos integrados, url para una referencia de archivo."
               },
               "media_type": {
                 "type": "string",
@@ -477,7 +477,7 @@
               },
               "url": {
                 "type": "string",
-                "description": "Dirección de la imagen cuando `type=url`; también admite la referencia de archivo de Kimi `ms://<file_id>`."
+                "description": "Referencia de archivo de imagen, solo cuando type=url."
               }
             }
           }
@@ -558,8 +558,25 @@
             "description": "ID del bloque tool_use correspondiente."
           },
           "content": {
-            "type": "string",
-            "description": "Resultado de ejecución de la herramienta."
+            "description": "Resultado de herramienta como cadena o array de bloques de texto e imagen.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextBlock"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImageBlock"
+                    }
+                  ]
+                }
+              }
+            ]
           },
           "is_error": {
             "type": "boolean",
@@ -598,16 +615,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "Estrategia de selección: auto deja decidir al modelo, any exige una herramienta y tool exige la herramienta indicada.",
+            "description": "Selección de herramientas: auto deja decidir al modelo, any exige una llamada y none desactiva las herramientas.",
             "enum": [
               "auto",
               "any",
-              "tool"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "Nombre de la herramienta que se llamará cuando type=tool."
+              "none"
+            ],
+            "default": "auto"
           }
         }
       },
@@ -640,11 +654,16 @@
             }
           },
           "stop_reason": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "end_turn",
               "max_tokens",
-              "tool_use"
+              "tool_use",
+              "refusal",
+              null
             ]
           },
           "stop_sequence": {
@@ -707,7 +726,7 @@
                 "minimum": 0
               }
             },
-            "description": "El proveedor puede omitir el resumen del número de búsquedas. Si hay bloques de resultados correctos, se cobra por las búsquedas realizadas."
+            "description": "Uso de búsqueda de esta respuesta."
           }
         }
       },

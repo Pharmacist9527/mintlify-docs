@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed – Anthropic-kompatible API",
-    "description": "Unterstützt kimi-k3.1-pro und kimi-k3.1-pro-highspeed mit einem Kontextfenster von 1.048.576 Token. Beide Modelle führen immer Schlussfolgerungen durch; native Stufen: low / high / max, Standard: max.\n\nUnterstützt Gesprächsverlauf, SSE, Funktionswerkzeuge, Websuche, striktes JSON Schema und Kontext-Caching für 5m / 1h. Feste Sampling-Einstellungen: temperature=1, top_p=0.95, n=1, presence_penalty=frequency_penalty=0. Diese Parameter müssen nicht übergeben werden.\n\n[Modelle, Preise und Nutzung](/de/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview).",
+    "description": "Kimi K3.1 Pro / Highspeed über Anthropic Messages mit `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` aufrufen. Beide Modelle bieten 1.048.576 Token Kontext und unterstützen mehrstufige Gespräche, Streaming, Werkzeugaufrufe, Websuche, strukturierte Ausgabe und Kontext-Caching.\n\nSchlussfolgerungen sind immer aktiv. `output_config.effort` unterstützt `low` / `high` / `max`, Standard ist `max`. Den vollständigen Denk- und Werkzeugverlauf in weiteren Gesprächsrunden erhalten.",
     "license": {
       "name": "MIT"
     },
@@ -217,7 +217,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro und Highspeed verwenden dieselben Endpunkte und Parameter. Highspeed hat andere Preise für Eingabe, Ausgabe und Cache-Schreiben; Cache-Lesen kostet gleich viel."
+            "description": "`kimi-k3.1-pro` oder `kimi-k3.1-pro-highspeed` verwenden; Highspeed generiert schneller."
           },
           "max_tokens": {
             "type": "integer",
@@ -274,7 +274,7 @@
             "properties": {
               "user_id": {
                 "type": "string",
-                "description": "Stabile Endnutzer- oder Sitzungs-ID für Cache-Trefferquote und Missbrauchserkennung. Gehashten Wert ohne personenbezogene Angaben verwenden. Bei Coding Agents die Sitzungs-ID während der gesamten Sitzung beibehalten."
+                "description": "Anonyme Nutzer- oder Sitzungskennung; ein Hashwert wird empfohlen."
               }
             }
           },
@@ -304,7 +304,7 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "Cache-Schreib-TTL. 5m- und 1h-Cache sind unabhängig. Ein Treffer mit gleichem Präfix innerhalb der Gültigkeit erneuert den Cache mit der ursprünglichen TTL."
+                "description": "Cache-TTL: 5m oder 1h; Standard: 5m."
               }
             },
             "required": [
@@ -459,7 +459,7 @@
                   "base64",
                   "url"
                 ],
-                "description": "Quellentyp: `base64` für Inline-Kodierung oder `url` für einen Link."
+                "description": "Bildquelle: base64 für eingebettete Daten, url für einen Dateiverweis."
               },
               "media_type": {
                 "type": "string",
@@ -477,7 +477,7 @@
               },
               "url": {
                 "type": "string",
-                "description": "Bildadresse, wenn `type=url`; unterstützt auch Kimi-Dateireferenz `ms://<file_id>`."
+                "description": "Bilddateiverweis, nur bei type=url."
               }
             }
           }
@@ -558,8 +558,25 @@
             "description": "ID des zugehörigen tool_use-Inhaltsblocks."
           },
           "content": {
-            "type": "string",
-            "description": "Ergebnis der Werkzeugausführung."
+            "description": "Werkzeugergebnis als Zeichenfolge oder Array von Text- und Bildblöcken.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextBlock"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImageBlock"
+                    }
+                  ]
+                }
+              }
+            ]
           },
           "is_error": {
             "type": "boolean",
@@ -598,16 +615,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "Strategie zur Werkzeugauswahl: auto lässt das Modell entscheiden, any erzwingt ein Werkzeug und tool erzwingt das benannte Werkzeug.",
+            "description": "Werkzeugwahl: auto überlässt dem Modell die Entscheidung, any erzwingt einen Werkzeugaufruf und none deaktiviert Werkzeugaufrufe.",
             "enum": [
               "auto",
               "any",
-              "tool"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "Name des aufzurufenden Werkzeugs, wenn type=tool ist."
+              "none"
+            ],
+            "default": "auto"
           }
         }
       },
@@ -640,11 +654,16 @@
             }
           },
           "stop_reason": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "end_turn",
               "max_tokens",
-              "tool_use"
+              "tool_use",
+              "refusal",
+              null
             ]
           },
           "stop_sequence": {
@@ -707,7 +726,7 @@
                 "minimum": 0
               }
             },
-            "description": "Der Upstream kann die Zusammenfassung der Suchanzahl weglassen. Erfolgreiche Suchergebnisblöcke werden dennoch nach tatsächlicher Suchanzahl abgerechnet."
+            "description": "Suchnutzung dieser Antwort."
           }
         }
       },

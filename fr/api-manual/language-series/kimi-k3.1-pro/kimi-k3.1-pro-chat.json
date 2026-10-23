@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed - API compatible OpenAI",
-    "description": "Prend en charge kimi-k3.1-pro et kimi-k3.1-pro-highspeed avec une fenêtre de contexte de 1 048 576 tokens. Les deux modèles raisonnent toujours ; niveaux natifs : low / high / max, par défaut : max.\n\nPrend en charge l’historique multi-tours, SSE, les outils de fonction, la recherche web, JSON Schema strict et le cache de contexte 5m / 1h. Paramètres d’échantillonnage fixes : temperature=1, top_p=0.95, n=1, presence_penalty=frequency_penalty=0. Il est inutile de les transmettre.\n\n[Modèles, tarifs et guide d’utilisation](/fr/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview).",
+    "description": "Appelez Kimi K3.1 Pro / Highspeed via OpenAI Chat Completions avec `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`. Les deux modèles offrent un contexte de 1 048 576 tokens et prennent en charge les conversations multi-tours, le streaming, les outils, la recherche web, la sortie structurée et le cache de contexte.\n\nLe raisonnement reste actif. `reasoning_effort` accepte `low` / `high` / `max`, avec `max` par défaut. Conservez tout l’historique du raisonnement et des appels d’outils entre les tours.",
     "license": {
       "name": "MIT"
     },
@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "API de conversation Kimi K3.1 Pro / Highspeed (compatible OpenAI)",
-        "description": "Utilisez l’un des deux ID exacts avec ce point de terminaison. Niveaux de raisonnement natifs : low / high / max. Conservez intégralement reasoning_content et tool_calls. La recherche renvoie ses résultats via tool_calls ; réinjectez-les et relancez la requête pour obtenir la réponse finale.",
+        "description": "Appelez les deux modèles au format OpenAI Chat Completions, avec une réponse JSON ou un flux SSE. Conservez intégralement reasoning_content et tool_calls du message assistant entre les tours.\n\nQuand la recherche web renvoie tool_calls, transmettez function.arguments de chaque appel dans un message tool avec le tool_call_id correspondant, puis demandez la réponse finale.",
         "operationId": "createChatCompletionKimiK31Pro",
         "tags": [
           "Chat Completions"
@@ -69,7 +69,7 @@
                   }
                 },
                 "streaming": {
-                  "summary": "Streaming SSE avec usage",
+                  "summary": "Streaming SSE",
                   "value": {
                     "model": "kimi-k3.1-pro",
                     "messages": [
@@ -80,10 +80,7 @@
                     ],
                     "reasoning_effort": "low",
                     "max_completion_tokens": 1024,
-                    "stream": true,
-                    "stream_options": {
-                      "include_usage": true
-                    }
+                    "stream": true
                   }
                 },
                 "cache_1h": {
@@ -119,28 +116,6 @@
                     "tools": [
                       {
                         "type": "web_search"
-                      }
-                    ]
-                  }
-                },
-                "web_search_native": {
-                  "summary": "Recherche web (syntaxe native Moonshot)",
-                  "value": {
-                    "model": "kimi-k3.1-pro",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Reply with OK."
-                      }
-                    ],
-                    "reasoning_effort": "low",
-                    "max_completion_tokens": 1024,
-                    "tools": [
-                      {
-                        "type": "builtin_function",
-                        "function": {
-                          "name": "$web_search"
-                        }
                       }
                     ]
                   }
@@ -265,7 +240,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro et Highspeed partagent les points de terminaison et les paramètres. Les tarifs d’entrée, de sortie et d’écriture en cache diffèrent ; le tarif de lecture du cache est identique."
+            "description": "Utilisez `kimi-k3.1-pro` ou `kimi-k3.1-pro-highspeed` ; Highspeed génère plus vite."
           },
           "messages": {
             "type": "array",
@@ -301,14 +276,10 @@
             "default": false,
             "description": "Indique si la réponse est renvoyée sous forme de flux SSE."
           },
-          "stream_options": {
-            "$ref": "#/components/schemas/StreamOptions",
-            "description": "Options de réponse en streaming. Elles s'appliquent uniquement lorsque `stream=true` et ne modifient ni le prix ni le nombre de tokens générés."
-          },
           "tools": {
             "type": "array",
             "maxItems": 128,
-            "description": "Outils de fonction ou recherche web. Utilisez {\"type\":\"web_search\"} ou le format natif Moonshot builtin_function / $web_search. Facturation par recherche effectuée ; les fonctions ordinaires n’entraînent aucun frais de recherche.",
+            "description": "Outils de fonction ou recherche web. Déclarez la recherche avec {\"type\":\"web_search\"}.",
             "items": {
               "oneOf": [
                 {
@@ -316,9 +287,6 @@
                 },
                 {
                   "$ref": "#/components/schemas/WebSearchTool"
-                },
-                {
-                  "$ref": "#/components/schemas/BuiltinWebSearchTool"
                 }
               ]
             }
@@ -357,13 +325,13 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "Durée de validité de l’écriture en cache. 1h et 5m ont chacun leur tarif d’écriture. Les accès réels et la classification TTL suivent la facture."
+                "description": "TTL du cache : 5m ou 1h ; par défaut : 5m."
               }
             }
           },
           "response_format": {
             "type": "object",
-            "description": "Contrôle le format de sortie. Par défaut, {\"type\":\"text\"} renvoie du texte brut. {\"type\":\"json_object\"} active le mode JSON et garantit un objet JSON valide ; demandez du JSON et précisez le format dans le prompt. {\"type\":\"json_schema\"} active Structured Output selon le JSON Schema fourni (recommandé ; renseignez aussi json_schema). Signalez les problèmes de validation sur walle GitHub Issues (https://github.com/MoonshotAI/walle/issues).",
+            "description": "Format de sortie : text pour du texte brut, json_object pour un objet JSON, json_schema pour une sortie structurée selon un JSON Schema.",
             "properties": {
               "type": {
                 "type": "string",
@@ -385,11 +353,11 @@
                   "strict": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Appliquer strictement le schéma. Par défaut : true. Avec true, le schéma doit respecter MFJS, sinon une erreur ou un avertissement est renvoyé. Avec false, seul un objet JSON valide est garanti, sans contrainte sur sa structure interne."
+                    "description": "Respecter strictement le JSON Schema fourni ; par défaut : true."
                   },
                   "schema": {
                     "type": "object",
-                    "description": "JSON Schema décrivant la structure de sortie. Doit respecter MFJS (Moonshot Flavored JSON Schema). Validation avec walle CLI : go install github.com/moonshotai/walle/cmd/walle@latest && walle -schema '<schema>' -level strict",
+                    "description": "JSON Schema définissant la structure de sortie.",
                     "additionalProperties": true
                   }
                 },
@@ -402,8 +370,7 @@
           },
           "prompt_cache_key": {
             "type": "string",
-            "default": null,
-            "description": "Clé de mise en cache des requêtes similaires pour améliorer le taux de réussite. Pour les agents de code, utilisez l’ID de session ou de tâche et conservez-le à la reprise. Obligatoire pour Kimi Code Plan afin d’améliorer les accès au cache ; conseillé aussi aux autres agents multi-tours."
+            "description": "Identifiant du cache. Réutilisez la même valeur pendant une session pour améliorer les accès au cache."
           },
           "max_tokens": {
             "type": "integer",
@@ -467,62 +434,98 @@
         }
       },
       "ContentPart": {
-        "type": "object",
-        "required": [
-          "type"
-        ],
         "description": "Bloc de contenu multimodal. Le champ utilisé dépend de `type`.",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "text",
-              "image_url",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "description": "Contenu textuel lorsque `type=text`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "image_url"
+                ]
+              },
+              "image_url": {
+                "description": "Image lorsque `type=image_url` ; une chaîne URL peut aussi être passée directement.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "url"
+                    ],
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "description": "Contenu d’image sous forme d’URL data Base64 (data:image/png;base64,...)."
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
               "video_url"
             ],
-            "description": "Type de bloc de contenu."
-          },
-          "text": {
-            "type": "string",
-            "description": "Contenu textuel lorsque `type=text`."
-          },
-          "image_url": {
-            "type": "object",
-            "required": [
-              "url"
-            ],
-            "description": "Image lorsque `type=image_url` ; une chaîne URL peut aussi être passée directement.",
             "properties": {
-              "url": {
+              "type": {
                 "type": "string",
-                "description": "Adresse de l'image. Prend en charge les Data URL Base64 (`data:image/png;base64,...`) ou les références de fichier de la plateforme Kimi (`ms://<file_id>`)."
-              }
-            }
-          },
-          "video_url": {
-            "type": "object",
-            "required": [
-              "url"
-            ],
-            "description": "Vidéo lorsque `type=video_url` ; une chaîne URL peut aussi être passée directement.",
-            "properties": {
-              "url": {
-                "type": "string",
-                "description": "Adresse de la vidéo. Prend en charge les Data URL Base64 (`data:video/mp4;base64,...`) ou les références de fichier de la plateforme Kimi (`ms://<file_id>`)."
+                "enum": [
+                  "video_url"
+                ]
+              },
+              "video_url": {
+                "description": "Vidéo lorsque `type=video_url` ; une chaîne URL peut aussi être passée directement.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "url"
+                    ],
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "description": "Contenu vidéo sous forme d’URL data Base64 (data:video/mp4;base64,...)."
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
-        }
-      },
-      "StreamOptions": {
-        "type": "object",
-        "properties": {
-          "include_usage": {
-            "type": "boolean",
-            "default": false,
-            "description": "Si true, renvoie au client un bloc final d'utilisation avant `[DONE]`. Cette option contrôle uniquement la réception de ce bloc et n'ajoute aucun token facturable ni ne modifie les prix."
-          }
-        }
+        ]
       },
       "WebSearchTool": {
         "type": "object",
@@ -535,7 +538,7 @@
             "enum": [
               "web_search"
             ],
-            "description": "Outil de recherche web. Converti par la passerelle en `$web_search` de Moonshot ; facturé à l'appel"
+            "description": "Outil de recherche web."
           }
         }
       },
@@ -646,7 +649,7 @@
             }
           }
         },
-        "description": "Conservez l’historique complet des appels d’outils. La recherche intégrée peut renvoyer type=builtin_function ; le serveur accepte ce type lors du rejeu. Gardez les ID, arguments et le raisonnement intacts."
+        "description": "Conservez les appels d’outils complets entre les tours : ID, types, noms de fonction, arguments et raisonnement."
       },
       "ChatCompletionResponse": {
         "type": "object",
@@ -748,35 +751,6 @@
                 "type": [
                   "string",
                   "null"
-                ]
-              }
-            }
-          }
-        }
-      },
-      "BuiltinWebSearchTool": {
-        "type": "object",
-        "required": [
-          "type",
-          "function"
-        ],
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "builtin_function"
-            ]
-          },
-          "function": {
-            "type": "object",
-            "required": [
-              "name"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
-                "enum": [
-                  "$web_search"
                 ]
               }
             }

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed - OpenAI-Compatible API",
-    "description": "Supports kimi-k3.1-pro and kimi-k3.1-pro-highspeed with a context window of 1,048,576 tokens. Both models always reason, with native effort levels low / high / max; the default is max.\n\nSupports multi-turn history, SSE, function tools, web search, strict JSON Schema, and 5m / 1h context caching. Sampling uses fixed settings: temperature=1, top_p=0.95, n=1, presence_penalty=frequency_penalty=0. You do not need to send these parameters.\n\n[Models, pricing, and usage guide](/en/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview).",
+    "description": "Call Kimi K3.1 Pro / Highspeed through OpenAI Chat Completions using `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`. Both models offer a 1,048,576-token context and support multi-turn conversations, streaming, tool calls, web search, structured output, and context caching.\n\nReasoning is always enabled. Set `reasoning_effort` to `low` / `high` / `max`; the default is `max`. Preserve complete reasoning and tool-call history across turns.",
     "license": {
       "name": "MIT"
     },
@@ -27,7 +27,7 @@
     "/v1/chat/completions": {
       "post": {
         "summary": "Kimi K3.1 Pro / Highspeed Chat API (OpenAI-compatible)",
-        "description": "Use either exact model ID with this endpoint. Native reasoning levels are low / high / max. Preserve complete reasoning_content and tool_calls history. Search returns results through tool_calls; pass them back and request again for the final answer.",
+        "description": "Call either model using the OpenAI Chat Completions format, with JSON or SSE streaming responses. Preserve the assistant's complete reasoning_content and tool_calls across turns.\n\nWhen web search returns tool_calls, send each call's function.arguments as the content of a tool message with the matching tool_call_id, then request the final answer.",
         "operationId": "createChatCompletionKimiK31Pro",
         "tags": [
           "Chat Completions"
@@ -69,7 +69,7 @@
                   }
                 },
                 "streaming": {
-                  "summary": "SSE streaming with usage",
+                  "summary": "SSE streaming",
                   "value": {
                     "model": "kimi-k3.1-pro",
                     "messages": [
@@ -80,10 +80,7 @@
                     ],
                     "reasoning_effort": "low",
                     "max_completion_tokens": 1024,
-                    "stream": true,
-                    "stream_options": {
-                      "include_usage": true
-                    }
+                    "stream": true
                   }
                 },
                 "cache_1h": {
@@ -119,28 +116,6 @@
                     "tools": [
                       {
                         "type": "web_search"
-                      }
-                    ]
-                  }
-                },
-                "web_search_native": {
-                  "summary": "Web search (native Moonshot syntax)",
-                  "value": {
-                    "model": "kimi-k3.1-pro",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Reply with OK."
-                      }
-                    ],
-                    "reasoning_effort": "low",
-                    "max_completion_tokens": 1024,
-                    "tools": [
-                      {
-                        "type": "builtin_function",
-                        "function": {
-                          "name": "$web_search"
-                        }
                       }
                     ]
                   }
@@ -265,7 +240,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro and Highspeed share endpoints and parameters. Highspeed has different input, output, and cache-write prices; cache-read pricing is the same."
+            "description": "Use `kimi-k3.1-pro` or `kimi-k3.1-pro-highspeed`; Highspeed offers faster generation."
           },
           "messages": {
             "type": "array",
@@ -301,14 +276,10 @@
             "default": false,
             "description": "Whether to return the response as an SSE stream."
           },
-          "stream_options": {
-            "$ref": "#/components/schemas/StreamOptions",
-            "description": "Streaming response options. These options apply only when `stream=true` and do not change token prices or generated token counts."
-          },
           "tools": {
             "type": "array",
             "maxItems": 128,
-            "description": "Function tools or web search. Search accepts {\"type\":\"web_search\"} or native Moonshot builtin_function / $web_search. Charged per actual search; ordinary functions incur no search fee.",
+            "description": "Function tools or web search. Declare search with {\"type\":\"web_search\"}.",
             "items": {
               "oneOf": [
                 {
@@ -316,9 +287,6 @@
                 },
                 {
                   "$ref": "#/components/schemas/WebSearchTool"
-                },
-                {
-                  "$ref": "#/components/schemas/BuiltinWebSearchTool"
                 }
               ]
             }
@@ -357,13 +325,13 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "Cache-write TTL. 1h and 5m use their respective write prices. Actual hits and TTL classifications follow the bill."
+                "description": "Cache TTL: 5m or 1h; default: 5m."
               }
             }
           },
           "response_format": {
             "type": "object",
-            "description": "Controls the output format. The default {\"type\":\"text\"} returns plain text. {\"type\":\"json_object\"} enables JSON mode and guarantees a valid JSON object; ask for JSON and specify the format in the prompt. {\"type\":\"json_schema\"} enables Structured Output constrained by the supplied JSON Schema (recommended; also supply json_schema). Report JSON Schema validation issues to walle GitHub Issues (https://github.com/MoonshotAI/walle/issues).",
+            "description": "Output format: text for plain text, json_object for a JSON object, or json_schema for structured output following a JSON Schema.",
             "properties": {
               "type": {
                 "type": "string",
@@ -385,11 +353,11 @@
                   "strict": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Whether to strictly enforce the schema. Default: true. When true, the schema must comply with MFJS or an error or warning is returned. When false, only valid JSON is guaranteed, without enforcing the internal structure."
+                    "description": "Whether to strictly follow the supplied JSON Schema; default: true."
                   },
                   "schema": {
                     "type": "object",
-                    "description": "JSON Schema describing the output structure. Must comply with MFJS (Moonshot Flavored JSON Schema). Validate with the walle CLI: go install github.com/moonshotai/walle/cmd/walle@latest && walle -schema '<schema>' -level strict",
+                    "description": "JSON Schema defining the output structure.",
                     "additionalProperties": true
                   }
                 },
@@ -402,8 +370,7 @@
           },
           "prompt_cache_key": {
             "type": "string",
-            "default": null,
-            "description": "A key for caching similar requests to improve the hit rate. For coding agents, use the session ID or task ID and keep it unchanged when resuming a session. Required for Kimi Code Plan to improve cache hits; also recommended for other multi-turn agents."
+            "description": "Cache identifier. Reuse the same value within a session to improve cache hits."
           },
           "max_tokens": {
             "type": "integer",
@@ -467,62 +434,98 @@
         }
       },
       "ContentPart": {
-        "type": "object",
-        "required": [
-          "type"
-        ],
         "description": "Multimodal content block. `type` determines which field is used.",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "text",
-              "image_url",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "description": "Text content when `type=text`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "image_url"
+                ]
+              },
+              "image_url": {
+                "description": "Image when `type=image_url`; a URL string may also be passed directly.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "url"
+                    ],
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "description": "Image content as a Base64 Data URL (data:image/png;base64,...)."
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
               "video_url"
             ],
-            "description": "Content block type."
-          },
-          "text": {
-            "type": "string",
-            "description": "Text content when `type=text`."
-          },
-          "image_url": {
-            "type": "object",
-            "required": [
-              "url"
-            ],
-            "description": "Image when `type=image_url`; a URL string may also be passed directly.",
             "properties": {
-              "url": {
+              "type": {
                 "type": "string",
-                "description": "Image address. Supports a Base64 Data URL (`data:image/png;base64,...`) or a Kimi platform file reference (`ms://<file_id>`)."
-              }
-            }
-          },
-          "video_url": {
-            "type": "object",
-            "required": [
-              "url"
-            ],
-            "description": "Video when `type=video_url`; a URL string may also be passed directly.",
-            "properties": {
-              "url": {
-                "type": "string",
-                "description": "Video address. Supports a Base64 Data URL (`data:video/mp4;base64,...`) or a Kimi platform file reference (`ms://<file_id>`)."
+                "enum": [
+                  "video_url"
+                ]
+              },
+              "video_url": {
+                "description": "Video when `type=video_url`; a URL string may also be passed directly.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "url"
+                    ],
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "description": "Video content as a Base64 Data URL (data:video/mp4;base64,...)."
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
-        }
-      },
-      "StreamOptions": {
-        "type": "object",
-        "properties": {
-          "include_usage": {
-            "type": "boolean",
-            "default": false,
-            "description": "When true, returns a final usage chunk to the caller before `[DONE]`. This option only controls whether the caller receives that chunk and does not add billable tokens or change prices."
-          }
-        }
+        ]
       },
       "WebSearchTool": {
         "type": "object",
@@ -535,7 +538,7 @@
             "enum": [
               "web_search"
             ],
-            "description": "Web search tool. Converted by the gateway to Moonshot `$web_search`; billed per call"
+            "description": "Web search tool."
           }
         }
       },
@@ -646,7 +649,7 @@
             }
           }
         },
-        "description": "Preserve complete tool-call history. Built-in search responses may use type=builtin_function; the server accepts this type when replayed. Keep IDs, arguments, and reasoning intact."
+        "description": "Preserve complete tool calls across turns, including IDs, types, function names, arguments, and reasoning."
       },
       "ChatCompletionResponse": {
         "type": "object",
@@ -748,35 +751,6 @@
                 "type": [
                   "string",
                   "null"
-                ]
-              }
-            }
-          }
-        }
-      },
-      "BuiltinWebSearchTool": {
-        "type": "object",
-        "required": [
-          "type",
-          "function"
-        ],
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "builtin_function"
-            ]
-          },
-          "function": {
-            "type": "object",
-            "required": [
-              "name"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
-                "enum": [
-                  "$web_search"
                 ]
               }
             }

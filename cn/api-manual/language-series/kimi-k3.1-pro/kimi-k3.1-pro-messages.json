@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed - Anthropic 兼容接口",
-    "description": "支持 kimi-k3.1-pro 和 kimi-k3.1-pro-highspeed；上下文窗口 1,048,576 tokens。两款模型始终思考，原生强度 low / high / max，默认 max。\n\n支持多轮历史、SSE、函数工具、联网搜索、严格 JSON Schema 和 5m / 1h 上下文缓存。采样参数使用固定配置：temperature=1、top_p=0.95、n=1、presence_penalty=frequency_penalty=0，无需传入。\n\n[模型、价格与使用说明](/cn/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview)。",
+    "description": "通过 Anthropic Messages 协议调用 Kimi K3.1 Pro / Highspeed，模型 ID 为 `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`。上下文窗口为 1,048,576 tokens，支持多轮对话、流式输出、工具调用、联网搜索、结构化输出和上下文缓存。\n\n两款模型始终开启思考，通过 `output_config.effort` 调节强度，支持 `low` / `high` / `max`，默认 `max`。多轮对话时请保留完整的思考与工具调用历史。",
     "license": {
       "name": "MIT"
     },
@@ -217,7 +217,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro 与 Highspeed 共用接口和参数；Highspeed 的输入、输出及缓存写入单价不同，缓存读取单价相同。"
+            "description": "使用 `kimi-k3.1-pro` 或 `kimi-k3.1-pro-highspeed`；Highspeed 提供更快的生成速度。"
           },
           "max_tokens": {
             "type": "integer",
@@ -274,7 +274,7 @@
             "properties": {
               "user_id": {
                 "type": "string",
-                "description": "标识终端用户或会话的稳定 ID，用于提高缓存命中率与滥用检测。建议使用哈希后的值，不要传入可识别个人身份的信息。对 Coding Agent 建议传 session id 并在会话期间保持不变。"
+                "description": "用户或会话的匿名标识，建议使用哈希值。"
               }
             }
           },
@@ -304,7 +304,7 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "缓存写入的有效期，5m 与 1h 两档缓存相互独立。相同前缀的请求在有效期内命中后，缓存有效期按原 TTL 刷新"
+                "description": "缓存有效期，可选 5m 或 1h，默认 5m。"
               }
             },
             "required": [
@@ -459,7 +459,7 @@
                   "base64",
                   "url"
                 ],
-                "description": "来源类型：`base64` 内联编码，或 `url` 链接。"
+                "description": "图片来源：base64 为内联编码，url 为文件引用。"
               },
               "media_type": {
                 "type": "string",
@@ -477,7 +477,7 @@
               },
               "url": {
                 "type": "string",
-                "description": "`type=url` 时的图片地址；也支持 Kimi 文件引用 `ms://<file_id>`。"
+                "description": "图片文件引用地址，仅在 type=url 时使用。"
               }
             }
           }
@@ -558,8 +558,25 @@
             "description": "对应的 tool_use 内容块 ID。"
           },
           "content": {
-            "type": "string",
-            "description": "工具执行结果。"
+            "description": "工具执行结果，可为字符串或文本、图片内容块数组。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextBlock"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImageBlock"
+                    }
+                  ]
+                }
+              }
+            ]
           },
           "is_error": {
             "type": "boolean",
@@ -598,16 +615,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "工具选择策略：auto 由模型决定，any 强制调用任一工具，tool 强制调用 name 指定的工具。",
+            "description": "工具选择策略：auto 由模型决定，any 强制调用任一工具，none 禁止调用工具。",
             "enum": [
               "auto",
               "any",
-              "tool"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "type=tool 时指定工具名称。"
+              "none"
+            ],
+            "default": "auto"
           }
         }
       },
@@ -640,11 +654,16 @@
             }
           },
           "stop_reason": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "end_turn",
               "max_tokens",
-              "tool_use"
+              "tool_use",
+              "refusal",
+              null
             ]
           },
           "stop_sequence": {
@@ -707,7 +726,7 @@
                 "minimum": 0
               }
             },
-            "description": "上游可能省略搜索次数汇总；存在成功搜索结果块时仍按实际次数结算。"
+            "description": "本次响应的搜索用量统计。"
           }
         }
       },

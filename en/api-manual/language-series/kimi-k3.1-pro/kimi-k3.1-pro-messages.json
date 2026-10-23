@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Kimi K3.1 Pro / Highspeed - Anthropic-Compatible API",
-    "description": "Supports kimi-k3.1-pro and kimi-k3.1-pro-highspeed with a context window of 1,048,576 tokens. Both models always reason, with native effort levels low / high / max; the default is max.\n\nSupports multi-turn history, SSE, function tools, web search, strict JSON Schema, and 5m / 1h context caching. Sampling uses fixed settings: temperature=1, top_p=0.95, n=1, presence_penalty=frequency_penalty=0. You do not need to send these parameters.\n\n[Models, pricing, and usage guide](/en/api-manual/language-series/kimi-k3.1-pro/kimi-k3.1-pro-overview).",
+    "description": "Call Kimi K3.1 Pro / Highspeed through Anthropic Messages using `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`. Both models offer a 1,048,576-token context and support multi-turn conversations, streaming, tool calls, web search, structured output, and context caching.\n\nReasoning is always enabled. Set `output_config.effort` to `low` / `high` / `max`; the default is `max`. Preserve complete reasoning and tool-call history across turns.",
     "license": {
       "name": "MIT"
     },
@@ -217,7 +217,7 @@
               "kimi-k3.1-pro-highspeed"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "Pro and Highspeed share endpoints and parameters. Highspeed has different input, output, and cache-write prices; cache-read pricing is the same."
+            "description": "Use `kimi-k3.1-pro` or `kimi-k3.1-pro-highspeed`; Highspeed offers faster generation."
           },
           "max_tokens": {
             "type": "integer",
@@ -274,7 +274,7 @@
             "properties": {
               "user_id": {
                 "type": "string",
-                "description": "Stable end-user or session ID for cache hit rate and abuse detection. Use a hashed value and avoid personally identifiable information. For coding agents, use a session ID that remains unchanged during the session."
+                "description": "Anonymous user or session identifier; a hashed value is recommended."
               }
             }
           },
@@ -304,7 +304,7 @@
                   "1h"
                 ],
                 "default": "5m",
-                "description": "Cache-write TTL. The 5m and 1h caches are independent. A matching prefix hit within the validity period refreshes the cache using its original TTL."
+                "description": "Cache TTL: 5m or 1h; default: 5m."
               }
             },
             "required": [
@@ -459,7 +459,7 @@
                   "base64",
                   "url"
                 ],
-                "description": "Source type: `base64` for inline encoding, or `url` for a link."
+                "description": "Image source: base64 for inline data, url for a file reference."
               },
               "media_type": {
                 "type": "string",
@@ -477,7 +477,7 @@
               },
               "url": {
                 "type": "string",
-                "description": "Image address when `type=url`; Kimi file references `ms://<file_id>` are also supported."
+                "description": "Image file reference, used only when type=url."
               }
             }
           }
@@ -558,8 +558,25 @@
             "description": "ID of the corresponding tool_use content block."
           },
           "content": {
-            "type": "string",
-            "description": "Tool execution result."
+            "description": "Tool result as a string or an array of text and image blocks.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextBlock"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImageBlock"
+                    }
+                  ]
+                }
+              }
+            ]
           },
           "is_error": {
             "type": "boolean",
@@ -598,16 +615,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "Tool selection strategy: auto lets the model decide, any requires one tool, and tool requires the named tool.",
+            "description": "Tool choice: auto lets the model decide, any requires a tool call, and none disables tool calls.",
             "enum": [
               "auto",
               "any",
-              "tool"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "Name of the tool to call when type=tool."
+              "none"
+            ],
+            "default": "auto"
           }
         }
       },
@@ -640,11 +654,16 @@
             }
           },
           "stop_reason": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "end_turn",
               "max_tokens",
-              "tool_use"
+              "tool_use",
+              "refusal",
+              null
             ]
           },
           "stop_sequence": {
@@ -707,7 +726,7 @@
                 "minimum": 0
               }
             },
-            "description": "The upstream may omit the search-count summary. Successful search-result blocks are still billed by actual search count."
+            "description": "Search usage for this response."
           }
         }
       },
