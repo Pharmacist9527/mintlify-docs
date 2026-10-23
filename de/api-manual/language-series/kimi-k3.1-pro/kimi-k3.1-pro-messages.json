@@ -1,0 +1,912 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kimi K3.1 Pro / Highspeed – Anthropic-kompatible API",
+    "description": "Kimi K3.1 Pro / Highspeed über Anthropic Messages mit `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` aufrufen. Beide Modelle bieten 1.048.576 Token Kontext und unterstützen mehrstufige Gespräche, Streaming, Werkzeugaufrufe, Websuche, strukturierte Ausgabe und Kontext-Caching.\n\nSchlussfolgerungen sind immer aktiv. `output_config.effort` unterstützt `low` / `high` / `max`, Standard ist `max`. Den vollständigen Denk- und Werkzeugverlauf in weiteren Gesprächsrunden erhalten.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktion (empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Alternative URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "Kimi K3.1 Pro / Highspeed Messages-API",
+        "description": "Öffentlicher Endpunkt: POST /v1/messages. Denkstufe in output_config.effort, 5m/1h-Schreib-TTL in cache_control auf oberster Ebene setzen. thinking, signature, tool_use und serverseitige Suchergebnisblöcke vollständig erhalten.",
+        "operationId": "createMessageKimiK31Pro",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Minimale Pro-Anfrage",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Reply with OK."
+                      }
+                    ]
+                  }
+                },
+                "highspeed": {
+                  "summary": "Minimale Highspeed-Anfrage",
+                  "value": {
+                    "model": "kimi-k3.1-pro-highspeed",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Reply with OK."
+                      }
+                    ]
+                  }
+                },
+                "streaming": {
+                  "summary": "Anthropic-SSE-Streaming",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Reply with OK."
+                      }
+                    ],
+                    "stream": true
+                  }
+                },
+                "cache_1h": {
+                  "summary": "1h-Cache auf oberster Ebene",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Reply with OK."
+                      }
+                    ],
+                    "cache_control": {
+                      "type": "ephemeral",
+                      "ttl": "1h"
+                    }
+                  }
+                },
+                "web_search": {
+                  "summary": "Serverseitige Websuche",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Use web search to find the official Kimi homepage URL."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                        "max_uses": 1
+                      }
+                    ]
+                  }
+                },
+                "structured_output": {
+                  "summary": "Strikte strukturierte Ausgabe",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low",
+                      "format": {
+                        "type": "json_schema",
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "result": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Return a JSON object with result equal to OK."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message-Antwort; Streaming-Anfragen liefern einen Anthropic-SSE-Ereignisstrom",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Die Ereignisfolge umfasst normalerweise message_start, content_block_*, message_delta und message_stop."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "kimi-k3.1-pro",
+              "kimi-k3.1-pro-highspeed"
+            ],
+            "default": "kimi-k3.1-pro",
+            "description": "`kimi-k3.1-pro` oder `kimi-k3.1-pro-highspeed` verwenden; Highspeed generiert schneller."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximale Anzahl der Token für diese Generierung einschließlich thinking und finalem Text.",
+            "maximum": 1048576
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Anthropic-Messages-Nachrichtenliste. Bei mehrstufigen Gesprächen müssen vollständige Assistant-Inhaltsblöcke unverändert zurückgesendet werden.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "system": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessagesTextBlockParam"
+                }
+              }
+            ],
+            "description": "System-Prompt als Zeichenfolge oder Array von text-Blöcken."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ob ein Anthropic-SSE-Ereignisstrom zurückgegeben wird."
+          },
+          "tools": {
+            "type": "array",
+            "description": "Eigene Funktionen oder serverseitige Websuche. Integrierte Suche nutzt type=web_search_20250305 und name=web_search; Abrechnung pro tatsächlichem Aufruf.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Tool"
+                },
+                {
+                  "$ref": "#/components/schemas/WebSearchTool"
+                }
+              ]
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          },
+          "stop_sequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "description": "Stoppsequenzen: Exakte Übereinstimmung beendet die Ausgabe; die Sequenz wird nicht ausgegeben. Maximal 5 Sequenzen mit jeweils höchstens 32 Byte."
+          },
+          "cache_control": {
+            "type": "object",
+            "description": "Nur cache_control auf oberster Ebene steuert die Schreib-TTL; Cache-Markierungen in Nachrichtenblöcken ersetzen es nicht. Ohne Angabe: 5m.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ephemeral"
+                ],
+                "description": "Cache-Typ, fest ephemeral."
+              },
+              "ttl": {
+                "type": "string",
+                "enum": [
+                  "5m",
+                  "1h"
+                ],
+                "default": "5m",
+                "description": "Cache-TTL: 5m oder 1h; Standard: 5m."
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "output_config": {
+            "type": "object",
+            "description": "Ausgabekonfiguration: Denkaufwand und strukturierte Ausgabe.",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "high",
+                  "max",
+                  "medium",
+                  "xhigh",
+                  "minimal",
+                  "none"
+                ],
+                "default": "max",
+                "description": "Denkaufwand: low / high / max empfohlen, Standard: max. Schlussfolgerungen sind immer aktiv. Client-Aliase: medium wird high, xhigh wird max, minimal / none wird low. none deaktiviert das Denken nicht. Höhere Stufen erhöhen meist Denk-Token und Latenz. Denk-Token zählen zur Ausgabe."
+              },
+              "format": {
+                "type": "object",
+                "description": "Strukturierte Ausgabe. Wenn gesetzt, gibt das Modell JSON strikt nach dem angegebenen JSON Schema zurück.",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "json_schema"
+                    ]
+                  },
+                  "schema": {
+                    "type": "object",
+                    "description": "JSON Schema, dem die Ausgabe entsprechen muss.",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "type",
+                  "schema"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Nachrichtenrolle. Unterstützt werden nur user und assistant.",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "description": "Nachrichteninhalt als Klartext oder als Array von Anthropic-Inhaltsblöcken.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "description": "Anthropic-Inhaltsblock für Text, Bilder, Schlussfolgerungen, Werkzeugaufrufe oder Werkzeugergebnisse.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ThinkingBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ServerToolUseBlock"
+          },
+          {
+            "$ref": "#/components/schemas/WebSearchResultBlock"
+          }
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf text eingestellt.",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Textinhalt."
+          }
+        }
+      },
+      "ImageBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "source"
+        ],
+        "description": "Bildinhaltsblock (multimodale Eingabe).",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image"
+            ],
+            "description": "Inhaltsblocktyp. Fest auf image eingestellt."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "description": "Bildquelle.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ],
+                "description": "Bildquelle: base64 für eingebettete Daten, url für einen Dateiverweis."
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/gif",
+                  "image/webp"
+                ],
+                "description": "Bild-MIME-Typ, wenn `type=base64`."
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-Bilddaten, wenn `type=base64` (ohne `data:`-Präfix)."
+              },
+              "url": {
+                "type": "string",
+                "description": "Bilddateiverweis, nur bei type=url."
+              }
+            }
+          }
+        }
+      },
+      "ThinkingBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "thinking"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf thinking eingestellt.",
+            "enum": [
+              "thinking"
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "Schlussfolgerungsinhalt des Modells. Bei mehrstufigen Gesprächen unverändert zusammen mit der Signatur zurücksenden."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Bei mehrstufigen Gesprächen unverändert zusammen mit dem thinking-Block zurücksenden."
+          }
+        }
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf tool_use eingestellt.",
+            "enum": [
+              "tool_use"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "tool_use-ID, die beim Zurücksenden des Ergebnisses referenziert wird."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name des vom Modell angeforderten Werkzeugs."
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Vom Modell erzeugtes Eingabeobjekt für das Werkzeug."
+          }
+        }
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Inhaltsblocktyp. Fest auf tool_result eingestellt.",
+            "enum": [
+              "tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "ID des zugehörigen tool_use-Inhaltsblocks."
+          },
+          "content": {
+            "description": "Werkzeugergebnis als Zeichenfolge oder Array von Text- und Bildblöcken.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextBlock"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImageBlock"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "is_error": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ob die Werkzeugausführung fehlgeschlagen ist."
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Werkzeugname."
+          },
+          "description": {
+            "type": "string",
+            "description": "Beschreibung, anhand derer das Modell entscheidet, wann das Werkzeug verwendet wird."
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Definition der Werkzeugparameter im JSON-Schema-Format."
+          }
+        }
+      },
+      "ToolChoice": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Werkzeugwahl: auto überlässt dem Modell die Entscheidung, any erzwingt einen Werkzeugaufruf und none deaktiviert Werkzeugaufrufe.",
+            "enum": [
+              "auto",
+              "any",
+              "none"
+            ],
+            "default": "auto"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "example": "kimi-k3.1-pro"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use",
+              "refusal",
+              null
+            ]
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MessageUsage"
+          }
+        }
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Normale Eingabe-Token ohne Cache-Lesen und Cache-Schreiben. Die drei Eingabekategorien überschneiden sich nicht; Cache-Token nicht erneut abziehen."
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "In den Cache geschriebene Eingabe-Token."
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "Aus dem Cache gelieferte Eingabe-Token."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Ausgabe-Token einschließlich thinking-Token."
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer"
+              }
+            }
+          },
+          "cache_creation": {
+            "type": "object",
+            "properties": {
+              "ephemeral_5m_input_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ephemeral_1h_input_tokens": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "description": "Die beiden TTL-spezifischen Schreibkategorien in cache_creation_input_tokens; getrennte Abrechnung nach tatsächlicher TTL."
+          },
+          "server_tool_use": {
+            "type": "object",
+            "properties": {
+              "web_search_requests": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "description": "Suchnutzung dieser Antwort."
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "WebSearchTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "name"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search_20250305"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "web_search"
+            ]
+          },
+          "max_uses": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximal zulässige Suchvorgänge für diese Antwort."
+          }
+        }
+      },
+      "ServerToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "server_tool_use"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "WebSearchResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search_tool_result"
+            ]
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Suchfehlerobjekt mit type=web_search_tool_result_error."
+              }
+            ]
+          }
+        }
+      },
+      "MessagesTextBlockParam": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "text"
+        ]
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Ungültige Anfrageparameter",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API-Schlüssel fehlt oder ist ungültig",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Ratenlimit überschritten oder Kontingent nicht ausreichend",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Interner Dienstfehler",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Alle APIs erfordern Bearer-Token-Authentifizierung##\n\n**API-Schlüssel erhalten**:\n\nBesuchen Sie die [API-Schlüsselverwaltungsseite](https://evolink.ai/dashboard/keys), um Ihren API-Schlüssel zu erhalten\n\n**Zum Anfrage-Header hinzufügen**:\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic-Messages-kompatible API"
+    }
+  ]
+}
