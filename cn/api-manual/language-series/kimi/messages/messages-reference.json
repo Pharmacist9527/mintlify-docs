@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Kimi K3.1 Pro / Highspeed - Anthropic 兼容接口",
-    "description": "通过 Anthropic Messages 协议调用 Kimi K3.1 Pro / Highspeed，模型 ID 为 `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`。上下文窗口为 1,048,576 tokens，支持多轮对话、流式输出、工具调用、联网搜索、结构化输出和上下文缓存。\n\n两款模型始终开启思考，通过 `output_config.effort` 调节强度，支持 `low` / `high` / `max`，默认 `max`。多轮对话时请保留完整的思考与工具调用历史。",
+    "title": "Kimi 全模型接口 - Messages 完整参数",
+    "description": "通过 Anthropic Messages 协议调用 Kimi 系列文本模型，用 `model` 参数选择 `kimi-k3.1-pro`、`kimi-k3.1-pro-highspeed` 或 `kimi-k3`。上下文窗口均为 1,048,576 tokens，支持多轮对话、流式输出、工具调用、联网搜索和图片输入。\n\n三个模型始终开启思考，通过 `output_config.effort` 调节强度。结构化输出、停用词和缓存写入时长仅 K3.1 系列支持，见 `model` 字段说明。多轮对话时请原样回传完整 assistant 内容块，包括 thinking、signature 与 tool_use。",
     "license": {
       "name": "MIT"
     },
@@ -26,9 +26,9 @@
   "paths": {
     "/v1/messages": {
       "post": {
-        "summary": "Kimi K3.1 Pro / Highspeed Messages 接口",
-        "description": "对外路径 POST /v1/messages。思考档位放在 output_config.effort；顶层 cache_control 控制 5m/1h 写入。完整保留 thinking、signature、tool_use 和服务端搜索结果块。",
-        "operationId": "createMessageKimiK31Pro",
+        "summary": "Kimi Messages 接口（全模型，Anthropic 兼容）",
+        "description": "对外路径 POST /v1/messages。思考档位放在 output_config.effort；顶层 cache_control 控制 5m/1h 写入（仅 K3.1 系列）。完整保留 thinking、signature、tool_use 和服务端搜索结果块。",
+        "operationId": "createMessageKimi",
         "tags": [
           "Messages"
         ],
@@ -72,6 +72,36 @@
                     ]
                   }
                 },
+                "k3": {
+                  "summary": "Kimi K3 最小请求",
+                  "value": {
+                    "model": "kimi-k3",
+                    "max_tokens": 1024,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Reply with OK."
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "system 提示词",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 2048,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "system": "你是一名严谨的中文技术编辑。",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "解释什么是上下文缓存。"
+                      }
+                    ]
+                  }
+                },
                 "streaming": {
                   "summary": "Anthropic SSE 流式输出",
                   "value": {
@@ -89,8 +119,8 @@
                     "stream": true
                   }
                 },
-                "cache_1h": {
-                  "summary": "顶层 1h 缓存",
+                "multimodal": {
+                  "summary": "图片输入",
                   "value": {
                     "model": "kimi-k3.1-pro",
                     "max_tokens": 1024,
@@ -100,12 +130,58 @@
                     "messages": [
                       {
                         "role": "user",
-                        "content": "Reply with OK."
+                        "content": [
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": "/9j/4AAQSkZJRgABAQAA..."
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "text": "请描述这张图片。"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "工具调用",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 2048,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "查询北京今天的天气。"
                       }
                     ],
-                    "cache_control": {
-                      "type": "ephemeral",
-                      "ttl": "1h"
+                    "tools": [
+                      {
+                        "name": "get_weather",
+                        "description": "查询指定城市的天气",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": "string",
+                              "description": "城市名称"
+                            }
+                          },
+                          "required": [
+                            "city"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
                     }
                   }
                 },
@@ -133,7 +209,7 @@
                   }
                 },
                 "structured_output": {
-                  "summary": "严格结构化输出",
+                  "summary": "严格结构化输出（仅 K3.1 系列）",
                   "value": {
                     "model": "kimi-k3.1-pro",
                     "max_tokens": 1024,
@@ -161,6 +237,26 @@
                         "content": "Return a JSON object with result equal to OK."
                       }
                     ]
+                  }
+                },
+                "cache_1h": {
+                  "summary": "顶层 1h 缓存（仅 K3.1 系列）",
+                  "value": {
+                    "model": "kimi-k3.1-pro",
+                    "max_tokens": 1024,
+                    "output_config": {
+                      "effort": "low"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Reply with OK."
+                      }
+                    ],
+                    "cache_control": {
+                      "type": "ephemeral",
+                      "ttl": "1h"
+                    }
                   }
                 }
               }
@@ -214,10 +310,11 @@
             "type": "string",
             "enum": [
               "kimi-k3.1-pro",
-              "kimi-k3.1-pro-highspeed"
+              "kimi-k3.1-pro-highspeed",
+              "kimi-k3"
             ],
             "default": "kimi-k3.1-pro",
-            "description": "使用 `kimi-k3.1-pro` 或 `kimi-k3.1-pro-highspeed`；Highspeed 提供更快的生成速度。"
+            "description": "要调用的模型：\n\n| 模型 ID | 定位 | 思考强度 |\n|---|---|---|\n| `kimi-k3.1-pro` | 最新一代模型（推荐） | `low` / `high` / `max`，默认 `max` |\n| `kimi-k3.1-pro-highspeed` | 与 Pro 参数相同，生成速度更快 | 同 `kimi-k3.1-pro` |\n| `kimi-k3` | 上一代模型 | 仅支持 `max` |\n\n三个模型的上下文窗口均为 1,048,576 tokens，均始终开启思考。\n\n结构化输出（`output_config.format`）、停用词（`stop_sequences`）和缓存写入时长（`cache_control`）仅 K3.1 系列支持，`kimi-k3` 不支持。`kimi-k3` 的响应可能只包含 `text` 块，不返回 `thinking` 块。"
           },
           "max_tokens": {
             "type": "integer",
@@ -275,11 +372,11 @@
               "type": "string"
             },
             "maxItems": 5,
-            "description": "停用词，完全匹配时停止输出，匹配到的词本身不会被输出。最多 5 个，每个不超过 32 字节。"
+            "description": "停用词，完全匹配时停止输出，匹配到的词本身不会被输出。最多 5 个，每个不超过 32 字节。命中时 `stop_reason` 返回 `end_turn`，`stop_sequence` 为 `null`。\n\n仅 `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` 支持，`kimi-k3` 不支持。"
           },
           "cache_control": {
             "type": "object",
-            "description": "仅顶层 cache_control 控制写入 TTL；消息块内的缓存标记不能代替此字段。省略时默认为 5m。",
+            "description": "顶层缓存写入选项，仅 `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` 支持，`kimi-k3` 不支持此参数。只有顶层 cache_control 控制写入 TTL，消息块内的缓存标记不能代替此字段。省略时默认为 5m。",
             "properties": {
               "type": {
                 "type": "string",
@@ -318,11 +415,11 @@
                   "none"
                 ],
                 "default": "max",
-                "description": "思考强度。推荐 low / high / max，默认 max；模型始终思考。兼容通用客户端：medium 按 high，xhigh 按 max，minimal / none 按 low 处理；none 不会关闭思考。提高强度通常增加推理 Token 和延迟，思考 Token 计入输出。"
+                "description": "思考强度。模型始终思考，传入 `thinking.type: \"disabled\"` 也不会关闭思考。\n\n- `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed`：推荐 `low` / `high` / `max`，默认 `max`。兼容通用客户端：`medium` 按 `high`，`xhigh` 按 `max`，`minimal` / `none` 按 `low` 处理；`none` 不会关闭思考。\n- `kimi-k3`：仅支持 `max`（默认）。\n\n提高强度通常增加推理 Token 和延迟，思考 Token 计入输出。"
               },
               "format": {
                 "type": "object",
-                "description": "结构化输出。设置后模型输出严格遵循给定 JSON Schema 的 JSON。",
+                "description": "结构化输出：设置后模型输出严格遵循给定 JSON Schema 的 JSON。仅 `kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` 支持，`kimi-k3` 不支持。如需 `kimi-k3` 输出结构化结果，请使用 Chat Completions 接口的 `response_format`。",
                 "properties": {
                   "type": {
                     "type": "string",
@@ -342,6 +439,16 @@
                 ]
               }
             }
+          },
+          "temperature": {
+            "type": "number",
+            "default": 1,
+            "description": "采样温度，由模型固定为 `1`，无需传入。`kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` 会自动忽略此字段；`kimi-k3` 传入不支持的取值将返回错误。"
+          },
+          "top_p": {
+            "type": "number",
+            "default": 0.95,
+            "description": "核采样阈值，由模型固定为 `0.95`，无需传入。`kimi-k3.1-pro` / `kimi-k3.1-pro-highspeed` 会自动忽略此字段；`kimi-k3` 传入不支持的取值将返回错误。"
           }
         }
       },
@@ -707,7 +814,7 @@
                 "minimum": 0
               }
             },
-            "description": "cache_creation_input_tokens 的两档写入子项，按实际 TTL 分别计费。"
+            "description": "cache_creation_input_tokens 的两档写入子项，K3.1 系列按实际 TTL 分别计费。"
           },
           "server_tool_use": {
             "type": "object",
