@@ -187,12 +187,12 @@ def validate_page(doc, endpoint, error_samples=None):
                 validate_example(doc, media_type['schema'], example['value'], f'{endpoint}/response/{name}')
     if error_samples is not None:
         for status, source_names in ERROR_EXAMPLES.items():
-            examples = op['responses'][status]['content']['application/json'].get('examples', {})
-            if set(examples) != set(source_names):
+            error_examples = op['responses'][status]['content']['application/json'].get('examples', {})
+            if set(error_examples) != set(source_names):
                 raise ValueError(f'{endpoint}/{status}: error examples must match the reviewed sample set')
             for name, source_name in source_names.items():
                 sample = error_samples[source_name]
-                if str(sample['status']) != status or examples[name]['value'] != canonical_error_body(sample):
+                if str(sample['status']) != status or error_examples[name]['value'] != canonical_error_body(sample):
                     raise ValueError(f'{endpoint}/{status}/{name}: error example differs from gateway evidence')
     return [dict(endpoint=endpoint, name=k, body=v['value']) for k, v in examples.items()]
 

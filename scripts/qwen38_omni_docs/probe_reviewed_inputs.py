@@ -81,6 +81,18 @@ def main():
             expected_success = case == 'positive'
             if expected_success:
                 assert result.returncode == 0 and wrote == 42, result.stdout + result.stderr
+                manifest = load(spec_dir/'generation-evidence.json')['examples']
+                expected_examples = []
+                for endpoint in ('chat', 'responses', 'messages'):
+                    doc = load(output/'en/api-manual/language-series/qwen3.8-omni-flash'/
+                               f'qwen3.8-omni-flash-{endpoint}.json')
+                    operation = next(iter(doc['paths'].values()))['post']
+                    examples = operation['requestBody']['content']['application/json']['examples']
+                    expected_examples.extend(dict(endpoint=endpoint, name=name, body=example['value'])
+                                             for name, example in examples.items())
+                assert manifest == expected_examples, 'Backend evidence must contain emitted request bodies'
+                assert len(manifest) == 5 and all(item['body']['model'] == 'qwen3.8-omni-flash'
+                                                 for item in manifest)
             else:
                 assert result.returncode != 0 and wrote == 0, case + ': bad input reached output'
             results.append({'case': case, 'exit': result.returncode, 'files_written': wrote,
