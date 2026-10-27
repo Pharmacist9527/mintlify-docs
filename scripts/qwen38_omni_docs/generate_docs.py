@@ -15,6 +15,8 @@ LOCALES = ('cn', 'de', 'en', 'es', 'fr', 'ja', 'ko')
 MODEL = 'qwen3.8-omni-flash'
 SIBLING = 'qwen3.8-max'
 PATHS = {'chat': '/v1/chat/completions', 'responses': '/v1/responses', 'messages': '/v1/messages'}
+ERROR_EXAMPLES = {'400': {'invalid_output_limit': 'H01', 'invalid_reasoning_effort': 'L00'},
+                  '401': {'invalid_client_key': 'H15', 'upstream_authentication': 'H16'}}
 REQUIRED_FIELDS = {'chat': {'model', 'messages'}, 'responses': {'model', 'input'},
                    'messages': {'model', 'messages', 'max_tokens'}}
 
@@ -141,7 +143,15 @@ def validate_example(doc, schema, value, location):
             raise ValueError(f'{location}: number outside schema range')
 
 
-def validate_page(doc, endpoint):
+def canonical_error_body(sample):
+    body = copy.deepcopy(sample.get('body', sample.get('response')))
+    if not isinstance(body, dict) or not isinstance(body.get('error'), dict):
+        raise ValueError('Gateway sample must contain an error object')
+    body['error']['message'] = re.sub(r'\(request id: [^)]+\)', '(request id: RID)', body['error']['message'])
+    return body
+
+
+def validate_page(doc, endpoint, error_samples=None):
     if set(doc['paths']) != {PATHS[endpoint]}:
         raise ValueError(f'{endpoint}: wrong endpoint path')
     op = doc['paths'][PATHS[endpoint]]['post']
@@ -152,6 +162,10 @@ def validate_page(doc, endpoint):
         raise ValueError(f'{endpoint}: model must be required and fixed to {MODEL}')
     if not REQUIRED_FIELDS[endpoint] <= set(request.get('required', [])):
         raise ValueError(f'{endpoint}: schema omits endpoint-required fields')
+    if endpoint in ('chat', 'messages'):
+        messages = resolve(doc, request['properties']['messages'])
+        if messages.get('type') != 'array' or messages.get('minItems', 0) < 1:
+            raise ValueError(f'{endpoint}: messages schema must require a nonempty array')
     examples = media.get('examples', {})
     if not 1 <= len(examples) <= 2:
         raise ValueError(f'{endpoint}: choose one or two customer request examples')
@@ -159,6 +173,8 @@ def validate_page(doc, endpoint):
         body = example.get('value')
         if not isinstance(body, dict) or body.get('model') != MODEL:
             raise ValueError(f'{endpoint}/{name}: wrong model ID')
+        if endpoint == 'responses' and body.get('input') in ('', []):
+            raise ValueError(f'{endpoint}/{name}: input must be nonempty')
         validate_example(doc, request, body, f'{endpoint}/{name}')
     for value in walk(doc):
         if isinstance(value, str) and re.search(r'qwen[ -]?3[.-]8[ .-]max|qwen-3-8-max', value, re.I):
@@ -169,6 +185,15 @@ def validate_page(doc, endpoint):
         for media_type in response.get('content', {}).values():
             for name, example in media_type.get('examples', {}).items():
                 validate_example(doc, media_type['schema'], example['value'], f'{endpoint}/response/{name}')
+    if error_samples is not None:
+        for status, source_names in ERROR_EXAMPLES.items():
+            examples = op['responses'][status]['content']['application/json'].get('examples', {})
+            if set(examples) != set(source_names):
+                raise ValueError(f'{endpoint}/{status}: error examples must match the reviewed sample set')
+            for name, source_name in source_names.items():
+                sample = error_samples[source_name]
+                if str(sample['status']) != status or examples[name]['value'] != canonical_error_body(sample):
+                    raise ValueError(f'{endpoint}/{status}/{name}: error example differs from gateway evidence')
     return [dict(endpoint=endpoint, name=k, body=v['value']) for k, v in examples.items()]
 
 
@@ -180,10 +205,14 @@ def build(spec_dir, sibling_repo):
     contract_file = Path(contract['path'])
     if not contract_file.is_file() or digest(contract_file) != contract['sha256']:
         raise ValueError('W1 contract is missing or its SHA256 changed; reread it before generating')
+    if contract['version'] >= 2 and 'error_source' not in spec:
+        raise ValueError('v2 requires error_source gateway evidence')
+    error_samples = None
     if 'error_source' in spec:
         source = spec['error_source']
         if not Path(source['path']).is_file() or digest(Path(source['path'])) != source['sha256']:
             raise ValueError('Gateway error evidence changed; reread it before generating')
+        error_samples = load(Path(source['path']))
     if not {'chat', 'responses'} <= set(spec['endpoints']) or set(spec['endpoints']) - set(PATHS):
         raise ValueError('Include chat and responses; only the three known endpoints are allowed')
     dictionaries = {loc: load(spec_dir / 'strings' / f'{loc}.json') for loc in LOCALES}
@@ -207,7 +236,7 @@ def build(spec_dir, sibling_repo):
             sibling_file = sibling_repo / locale / 'api-manual/language-series' / SIBLING / f'{SIBLING}-{endpoint}.json'
             sibling = load(sibling_file)
             doc = render(skeleton, dictionaries[locale], sibling, locale)
-            examples = validate_page(doc, endpoint)
+            examples = validate_page(doc, endpoint, error_samples)
             title = render(entry['title'], dictionaries[locale], sibling, locale)
             note = render(entry['note'], dictionaries[locale], sibling, locale)
             if not isinstance(title, str) or not isinstance(note, str) or SIBLING in title + note:

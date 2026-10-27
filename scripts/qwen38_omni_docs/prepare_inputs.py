@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Build reviewed input skeletons from the localized Max family structure."""
 import argparse
-import copy
 import hashlib
 import json
-import re
 from pathlib import Path
+from generate_docs import ERROR_EXAMPLES, canonical_error_body
 
 HERE = Path(__file__).resolve().parent
 MODEL = 'qwen3.8-omni-flash'
@@ -57,15 +56,20 @@ def main():
     reasoning_labels = {'en': 'Reasoning text returned with the response.', 'cn': '响应返回的思考文本。', 'de': 'Mit der Antwort zurückgegebener Denktext.', 'fr': 'Texte de raisonnement renvoyé avec la réponse.', 'es': 'Texto de razonamiento devuelto con la respuesta.', 'ja': '応答で返される推論テキスト。', 'ko': '응답에 반환된 추론 텍스트입니다.'}
     message_labels = {'en': 'Use Messages for basic text conversations. For images, see Chat documentation; for built-in web search, use Responses.', 'cn': '通过 Messages 进行基本文本对话。图片输入请参照 Chat 文档；内置联网搜索请使用 Responses。', 'de': 'Verwenden Sie Messages für einfache Textgespräche. Für Bilder folgen Sie der Chat-Dokumentation; für integrierte Websuche verwenden Sie Responses.', 'fr': 'Utilisez Messages pour les conversations textuelles de base. Pour les images, consultez Chat ; pour la recherche web intégrée, utilisez Responses.', 'es': 'Use Messages para conversaciones de texto básicas. Para imágenes, consulte Chat; para búsqueda web integrada, use Responses.', 'ja': 'Messages は基本的なテキスト会話に使用します。画像は Chat のドキュメントを参照し、組み込みウェブ検索は Responses を使用してください。', 'ko': 'Messages는 기본 텍스트 대화에 사용합니다. 이미지는 Chat 문서를 참고하고, 내장 웹 검색은 Responses를 사용하세요.'}
     message_billing = {'en': 'Input and output are charged by actual token usage. Cache billing on Messages has not been verified; do not assume a cache discount from this example.', 'cn': '输入与输出按实际 Token 用量计费。Messages 的缓存计费尚未验证，请勿根据此示例假定缓存折扣。', 'de': 'Ein- und Ausgabe werden nach tatsächlichem Tokenverbrauch berechnet. Cache-Abrechnung bei Messages wurde nicht bestätigt; nehmen Sie für dieses Beispiel keinen Cache-Rabatt an.', 'fr': 'L’entrée et la sortie sont facturées selon les tokens réellement consommés. La facturation du cache sur Messages n’est pas vérifiée ; ne supposez pas de remise de cache avec cet exemple.', 'es': 'La entrada y la salida se cobran según los tokens reales. La facturación de caché en Messages no está verificada; no suponga un descuento de caché a partir de este ejemplo.', 'ja': '入出力は実際のトークン使用量で課金されます。Messages のキャッシュ課金は未検証です。この例からキャッシュ割引を想定しないでください。', 'ko': '입력과 출력은 실제 토큰 사용량에 따라 청구됩니다. Messages의 캐시 과금은 검증되지 않았으므로 이 예제에서 캐시 할인을 가정하지 마세요.'}
+    message_list_labels = {'en': 'A nonempty list of user and assistant messages. This reference covers plain text content.', 'cn': '非空的 user/assistant 消息列表；本页仅说明纯文本内容。', 'de': 'Eine nicht leere Liste von user- und assistant-Nachrichten. Diese Referenz behandelt reinen Textinhalt.', 'fr': 'Liste non vide de messages user et assistant. Cette référence couvre uniquement le texte brut.', 'es': 'Lista no vacía de mensajes user y assistant. Esta referencia cubre contenido de texto sin formato.', 'ja': 'user と assistant のメッセージの空でないリスト。本ページではプレーンテキストの内容を説明します。', 'ko': '비어 있지 않은 user 및 assistant 메시지 목록입니다. 이 문서는 일반 텍스트 콘텐츠를 다룹니다.'}
     for locale in LOCALES:
         c = copies['zh' if locale == 'cn' else locale]
         strings = {'title_chat': 'Qwen3.8 Omni Flash · Chat Completions', 'title_responses': 'Qwen3.8 Omni Flash · Responses', 'title_messages': 'Qwen3.8 Omni Flash · Messages',
                    'intro': c['description']+'\n\n'+c['cacheBody']+('\n\n'+c['faq'][2]['answer'] if args.contract_version >= 2 else ''), 'reasoning': c['faq'][1]['answer'], 'search': c['faq'][2]['answer'],
-                   'history': c['contextBody'], 'billing': c['billingNote'],
+                   'history': c['contextBody'],
                    'output_budget': output_labels[locale], 'response_id': id_labels[locale], 'reasoning_output': reasoning_labels[locale],
                    'messages_intro': message_labels[locale], 'messages_note': '<Note>\n'+message_billing[locale]+'\n</Note>\n\n'+price_labels[locale]+': `CNY / 1M tokens`: `input 0.76` · `output 2.57`.\n',
+                   'messages_list': message_list_labels[locale],
                    'note': '<Note>\n'+c['billingNote']+'\n</Note>\n\n'+price_labels[locale]+': '+
                            '`CNY / 1M tokens`: `input 0.76` · `cache_hit 0.10` · `output 2.57`; `web_search CNY 0.0038 / call`.\n'}
+        if not args.messages_evidence:
+            for key in ('title_messages', 'messages_intro', 'messages_note', 'messages_list'):
+                strings.pop(key)
         write(args.output/'strings'/f'{locale}.json', strings)
     endpoints = [('chat','ChatCompletionRequest','/v1/chat/completions'), ('responses','ResponseRequest','/v1/responses')]
     if args.messages_evidence:
@@ -89,6 +93,8 @@ def main():
         request['properties'] = {key: request['properties'][key] for key in keep}
         request['properties']['model']['enum'] = [MODEL]
         request['properties']['model']['example'] = MODEL
+        if endpoint in ('chat', 'messages'):
+            request['properties']['messages']['minItems'] = 1
         media = op['requestBody']['content']['application/json']
         media['examples'] = {key: media['examples'][key] for key in (('basic',) if endpoint == 'messages' else ('basic','multimodal'))}
         if endpoint == 'chat':
@@ -122,6 +128,11 @@ def main():
             schemas['AssistantMessage']['properties']['content'].pop('example', None)
             schemas['AssistantMessage']['properties']['reasoning_content']['description'] = {'$text': 'reasoning_output'}
         elif endpoint == 'responses':
+            for branch in request['properties']['input']['oneOf']:
+                if branch.get('type') == 'string':
+                    branch['minLength'] = 1
+                elif branch.get('type') == 'array':
+                    branch['minItems'] = 1
             request['properties']['reasoning'] = {'type': 'object', 'description': {'$sibling': '/components/schemas/ResponseRequest/properties/reasoning/description'}, 'properties': {'effort': {'type': 'string', 'enum': EFFORTS}}}
             request['properties']['tools']['description'] = {'$text': 'search'}
             schemas['Tool']['properties']['type']['enum'] = ['web_search','function']
@@ -130,6 +141,7 @@ def main():
             schemas['Usage']['properties']['output_tokens_details'] = {'type': 'object', 'properties': {'reasoning_tokens': {'type': 'integer'}}}
             schemas['ResponseObject']['properties']['id']['description'] = {'$text': 'response_id'}
         else:
+            request['properties']['messages']['description'] = {'$text': 'messages_list'}
             request['properties']['max_tokens']['description'] = {'$text': 'output_budget'}
             schemas['InputMessage']['properties']['content'] = {'type': 'string'}
             schemas['OutputContentBlock'] = {'type': 'object', 'properties': {'type': {'type': 'string', 'enum': ['text', 'thinking']}, 'text': {'type': 'string'}, 'thinking': {'type': 'string'}, 'signature': {'type': 'string'}}}
@@ -151,12 +163,11 @@ def main():
                 response['content'] = {'application/json': {'schema': {'$ref': '#/components/schemas/ErrorResponse'}}}
                 if errors and status in ('400', '401'):
                     examples = {}
-                    for key in (('H01', 'L00') if status == '400' else ('H15', 'H16')):
+                    for name, key in ERROR_EXAMPLES[status].items():
                         sample = errors[key]
                         assert str(sample['status']) == status
-                        body = copy.deepcopy(sample.get('body', sample.get('response')))
-                        body['error']['message'] = re.sub(r'\(request id: [^)]+\)', '(request id: RID)', body['error']['message'])
-                        examples[key] = {'value': body}
+                        body = canonical_error_body(sample)
+                        examples[name] = {'value': body}
                     response['content']['application/json']['examples'] = examples
             else:
                 response['content']['application/json'].pop('examples', None)
