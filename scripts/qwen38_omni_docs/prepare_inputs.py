@@ -57,6 +57,15 @@ def main():
     message_labels = {'en': 'Use Messages for basic text conversations. For images, see Chat documentation; for built-in web search, use Responses.', 'cn': '通过 Messages 进行基本文本对话。图片输入请参照 Chat 文档；内置联网搜索请使用 Responses。', 'de': 'Verwenden Sie Messages für einfache Textgespräche. Für Bilder folgen Sie der Chat-Dokumentation; für integrierte Websuche verwenden Sie Responses.', 'fr': 'Utilisez Messages pour les conversations textuelles de base. Pour les images, consultez Chat ; pour la recherche web intégrée, utilisez Responses.', 'es': 'Use Messages para conversaciones de texto básicas. Para imágenes, consulte Chat; para búsqueda web integrada, use Responses.', 'ja': 'Messages は基本的なテキスト会話に使用します。画像は Chat のドキュメントを参照し、組み込みウェブ検索は Responses を使用してください。', 'ko': 'Messages는 기본 텍스트 대화에 사용합니다. 이미지는 Chat 문서를 참고하고, 내장 웹 검색은 Responses를 사용하세요.'}
     message_billing = {'en': 'Input and output are charged by actual token usage. Cache billing on Messages has not been verified; do not assume a cache discount from this example.', 'cn': '输入与输出按实际 Token 用量计费。Messages 的缓存计费尚未验证，请勿根据此示例假定缓存折扣。', 'de': 'Ein- und Ausgabe werden nach tatsächlichem Tokenverbrauch berechnet. Cache-Abrechnung bei Messages wurde nicht bestätigt; nehmen Sie für dieses Beispiel keinen Cache-Rabatt an.', 'fr': 'L’entrée et la sortie sont facturées selon les tokens réellement consommés. La facturation du cache sur Messages n’est pas vérifiée ; ne supposez pas de remise de cache avec cet exemple.', 'es': 'La entrada y la salida se cobran según los tokens reales. La facturación de caché en Messages no está verificada; no suponga un descuento de caché a partir de este ejemplo.', 'ja': '入出力は実際のトークン使用量で課金されます。Messages のキャッシュ課金は未検証です。この例からキャッシュ割引を想定しないでください。', 'ko': '입력과 출력은 실제 토큰 사용량에 따라 청구됩니다. Messages의 캐시 과금은 검증되지 않았으므로 이 예제에서 캐시 할인을 가정하지 마세요.'}
     message_list_labels = {'en': 'A nonempty list of user and assistant messages. This reference covers plain text content.', 'cn': '非空的 user/assistant 消息列表；本页仅说明纯文本内容。', 'de': 'Eine nicht leere Liste von user- und assistant-Nachrichten. Diese Referenz behandelt reinen Textinhalt.', 'fr': 'Liste non vide de messages user et assistant. Cette référence couvre uniquement le texte brut.', 'es': 'Lista no vacía de mensajes user y assistant. Esta referencia cubre contenido de texto sin formato.', 'ja': 'user と assistant のメッセージの空でないリスト。本ページではプレーンテキストの内容を説明します。', 'ko': '비어 있지 않은 user 및 assistant 메시지 목록입니다. 이 문서는 일반 텍스트 콘텐츠를 다룹니다.'}
+    usage_notes = {
+        'en': 'Requests a final usage block. The tested Chat search stream did not include complete usage or an end marker.',
+        'cn': '请求在流末尾附加用量块。已测 Chat 搜索流未返回完整用量或结束标记。',
+        'de': 'Fordert einen abschließenden Nutzungsblock an. Der getestete Chat-Suchstream enthielt weder vollständige Nutzungsdaten noch eine Endmarkierung.',
+        'es': 'Solicita un bloque final de uso. El flujo de búsqueda de Chat probado no incluyó datos de uso completos ni un marcador de finalización.',
+        'fr': 'Demande un bloc final d’utilisation. Le flux de recherche Chat testé ne contenait ni données d’utilisation complètes ni marqueur de fin.',
+        'ja': 'ストリーム末尾の使用量ブロックを要求します。検証した Chat 検索ストリームでは、完全な使用量と終了マーカーが返りませんでした。',
+        'ko': '스트림 끝에 사용량 블록을 요청합니다. 테스트한 Chat 검색 스트림에는 완전한 사용량이나 종료 마커가 없었습니다.',
+    }
     for locale in LOCALES:
         c = copies['zh' if locale == 'cn' else locale]
         strings = {'title_chat': 'Qwen3.8 Omni Flash · Chat Completions', 'title_responses': 'Qwen3.8 Omni Flash · Responses', 'title_messages': 'Qwen3.8 Omni Flash · Messages',
@@ -65,6 +74,7 @@ def main():
                    'output_budget': output_labels[locale], 'response_id': id_labels[locale], 'reasoning_output': reasoning_labels[locale],
                    'messages_intro': message_labels[locale], 'messages_note': '<Note>\n'+message_billing[locale]+'\n</Note>\n\n'+price_labels[locale]+': `CNY / 1M tokens`: `input 0.76` · `output 2.57`.\n',
                    'messages_list': message_list_labels[locale],
+                   'include_usage': usage_notes[locale],
                    'note': '<Note>\n'+c['billingNote']+'\n</Note>\n\n'+price_labels[locale]+': '+
                            '`CNY / 1M tokens`: `input 0.76` · `cache_hit 0.10` · `output 2.57`; `web_search CNY 0.0038 / call`.\n'}
         if not args.messages_evidence:
@@ -98,6 +108,7 @@ def main():
         media = op['requestBody']['content']['application/json']
         media['examples'] = {key: media['examples'][key] for key in (('basic',) if endpoint == 'messages' else ('basic','multimodal'))}
         if endpoint == 'chat':
+            request['properties']['stream_options']['properties']['include_usage']['description'] = {'$text': 'include_usage'}
             request['properties']['max_completion_tokens']['description'] = {'$text': 'output_budget'}
             request['properties']['reasoning_effort'] = {'type': 'string', 'enum': EFFORTS, 'default': 'xhigh', 'description': {'$text': 'reasoning'}}
             request['properties']['preserve_thinking'] = {'type': 'boolean', 'default': True, 'description': {'$text': 'history'}}
