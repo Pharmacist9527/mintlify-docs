@@ -1,0 +1,354 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8 Omni Flash · Responses",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨、テキストモデルの長時間接続サポートがより優れています）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "マルチモーダル主力アドレス（画像入力を含む場合に使用）"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Qwen3.8 Omni Flash · Responses",
+        "description": "EvoLink 経由の Qwen3.8 Omni Flash で、推論強度を調整しながらテキストと画像を分析できます。導入前にリクエスト費用を比較し、Chat Completions または Responses を選択してください。\n\n再利用するプレフィックスが 1024 トークン以上の場合、暗黙的キャッシュが適用されることがあります。ヒットには別料金が適用され、作成料金はありません。ヒットは保証されません。",
+        "operationId": "qwen38OmniFlashResponses",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponseRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "基本呼び出し（文字列入力）",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "input": "What can you do?"
+                  }
+                },
+                "multimodal": {
+                  "summary": "マルチモーダル入力（画像）",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "input": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "input_text",
+                            "text": "Describe this image"
+                          },
+                          {
+                            "type": "input_image",
+                            "image_url": "https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成に成功しました",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証、トークンが無効または期限切れです",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "残高不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエストが頻繁すぎます（レート制限）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##すべての API で Bearer Token 認証が必要です##\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)で API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponseRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "qwen3.8-omni-flash"
+            ],
+            "example": "qwen3.8-omni-flash",
+            "description": "対話モデル名"
+          },
+          "input": {
+            "description": "モデル入力。文字列（プレーンテキスト）を渡すことも、Chat 形式のメッセージ配列を渡すこともできます（マルチモーダル `input_text` / `input_image` に対応）。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputItem"
+                }
+              }
+            ]
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "今回生成する出力内容の最大 token 数（思考を含む）。"
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "思考の制御。",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              }
+            }
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Responses イベントでストリーミング返却するかどうか。",
+            "default": false
+          },
+          "tools": {
+            "type": "array",
+            "description": "Chat は enable_search と search_options.search_strategy=agent を使い、Responses は web_search ツールを使います。検索にはアカウント共有の 15 RPS 上限があり、超過時は検索なしで返る場合があります。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "入力メッセージ項目（Chat 形式）。",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "description": "メッセージのロール"
+          },
+          "content": {
+            "description": "メッセージの内容。プレーンテキストの場合は文字列を渡します；マルチモーダルの場合は内容片配列を渡します。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputContentPart"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "InputContentPart": {
+        "type": "object",
+        "description": "Responses 入力内容片、`type` でタイプを宣言します。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "input_text",
+              "input_image"
+            ],
+            "description": "コンテンツタイプ\n\n- `input_text`：テキスト\n- `input_image`：画像"
+          },
+          "text": {
+            "type": "string",
+            "description": "`type=input_text` のときのテキスト内容"
+          },
+          "image_url": {
+            "type": "string",
+            "description": "`type=input_image` のときの画像 URL、または `data:` で始まる base64 data URL"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "ツール定義。組み込みツールは `type` を宣言するだけで済みます；カスタム function には名前とパラメータ schema を指定する必要があります。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search",
+              "function"
+            ],
+            "description": "ツールタイプ"
+          },
+          "name": {
+            "type": "string",
+            "description": "`type=function` のときの関数名"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "`type=function` のときのパラメータ JSON Schema"
+          }
+        }
+      },
+      "ResponseObject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "今回の応答の一意の ID（有効期間 7 日、`previous_response_id` として使用可能）",
+            "example": "resp_xxxxxxxx"
+          },
+          "object": {
+            "type": "string",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "応答ステータス",
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "example": "qwen3.8-omni-flash"
+          },
+          "output": {
+            "type": "array",
+            "description": "出力項目の配列（`message` / `reasoning` / 組み込みツール呼び出しなどを含む）",
+            "items": {
+              "type": "object"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          },
+          "output_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer"
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,545 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8 Omni Flash · Chat Completions",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐，文本模型长连接支持更好）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "多模态主力地址（含图像 / 音频 / 视频输入时使用）"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Qwen3.8 Omni Flash · Chat Completions",
+        "description": "通过 EvoLink 接入 Qwen3.8 Omni Flash，处理文本与图像分析并调节思考强度。集成前先比较请求费用，再选择 Chat Completions 或 Responses。\n\n可复用前缀至少达到 1024 Token 时可能触发隐式缓存。命中使用独立费率，没有缓存创建费用；不保证每次命中。",
+        "operationId": "qwen38OmniFlashChat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "基础文本对话",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "You are a helpful assistant."
+                      },
+                      {
+                        "role": "user",
+                        "content": "Hello, please introduce yourself"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "多模态输入（图像）",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Describe the content of this image"
+                          },
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "对话生成成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token 无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "余额不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁（限流）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key**：\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加**：\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "对话模型名称",
+            "enum": [
+              "qwen3.8-omni-flash"
+            ],
+            "example": "qwen3.8-omni-flash"
+          },
+          "messages": {
+            "type": "array",
+            "description": "对话消息列表，支持多轮对话。不同角色（system / user / assistant / tool）的消息字段结构不同，请选择对应角色查看。",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/AssistantRequestMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessage"
+                }
+              ]
+            }
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "估算包含 Token 和填入的搜索次数。最终按实际用量与账户费率结算；缓存命中属于总输入的一部分，思考已包含在输出中。"
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "是否以流式方式返回响应。\n\n- `true`：通过 SSE（Server-Sent Events）逐块返回\n- `false`（默认）：一次性返回完整响应",
+            "default": false
+          },
+          "stream_options": {
+            "type": "object",
+            "description": "流式响应选项，仅在 `stream=true` 时有效。",
+            "properties": {
+              "include_usage": {
+                "type": "boolean",
+                "description": "为 `true` 时，在流式结束前额外返回一个仅含 `usage` 的数据块。"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "工具定义列表，用于 Function Calling。每个工具需定义名称、描述与参数 schema。",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default": "xhigh",
+            "description": "Chat 的 reasoning_effort 可选 none、minimal、low、medium、high、xhigh、max，默认 xhigh；不要与 thinking_budget 同传。Responses 使用 reasoning.effort。"
+          },
+          "preserve_thinking": {
+            "type": "boolean",
+            "default": true,
+            "description": "上下文窗口是容量，不是目标输入长度；实际输入限制取决于协议和思考模式。Chat 默认 xhigh，preserve_thinking 默认开启，历史中回传的思考内容计入输入。"
+          },
+          "enable_search": {
+            "type": "boolean",
+            "default": false,
+            "description": "Chat 使用 enable_search，search_options.search_strategy 设为 agent；Responses 使用 web_search 工具。搜索共享账户级 15 RPS 限额，超限请求可能不执行搜索。"
+          },
+          "search_options": {
+            "type": "object",
+            "description": "Chat 使用 enable_search，search_options.search_strategy 设为 agent；Responses 使用 web_search 工具。搜索共享账户级 15 RPS 限额，超限请求可能不执行搜索。",
+            "properties": {
+              "search_strategy": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "SystemMessage": {
+        "type": "object",
+        "title": "System Message",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system"
+            ],
+            "description": "消息角色，固定为 `system`"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "UserMessage": {
+        "type": "object",
+        "title": "User Message",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "消息角色，固定为 `user`"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AssistantRequestMessage": {
+        "type": "object",
+        "title": "Assistant Message",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "description": "消息角色，固定为 `assistant`"
+          },
+          "content": {
+            "type": "string"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "上一轮助手发起的工具调用列表（用于回填 Function Calling 历史）。",
+            "items": {
+              "type": "object"
+            }
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "上下文窗口是容量，不是目标输入长度；实际输入限制取决于协议和思考模式。Chat 默认 xhigh，preserve_thinking 默认开启，历史中回传的思考内容计入输入。"
+          }
+        }
+      },
+      "ToolMessage": {
+        "type": "object",
+        "title": "Tool Message",
+        "required": [
+          "role",
+          "content",
+          "tool_call_id"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "tool"
+            ],
+            "description": "消息角色，固定为 `tool`（工具执行结果）"
+          },
+          "content": {
+            "description": "工具执行结果内容。可为字符串或 content part 数组。",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "对应的工具调用 ID"
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "当 `type=text` 时的文本内容"
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "图片 URL，或 `data:` 开头的 base64 data URL"
+              }
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Function Calling 工具定义。",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "description": "工具类型，固定为 `function`"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "函数名称"
+              },
+              "description": {
+                "type": "string",
+                "description": "函数用途描述"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "函数参数的 JSON Schema"
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "本次对话的唯一标识",
+            "example": "chatcmpl-xxxxxxxx"
+          },
+          "object": {
+            "type": "string",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "创建时间（Unix 秒）",
+            "example": 1735120033
+          },
+          "model": {
+            "type": "string",
+            "example": "qwen3.8-omni-flash"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "停止原因\n\n- `stop`：正常结束\n- `length`：达到 `max_completion_tokens` 上限\n- `tool_calls`：需要调用工具",
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "description": "助手回复消息。",
+        "properties": {
+          "role": {
+            "type": "string",
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "回复正文"
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "思考过程内容（`enable_thinking=true` 时返回）"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "模型发起的工具调用列表",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer"
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object"
+      }
+    }
+  }
+}

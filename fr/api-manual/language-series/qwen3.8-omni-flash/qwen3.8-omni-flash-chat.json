@@ -1,0 +1,545 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8 Omni Flash · Chat Completions",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Environnement de production (recommandé, meilleure prise en charge des connexions longues pour les modèles de texte)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Adresse principale multimodale (à utiliser avec une entrée image / audio / vidéo)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Qwen3.8 Omni Flash · Chat Completions",
+        "description": "Utilisez Qwen3.8 Omni Flash via EvoLink pour analyser textes et images avec un effort de raisonnement réglable. Comparez les coûts et choisissez Chat Completions ou Responses avant l’intégration.\n\nLe cache implicite peut s’appliquer aux préfixes réutilisables d’au moins 1024 tokens. Les accès au cache ont un tarif distinct, sans frais de création. Un accès au cache n’est pas garanti.",
+        "operationId": "qwen38OmniFlashChat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Conversation textuelle de base",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "messages": [
+                      {
+                        "role": "system",
+                        "content": "You are a helpful assistant."
+                      },
+                      {
+                        "role": "user",
+                        "content": "Hello, please introduce yourself"
+                      }
+                    ]
+                  }
+                },
+                "multimodal": {
+                  "summary": "Entrée multimodale (image)",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Describe the content of this image"
+                          },
+                          {
+                            "type": "image_url",
+                            "image_url": {
+                              "url": "https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Génération de la conversation réussie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètres de requête invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié, jeton invalide ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Solde insuffisant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Requêtes trop fréquentes (limitation de débit)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur interne du serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Toutes les API nécessitent une authentification Bearer Token##\n\n**Obtenir une clé API** :\n\nVisitez la [Page de gestion des clés API](https://evolink.ai/dashboard/keys) pour obtenir votre clé API\n\n**Ajouter à l'en-tête de requête** :\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Nom du modèle de conversation",
+            "enum": [
+              "qwen3.8-omni-flash"
+            ],
+            "example": "qwen3.8-omni-flash"
+          },
+          "messages": {
+            "type": "array",
+            "description": "Liste des messages de conversation, prend en charge la conversation multi-tour. Les champs de message diffèrent selon le rôle (system / user / assistant / tool), veuillez sélectionner le rôle correspondant pour les consulter.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/AssistantRequestMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessage"
+                }
+              ]
+            }
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "L’estimation inclut les tokens et le nombre de recherches saisi. La facturation suit la consommation réelle et les tarifs du compte ; le cache fait partie de l’entrée et le raisonnement de la sortie."
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Renvoyer ou non la réponse en streaming.\n\n- `true` : retour bloc par bloc via SSE (Server-Sent Events)\n- `false` (par défaut) : renvoie la réponse complète en une seule fois",
+            "default": false
+          },
+          "stream_options": {
+            "type": "object",
+            "description": "Options de réponse en streaming, valides uniquement lorsque `stream=true`.",
+            "properties": {
+              "include_usage": {
+                "type": "boolean",
+                "description": "Lorsque `true`, renvoie un bloc de données supplémentaire contenant uniquement `usage` avant la fin du flux."
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Liste de définitions d'outils, utilisée pour Function Calling. Chaque outil doit définir un nom, une description et un schéma de paramètres.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default": "xhigh",
+            "description": "Chat reasoning_effort accepte none, minimal, low, medium, high, xhigh et max, avec xhigh par défaut. Ne le combinez pas avec thinking_budget. Responses utilise reasoning.effort."
+          },
+          "preserve_thinking": {
+            "type": "boolean",
+            "default": true,
+            "description": "La fenêtre de contexte est une capacité, pas une taille d’entrée à atteindre. Les limites dépendent du protocole et du mode de raisonnement. Chat utilise xhigh par défaut ; preserve_thinking est activé par défaut et le raisonnement renvoyé dans l’historique compte comme entrée."
+          },
+          "enable_search": {
+            "type": "boolean",
+            "default": false,
+            "description": "Chat utilise enable_search avec search_options.search_strategy=agent. Responses utilise un outil web_search. La recherche partage une limite de compte de 15 RPS ; au-delà, une réponse peut arriver sans recherche."
+          },
+          "search_options": {
+            "type": "object",
+            "description": "Chat utilise enable_search avec search_options.search_strategy=agent. Responses utilise un outil web_search. La recherche partage une limite de compte de 15 RPS ; au-delà, une réponse peut arriver sans recherche.",
+            "properties": {
+              "search_strategy": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "SystemMessage": {
+        "type": "object",
+        "title": "System Message",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system"
+            ],
+            "description": "Rôle du message, fixé à `system`"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "UserMessage": {
+        "type": "object",
+        "title": "User Message",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "Rôle du message, fixé à `user`"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AssistantRequestMessage": {
+        "type": "object",
+        "title": "Assistant Message",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ],
+            "description": "Rôle du message, fixé à `assistant`"
+          },
+          "content": {
+            "type": "string"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Liste des appels d'outils initiés par l'assistant au tour précédent (pour reconstituer l'historique de Function Calling).",
+            "items": {
+              "type": "object"
+            }
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "La fenêtre de contexte est une capacité, pas une taille d’entrée à atteindre. Les limites dépendent du protocole et du mode de raisonnement. Chat utilise xhigh par défaut ; preserve_thinking est activé par défaut et le raisonnement renvoyé dans l’historique compte comme entrée."
+          }
+        }
+      },
+      "ToolMessage": {
+        "type": "object",
+        "title": "Tool Message",
+        "required": [
+          "role",
+          "content",
+          "tool_call_id"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "tool"
+            ],
+            "description": "Rôle du message, fixé à `tool` (résultat d'exécution de l'outil)"
+          },
+          "content": {
+            "description": "Contenu du résultat d'exécution de l'outil. Peut être une chaîne ou un tableau de content part.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentPart"
+                }
+              }
+            ]
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "ID de l'appel d'outil correspondant"
+          }
+        }
+      },
+      "ContentPart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image_url"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenu textuel lorsque `type=text`"
+          },
+          "image_url": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL de l'image, ou data URL base64 commençant par `data:`"
+              }
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Définition d'outil Function Calling.",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "description": "Type d'outil, fixé à `function`"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Nom de la fonction"
+              },
+              "description": {
+                "type": "string",
+                "description": "Description de l'usage de la fonction"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "JSON Schema des paramètres de la fonction"
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifiant unique de cette conversation",
+            "example": "chatcmpl-xxxxxxxx"
+          },
+          "object": {
+            "type": "string",
+            "example": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Heure de création (secondes Unix)",
+            "example": 1735120033
+          },
+          "model": {
+            "type": "string",
+            "example": "qwen3.8-omni-flash"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          "finish_reason": {
+            "type": "string",
+            "description": "Raison de l'arrêt\n\n- `stop` : fin normale\n- `length` : limite `max_completion_tokens` atteinte\n- `tool_calls` : appel d'outil nécessaire",
+            "example": "stop"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "description": "Message de réponse de l'assistant.",
+        "properties": {
+          "role": {
+            "type": "string",
+            "example": "assistant"
+          },
+          "content": {
+            "type": "string",
+            "description": "Corps de la réponse"
+          },
+          "reasoning_content": {
+            "type": "string",
+            "description": "Contenu du processus de réflexion (renvoyé lorsque `enable_thinking=true`)"
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "Liste des appels d'outils initiés par le modèle",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          },
+          "prompt_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer"
+              }
+            }
+          },
+          "completion_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object"
+      }
+    }
+  }
+}

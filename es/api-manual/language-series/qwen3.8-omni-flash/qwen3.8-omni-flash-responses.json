@@ -1,0 +1,354 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Qwen3.8 Omni Flash · Responses",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Producción (recomendado, mejor soporte de conexiones persistentes para modelos de texto)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Dirección principal multimodal (úsala cuando incluyas entrada de imagen)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/responses": {
+      "post": {
+        "summary": "Qwen3.8 Omni Flash · Responses",
+        "description": "Use Qwen3.8 Omni Flash mediante EvoLink para analizar texto e imágenes con razonamiento configurable. Compare costes y elija Chat Completions o Responses antes de integrarlo.\n\nLa caché implícita puede aplicarse a prefijos reutilizables de al menos 1024 tokens. Los aciertos tienen una tarifa separada, sin coste de creación. No se garantiza un acierto.",
+        "operationId": "qwen38OmniFlashResponses",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponseRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Llamada básica (entrada de cadena)",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "input": "What can you do?"
+                  }
+                },
+                "multimodal": {
+                  "summary": "Entrada multimodal (imagen)",
+                  "value": {
+                    "model": "qwen3.8-omni-flash",
+                    "input": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "input_text",
+                            "text": "Describe this image"
+                          },
+                          {
+                            "type": "input_image",
+                            "image_url": "https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generado correctamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de solicitud no válidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autenticado, token no válido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Saldo insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas solicitudes (límite de tasa)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##Todas las API requieren autenticación con Bearer Token##\n\n**Obtener la API Key:**\n\nVisita la [página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener tu API Key\n\n**Añadir al encabezado de la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    },
+    "schemas": {
+      "ResponseRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "qwen3.8-omni-flash"
+            ],
+            "example": "qwen3.8-omni-flash",
+            "description": "Nombre del modelo de chat"
+          },
+          "input": {
+            "description": "Entrada del modelo. Acepta una cadena (texto plano) o un array de mensajes en formato Chat (admite multimodal `input_text` / `input_image`).",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputItem"
+                }
+              }
+            ]
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "description": "Número máximo de tokens del contenido de salida de esta generación (incluye pensamiento)."
+          },
+          "reasoning": {
+            "type": "object",
+            "description": "Control del pensamiento.",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              }
+            }
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Indica si se devuelve en streaming como eventos de Responses.",
+            "default": false
+          },
+          "tools": {
+            "type": "array",
+            "description": "Chat usa enable_search con search_options.search_strategy=agent. Responses usa una herramienta web_search. La búsqueda comparte un límite de cuenta de 15 RPS; al superarlo puede responder sin buscar.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          }
+        }
+      },
+      "InputItem": {
+        "type": "object",
+        "description": "Elemento de mensaje de entrada (formato Chat).",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "description": "Rol del mensaje"
+          },
+          "content": {
+            "description": "Contenido del mensaje. Usa una cadena para texto plano; usa un array de fragmentos de contenido para multimodal.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InputContentPart"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "InputContentPart": {
+        "type": "object",
+        "description": "Fragmento de contenido de entrada de Responses; declara el tipo mediante `type`.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "input_text",
+              "input_image"
+            ],
+            "description": "Tipo de contenido\n\n- `input_text`: texto\n- `input_image`: imagen"
+          },
+          "text": {
+            "type": "string",
+            "description": "Contenido de texto cuando `type=input_text`"
+          },
+          "image_url": {
+            "type": "string",
+            "description": "URL de la imagen cuando `type=input_image`, o un data URL base64 que empiece por `data:`"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Definición de herramienta. Las herramientas integradas solo necesitan declarar `type`; las function personalizadas requieren un nombre y un schema de parámetros.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web_search",
+              "function"
+            ],
+            "description": "Tipo de herramienta"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre de la función cuando `type=function`"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "JSON Schema de los parámetros cuando `type=function`"
+          }
+        }
+      },
+      "ResponseObject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único de esta respuesta (válido durante 7 días, puede usarse como `previous_response_id`)",
+            "example": "resp_xxxxxxxx"
+          },
+          "object": {
+            "type": "string",
+            "example": "response"
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la respuesta",
+            "example": "completed"
+          },
+          "model": {
+            "type": "string",
+            "example": "qwen3.8-omni-flash"
+          },
+          "output": {
+            "type": "array",
+            "description": "Array de elementos de salida (incluye `message` / `reasoning` / llamadas a herramientas integradas, etc.)",
+            "items": {
+              "type": "object"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          },
+          "output_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer"
+              }
+            }
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object"
+      }
+    }
+  }
+}
