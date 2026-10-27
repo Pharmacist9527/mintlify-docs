@@ -3,6 +3,7 @@
 import hashlib
 import copy
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -28,7 +29,7 @@ def run(arguments, reason=None):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='generator-fixture-', dir=HERE) as temporary:
+    with tempfile.TemporaryDirectory(prefix='generator-fixture-', dir=os.environ.get('QWEN_DOCS_PROBE_TMPDIR')) as temporary:
         root = Path(temporary)
         spec_dir, sibling, output = root/'input', root/'sibling', root/'output'
         contract = root/'contract.md'
