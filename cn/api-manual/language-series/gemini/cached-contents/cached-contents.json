@@ -1,0 +1,1313 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gemini 显式上下文缓存（cachedContents）",
+    "description": "把反复使用的长前缀（长文档、系统指令、工具定义）一次上传成缓存，后续生成请求只带缓存名和新问题；缓存部分按「缓存命中」单价计费。接口与 Google 原生 cachedContents 同形。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "生产环境（推荐）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "备用地址"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "显式上下文缓存",
+      "description": "创建、查询、延长、删除 Gemini 显式缓存"
+    }
+  ],
+  "paths": {
+    "/v1beta/cachedContents": {
+      "post": {
+        "summary": "创建缓存",
+        "operationId": "geminiCreateCachedContent",
+        "tags": [
+          "显式上下文缓存"
+        ],
+        "description": "把 `contents`（可带 `systemInstruction` / `tools` / `toolConfig`）上传为一份缓存，返回缓存名 `name`。\n\n- **模型**：`model` 写 `models/gemini-3.8-flash` 或 `gemini-3.8-flash` 都可以。当前支持 `gemini-3.8-flash`；Gemini 4 系（`gemini-4-argon`）不支持显式缓存（Google 限制），其它模型陆续开放。\n- **有效期**：`ttl` 形如 `\"3600s\"`（整数秒 + `s`），或 `expireTime`（RFC 3339 时间）；两个都不填默认 1 小时。最短 60 秒，最长 168 小时（`604800s`）。到期自动删除。\n- **大小**：请求体不超过 10 MB。上游要求缓存内容不少于 4,096 token（`gemini-3.8-flash` 实测），不足会返回 400。\n- **tools**：只接受 `googleSearch`、`codeExecution`、`functionDeclarations`，其它工具返回 400。\n- **返回的 `name`**：形如 `cachedContents/<id>`，`<id>` 就是本次请求的请求号。在控制台「日志」页按这个 id 搜索，就能看到创建缓存那笔扣费。\n- **计费**：创建时收「缓存写入费」，并按请求的有效期一次性预收「缓存存储费」。缩短、删除、到期都不退存储费；只延长时补收差额。详见「创建缓存」页面下方的计费说明。\n\n认证通过 `Authorization: Bearer`，也接受 `x-goog-api-key` 请求头。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCachedContentRequest"
+              },
+              "examples": {
+                "long_document": {
+                  "summary": "缓存一份长文档 + 系统指令，有效期 1 小时",
+                  "value": {
+                    "model": "models/gemini-3.8-flash",
+                    "displayName": "product-manual-v3",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "你是产品手册助手，只依据给定的手册内容回答，手册里没有的信息回答“手册未提及”。"
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "（这里放产品手册全文。缓存内容需不少于 4,096 token。）"
+                          }
+                        ]
+                      }
+                    ],
+                    "ttl": "3600s"
+                  }
+                },
+                "with_tools": {
+                  "summary": "缓存系统指令 + 函数定义，用绝对到期时间",
+                  "value": {
+                    "model": "gemini-3.8-flash",
+                    "displayName": "support-agent-tools",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "（这里放很长的客服规范，需不少于 4,096 token。）"
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "（历史工单样例……）"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "functionDeclarations": [
+                          {
+                            "name": "lookup_order",
+                            "description": "按订单号查询订单状态",
+                            "parameters": {
+                              "type": "object",
+                              "properties": {
+                                "order_id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "order_id"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "缓存已创建。`usageMetadata.totalTokenCount` 是缓存的 token 数，写入费与存储费都按它计算",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误；模型不支持显式缓存；当前套餐没有可用线路；上游拒绝（例如内容不足最小 token 数）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "ttl must not exceed 604800s (168h)",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key 无效或缺失",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "余额不足以预付写入费和存储费",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage prepayment",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "显式缓存功能未开放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体超过 10 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "cache content exceeds 10485760 bytes; use Cloud Storage fileUri for larger content",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CONTENT_TOO_LARGE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游服务异常",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "查询缓存列表",
+        "operationId": "geminiListCachedContents",
+        "tags": [
+          "显式上下文缓存"
+        ],
+        "description": "列出当前账号下所有**未过期**的缓存（按账号归属，不区分 Key）。已过期、已删除的不在列表里。免费。",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "每页条数，默认 50，最大 200。",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "description": "上一页响应里的 `nextPageToken`；第一页不填。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "缓存列表。还有下一页时带 `nextPageToken`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCachedContentsResponse"
+                },
+                "example": {
+                  "cachedContents": [
+                    {
+                      "name": "cachedContents/20261103012026348092000s1oTuB96",
+                      "model": "models/gemini-3.8-flash",
+                      "displayName": "product-manual-v3",
+                      "createTime": "2026-11-03T01:20:27.311Z",
+                      "updateTime": "2026-11-03T01:20:27.311Z",
+                      "expireTime": "2026-11-03T02:20:26.902Z",
+                      "usageMetadata": {
+                        "totalTokenCount": 7525
+                      }
+                    }
+                  ],
+                  "nextPageToken": "50"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pageToken 不合法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "invalid pageToken",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key 无效或缺失",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "显式缓存功能未开放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1beta/cachedContents/{id}": {
+      "get": {
+        "summary": "查询单个缓存",
+        "operationId": "geminiGetCachedContent",
+        "tags": [
+          "显式上下文缓存"
+        ],
+        "description": "返回缓存的元数据（模型、token 数、创建 / 更新 / 到期时间）。不返回缓存内容本身。已过期的缓存与不存在一样返回 404。免费。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "缓存 id：创建接口返回的 `name` 去掉 `cachedContents/` 前缀后的部分。例如 `name` 为 `cachedContents/20261103012026348092000s1oTuB96`，这里填 `20261103012026348092000s1oTuB96`。",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "缓存元数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key 无效或缺失",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "缓存不存在、已过期、已删除或不属于当前账号；或显式缓存功能未开放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "延长或缩短有效期",
+        "operationId": "geminiUpdateCachedContent",
+        "tags": [
+          "显式上下文缓存"
+        ],
+        "description": "只能改有效期，不能改内容。请求体给 `ttl`（从**现在**起算的新有效期，如 `\"7200s\"`）或 `expireTime`（新的绝对到期时间）之一。\n\n- 新到期时间距现在最短 60 秒、最长 168 小时。\n- **延长**：按新增的时长补收存储费。**缩短**：不退已收的存储费。\n- 这是付费操作：Key 需要有该模型的使用权限，余额不足返回 402。\n- 同一条延长请求重试时可带 `Idempotency-Key` 请求头，避免重复扣费。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "缓存 id：创建接口返回的 `name` 去掉 `cachedContents/` 前缀后的部分。例如 `name` 为 `cachedContents/20261103012026348092000s1oTuB96`，这里填 `20261103012026348092000s1oTuB96`。",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCachedContentRequest"
+              },
+              "examples": {
+                "extend_by_ttl": {
+                  "summary": "从现在起再保留 2 小时",
+                  "value": {
+                    "ttl": "7200s"
+                  }
+                },
+                "set_expire_time": {
+                  "summary": "改成固定到期时间",
+                  "value": {
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的缓存元数据，`expireTime` 为新的到期时间",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:35:10.020Z",
+                  "expireTime": "2026-11-03T03:35:10.000Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "没有给 ttl / expireTime；新到期时间超出范围；缓存在处理途中刚好过期（CACHE_EXPIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "new expiry must be at least 60s in the future",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key 无效或缺失",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "余额不足以补收延长部分的存储费",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage extension",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "缓存不存在、已过期、已删除或不属于当前账号；或显式缓存功能未开放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游服务异常，本次未扣费",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "缓存所在线路暂不可用且自动迁移未成功，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "删除缓存",
+        "operationId": "geminiDeleteCachedContent",
+        "tags": [
+          "显式上下文缓存"
+        ],
+        "description": "立即删除缓存。删除后再引用该缓存名返回 404。已预收的存储费不退；不需要再用时删除可以避免 Google 侧继续占用，但不会产生退款。免费。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "缓存 id：创建接口返回的 `name` 去掉 `cachedContents/` 前缀后的部分。例如 `name` 为 `cachedContents/20261103012026348092000s1oTuB96`，这里填 `20261103012026348092000s1oTuB96`。",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已删除，返回空对象",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "API Key 无效或缺失",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "缓存不存在、已过期、已删除或不属于当前账号；或显式缓存功能未开放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "缓存所在线路暂不可用且自动迁移未成功，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n也接受 Google 原生写法：请求头 `x-goog-api-key: YOUR_API_KEY`，或 URL 参数 `?key=YOUR_API_KEY`。"
+      }
+    },
+    "schemas": {
+      "Part": {
+        "type": "object",
+        "description": "内容片段：文本、内联数据（base64）或文件引用，三选一",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "文本"
+          },
+          "inlineData": {
+            "type": "object",
+            "description": "内联二进制数据（图片 / 音频 / PDF 等）",
+            "properties": {
+              "mimeType": {
+                "type": "string",
+                "example": "application/pdf"
+              },
+              "data": {
+                "type": "string",
+                "description": "base64 编码的数据"
+              }
+            }
+          },
+          "fileData": {
+            "type": "object",
+            "description": "文件引用",
+            "properties": {
+              "mimeType": {
+                "type": "string"
+              },
+              "fileUri": {
+                "type": "string",
+                "description": "公网可访问的 URL"
+              }
+            }
+          }
+        }
+      },
+      "Content": {
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "description": "角色；系统指令不需要填"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "工具声明。只接受下面三种，其它工具会被拒绝",
+        "properties": {
+          "googleSearch": {
+            "type": "object",
+            "description": "联网搜索，填 `{}`"
+          },
+          "codeExecution": {
+            "type": "object",
+            "description": "代码执行，填 `{}`"
+          },
+          "functionDeclarations": {
+            "type": "array",
+            "description": "函数调用声明（OpenAPI 子集的参数结构）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateCachedContentRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "contents"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "模型，`models/gemini-3.8-flash` 或 `gemini-3.8-flash`。当前支持 `gemini-3.8-flash`",
+            "example": "models/gemini-3.8-flash"
+          },
+          "contents": {
+            "type": "array",
+            "description": "要缓存的对话内容，不能为空。引用缓存时这些内容会作为对话前缀",
+            "items": {
+              "$ref": "#/components/schemas/Content"
+            }
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "系统指令。写进缓存后，引用缓存的生成请求里不能再带 systemInstruction"
+          },
+          "tools": {
+            "type": "array",
+            "description": "工具声明。写进缓存后，引用缓存的生成请求里不能再带 tools",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "工具调用配置（如 functionCallingConfig）。写进缓存后，引用缓存的生成请求里不能再带 toolConfig"
+          },
+          "ttl": {
+            "type": "string",
+            "description": "有效期，整数秒 + `s`，如 `\"3600s\"`。最短 `60s`，最长 `604800s`（168 小时）。与 expireTime 二选一，都不填默认 `3600s`",
+            "example": "3600s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "绝对到期时间（RFC 3339，UTC），与 ttl 二选一；ttl 优先",
+            "example": "2026-11-03T06:00:00Z"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "给自己看的名字，最长 255 个字符，不参与路由与计费",
+            "example": "product-manual-v3"
+          }
+        }
+      },
+      "UpdateCachedContentRequest": {
+        "type": "object",
+        "description": "ttl 与 expireTime 二选一，至少给一个",
+        "properties": {
+          "ttl": {
+            "type": "string",
+            "description": "从现在起的新有效期，如 `\"7200s\"`。最短 `60s`，最长 `604800s`",
+            "example": "7200s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "新的绝对到期时间（RFC 3339，UTC）",
+            "example": "2026-11-03T06:00:00Z"
+          }
+        }
+      },
+      "CachedContent": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "缓存名，形如 `cachedContents/<id>`。生成请求的 `cachedContent` 字段填它；`<id>` 同时是创建请求的请求号",
+            "example": "cachedContents/20261103012026348092000s1oTuB96"
+          },
+          "model": {
+            "type": "string",
+            "description": "缓存绑定的模型，引用时生成请求的模型必须与之一致",
+            "example": "models/gemini-3.8-flash"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "创建时给的名字，没给则不返回"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间（UTC）"
+          },
+          "updateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最近一次更新时间（UTC）"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "到期时间（UTC），到期后自动删除"
+          },
+          "usageMetadata": {
+            "type": "object",
+            "properties": {
+              "totalTokenCount": {
+                "type": "integer",
+                "description": "缓存的 token 总数，写入费、存储费、命中费都按它算",
+                "example": 7525
+              }
+            }
+          }
+        }
+      },
+      "ListCachedContentsResponse": {
+        "type": "object",
+        "properties": {
+          "cachedContents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CachedContent"
+            }
+          },
+          "nextPageToken": {
+            "type": "string",
+            "description": "还有下一页时返回，原样放到下一次请求的 `pageToken`"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Google 原生错误格式。`error.details[0].reason` 是 EvoLink 的原因码，见「创建缓存」页面的错误码表",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 状态码"
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "description": "Google 风格状态枚举，如 INVALID_ARGUMENT / NOT_FOUND / UNAVAILABLE"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "@type": {
+                      "type": "string",
+                      "example": "type.googleapis.com/google.rpc.ErrorInfo"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "example": "CACHE_NOT_FOUND"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "example": "evolink.ai"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

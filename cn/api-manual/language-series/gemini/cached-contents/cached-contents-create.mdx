@@ -1,0 +1,163 @@
+---
+title: "Gemini 显式上下文缓存 - 创建缓存"
+openapi: '/cn/api-manual/language-series/gemini/cached-contents/cached-contents.json POST /v1beta/cachedContents'
+---
+
+<Note>
+**BaseURL 说明**：默认 BaseURL 为 `https://direct.evolink.ai`，对文本模型支持更好、支持长连接；`https://api.evolink.ai` 为备用地址。认证用 `Authorization: Bearer YOUR_API_KEY`，也接受 Google 原生的 `x-goog-api-key` 请求头。
+</Note>
+
+## 什么是显式上下文缓存
+
+同一份长前缀（产品手册、代码库、系统指令、工具定义）要被很多次请求反复用到时，可以先把它上传成一份**缓存**，之后每次请求只带缓存名和新问题。缓存部分按「缓存命中」单价计费，远低于普通输入价；代价是缓存存在期间按小时收存储费。
+
+| | 隐式缓存（默认） | 显式缓存（本页） |
+|---|---|---|
+| 怎么触发 | 自动。连续请求前缀相同时由 Google 判断是否命中 | 你主动创建，引用时必定命中 |
+| 命中是否可控 | 不可控，与流量、间隔有关 | 可控 |
+| 存储费 | 无 | 有，按 token 数 × 小时收，创建时按有效期一次预收 |
+| 适合 | 零改造 | 同一长前缀短时间内被大量调用 |
+
+当前支持 `gemini-3.8-flash`。Gemini 4 系（`gemini-4-argon`）不支持显式缓存（Google 限制），请求会返回 400 `EXPLICIT_CACHE_UNSUPPORTED`。
+
+## 使用流程
+
+1. **创建**：`POST /v1beta/cachedContents`，把长前缀作为 `contents`（可带 `systemInstruction`、`tools`、`toolConfig`）上传，拿到 `name`。
+2. **引用**：生成请求 `POST /v1beta/models/gemini-3.8-flash:generateContent`（流式用 `streamGenerateContent`）的请求体加一个字段 `"cachedContent": "<name>"`，`contents` 里只放新问题。
+3. **延长**（可选）：快到期但还要用，`PATCH /v1beta/cachedContents/{id}` 给新的 `ttl` 或 `expireTime`，补收新增时长的存储费。
+4. **删除**（可选）：不再用时 `DELETE /v1beta/cachedContents/{id}`。不删也会到期自动清掉，存储费不退。
+
+缓存归属**账号**，同账号的任何 Key 都能引用（Key 如果设了模型白名单，需包含该模型）。别的账号拿到缓存名也用不了，返回 404。
+
+## 在生成请求里引用缓存
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-3.8-flash:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cachedContent": "cachedContents/20261103012026348092000s1oTuB96",
+    "contents": [
+      { "role": "user", "parts": [{ "text": "手册里退货政策是怎么规定的？" }] }
+    ]
+  }'
+```
+
+响应里 `usageMetadata.cachedContentTokenCount` 就是这次命中缓存的 token 数，按缓存命中价计费；`promptTokenCount` 包含它，剩余部分按普通输入价。
+
+```json
+{
+  "candidates": [
+    { "content": { "role": "model", "parts": [{ "text": "手册第 7 章规定……" }] }, "finishReason": "STOP" }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 7541,
+    "cachedContentTokenCount": 7525,
+    "candidatesTokenCount": 212,
+    "totalTokenCount": 7753
+  },
+  "modelVersion": "gemini-3.8-flash"
+}
+```
+
+<Warning>
+引用缓存的生成请求里**不能再带** `systemInstruction`、`tools`、`toolConfig`，它们必须在创建缓存时写进去（Google 限制，带了上游会拒绝）。生成请求的模型必须与缓存的模型一致，否则返回 400 `CACHE_MODEL_MISMATCH`。
+</Warning>
+
+## 完整示例（Python）
+
+```python
+import requests
+
+BASE = "https://direct.evolink.ai"
+HEADERS = {"Authorization": "Bearer YOUR_API_KEY", "Content-Type": "application/json"}
+
+# 1. 创建缓存：长文档 + 系统指令，保留 1 小时
+manual = open("manual.txt", encoding="utf-8").read()   # 需不少于 4,096 token
+cache = requests.post(f"{BASE}/v1beta/cachedContents", headers=HEADERS, json={
+    "model": "models/gemini-3.8-flash",
+    "displayName": "product-manual-v3",
+    "systemInstruction": {"parts": [{"text": "你是产品手册助手，只依据手册内容回答。"}]},
+    "contents": [{"role": "user", "parts": [{"text": manual}]}],
+    "ttl": "3600s",
+}).json()
+name = cache["name"]            # cachedContents/<id>
+cache_id = name.split("/")[-1]  # <id>
+print("cached tokens:", cache["usageMetadata"]["totalTokenCount"], "expire:", cache["expireTime"])
+
+# 2. 多次引用：每次只发新问题
+for question in ["退货政策是什么？", "保修期多久？", "海外能不能寄修？"]:
+    resp = requests.post(f"{BASE}/v1beta/models/gemini-3.8-flash:generateContent", headers=HEADERS, json={
+        "cachedContent": name,
+        "contents": [{"role": "user", "parts": [{"text": question}]}],
+    }).json()
+    print(resp["candidates"][0]["content"]["parts"][0]["text"])
+    print("cache hit tokens:", resp["usageMetadata"].get("cachedContentTokenCount", 0))
+
+# 3. 还要用一会儿：从现在起再保留 2 小时（补收新增时长的存储费）
+requests.patch(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS, json={"ttl": "7200s"})
+
+# 4. 用完删除（存储费不退，但不再占用）
+requests.delete(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS)
+```
+
+## 计费
+
+| 动作 | 费用 |
+|---|---|
+| 创建缓存 | 缓存 token 数 × 缓存写入单价 + 缓存 token 数 × 有效期（小时，按秒折算）× 缓存存储单价（每百万 token 每小时）。存储费在创建时按整个有效期一次预收 |
+| 引用缓存生成 | `cachedContentTokenCount` 按缓存命中单价；其余输入、思考、输出按常规单价 |
+| 延长有效期 | 只补收新增时长的存储费 |
+| 缩短有效期 / 删除 / 到期 | 已预收的存储费不退 |
+| 查询列表 / 查询单个 | 免费 |
+
+- 创建成功后，缓存 token 数以响应的 `usageMetadata.totalTokenCount` 为准（上游实际计数），预扣会按它结算。
+- 缓存名里的 `<id>` 就是创建请求的请求号：在控制台「日志」页按它搜索，能看到创建和每次延长的扣费记录，明细里有缓存 token 数、存储秒数与存储费。
+- 各模型的缓存写入、缓存命中、缓存存储单价见 [价格页](https://evolink.ai/pricing)。
+- 怎么判断划不划算：存储按小时收，命中按次省。同一前缀在有效期内被调用的次数越多越划算；只调用一两次，直接发原文更便宜。
+
+## 限制
+
+- 有效期：最短 60 秒，最长 168 小时；不填默认 1 小时。
+- 大小：单次创建请求体不超过 10 MB；上游要求缓存内容不少于 4,096 token（`gemini-3.8-flash` 实测），不足返回 400。
+- `tools` 只接受 `googleSearch`、`codeExecution`、`functionDeclarations`。
+- 缓存内容不可修改，只能改有效期；要换内容请重新创建。
+- 创建缓存的请求与普通生成请求一样受 Key 的 IP 白名单、模型白名单和频率限制约束。
+
+## 自动迁移
+
+缓存实际存放在 Google 侧的某个项目里。如果该项目临时不可用，网关会用保留的内容副本在另一个项目重建这份缓存，缓存名不变、到期时间不变、不另收费；重建期间那一次请求会慢一些（最多约 1 分钟），流式请求在这段时间不会吐出任何内容。重建失败时返回 503 `CACHE_CHANNEL_UNAVAILABLE`，稍后重试即可。副本只用于迁移，到期后自动删除。
+
+## 错误码
+
+错误一律是 Google 原生格式，`error.details[0].reason` 是 EvoLink 的原因码：
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "cached content not found",
+    "status": "NOT_FOUND",
+    "details": [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "CACHE_NOT_FOUND", "domain": "evolink.ai" }]
+  }
+}
+```
+
+| HTTP | reason | 含义 |
+|---|---|---|
+| 400 | `INVALID_ARGUMENT` | 参数错误：`contents` 为空、`ttl` 超出 60 秒 ～ 168 小时、`tools` 不在白名单、PATCH 没给 `ttl` / `expireTime` 等 |
+| 400 | `EXPLICIT_CACHE_UNSUPPORTED` | 该模型不支持显式缓存（Gemini 4 系、图像模型） |
+| 400 | `NO_AVAILABLE_CHANNEL` | 当前套餐 / 用户组没有可创建缓存的线路 |
+| 400 | `MODEL_PRICE_ERROR` | 该模型尚未开放显式缓存 |
+| 400 | `CACHE_EXPIRED` | 缓存在处理途中刚好过期，或剩余不足 60 秒、来不及迁移 |
+| 400 | `CACHE_MODEL_MISMATCH` | 生成请求的模型与缓存绑定的模型不一致 |
+| 400 | `INVALID_CACHED_CONTENT` | `cachedContent` 格式不对 |
+| 4xx | `UPSTREAM_ERROR` | 上游拒绝，`message` 为上游原文，常见是缓存内容不足最小 token 数 |
+| 402 | `INSUFFICIENT_QUOTA` | 余额不足以预付写入费 / 存储费 |
+| 403 | — | Key 无权使用该模型，或来源 IP 不在 Key 的白名单 |
+| 404 | `CACHE_NOT_FOUND` | 缓存不存在、已过期、已删除或不属于本账号（与 Google 口径一致） |
+| 404 | `EXPLICIT_CACHE_DISABLED` | 显式缓存功能未开放 |
+| 413 | `CACHE_CONTENT_TOO_LARGE` | 请求体超过 10 MB |
+| 502 | `UPSTREAM_ERROR` | 上游不可达 |
+| 503 | `CACHE_CHANNEL_UNAVAILABLE` | 缓存所在线路不可用且自动迁移失败，稍后重试 |
+| 503 | `INTERNAL` | 服务暂时不可用，稍后重试 |
