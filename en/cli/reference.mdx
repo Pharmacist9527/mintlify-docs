@@ -59,11 +59,12 @@ evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --jso
 |---|---|
 | --model | Required canonical ID or supported alias |
 | --input-file FILE / --input JSON | JSON object, choose one; omission starts with an empty object |
+| --inputs-file FILE | JSON array or JSONL of 1–50 inputs for one model, instead of one input; one quote covers the batch |
 | --prompt TEXT | Prompt shortcut; cannot conflict with JSON prompt |
 | --max-cost-usd NUMBER | Positive submission estimate cap, at most USD10000 |
 | --media-seconds NUMBER | Positive pricing hint up to 3600 seconds, not a model input |
 
-A successful quote returns quote_id, lasts about **30 minutes**, and binds login, backend, model and exact inputs. Failed/cap-refused estimates are not usable quotes. Show specifications, range and warnings, wait for explicit approval, then select the matching command:
+A successful quote returns quote_id, is current for up to **24 hours**, and binds login, backend, model and exact inputs. Generation reads the pricing rules again before submitting: an expired quote whose input and price are unchanged is submitted under its approval (`approval_expired`), and a changed price fails with `price_changed` and needs a new quote and approval. Failed/cap-refused estimates are not usable quotes. Show specifications, range and warnings, wait for explicit approval, then select the matching command:
 
 ```bash
 evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
@@ -72,6 +73,16 @@ evolink generate audio --quote QUOTE_ID --confirm --json
 ```
 
 These are separate examples; one quote covers one type/task. Generation accepts no replacement model/input. Requote and approve changes. --confirm declares approval was obtained; it cannot ask the user by itself.
+
+A quote from `--inputs-file` covers the whole batch: `generate --quote QUOTE_ID --confirm` submits every input at once (up to 10 at a time) and returns each input's task ID or error without waiting; `--wait` is for one task. Collect the results with `tasks batch --ids`.
+
+Only when the user explicitly said not to estimate or confirm:
+
+```bash
+evolink generate image --model MODEL_ID --input-file input.json --skip-estimate --json
+```
+
+`--skip-estimate` submits without a quote, also with `--inputs-file`: the price is not checked, the task is charged by actual usage, and the result says so (`estimate_skipped`). Invalid input and an explicit `--max-cost-usd` are still refused; it cannot be combined with `--quote` or `--confirm`. The command saves a record with its own request ID and returns a quote_id for `tasks resume`.
 
 --wait waits for the existing task. Timeout 1–86400 seconds, default 1800. Timeout/Ctrl-C does not cancel the server task. The timeout covers every read, retry and pause; at the limit, `wait_timeout` reports the last verified status and its `read_at`, or `status_check: unverified` when the latest status could not be read. Complete estimates default to their quoted maximum for submission checks. See [budget limitations](/en/cli/billing).
 
@@ -95,7 +106,7 @@ evolink tasks resume --quote QUOTE_ID --json
 
 Time filtering affects only the selected page. History covers the account, not just this chat. An empty page cannot prove submission was absent; total precedes local time filtering. Batch IDs are 1–50 comma-separated values.
 
-With a task ID, use get/wait. For a lost submit response, resume the original quote with its request ID and login. If records are lost, expired or the account changed, inspect history/console before another paid intent. CLI has no cancellation command.
+With a task ID, use get/wait. For a lost submit response, resume the original quote with its request ID and login. For a batch, `tasks resume --quote QUOTE_ID` finishes the inputs that were not submitted; accepted inputs return their original tasks without a new charge. `tasks resume` replays the request ID only within 23 hours of its first submission (EvoLink keeps it for 24 hours); after that it refuses with `recovery_window_passed`, and you check recent tasks instead. If records are lost, expired or the account changed, inspect history/console before another paid intent. CLI has no cancellation command.
 
 ### Balance and task usage
 

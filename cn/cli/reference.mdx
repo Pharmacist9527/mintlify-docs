@@ -59,11 +59,12 @@ evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --jso
 |---|---|
 | --model | 必填，规范 ID 或支持的别名 |
 | --input-file FILE / --input JSON | JSON 对象，二选一；省略从空对象开始 |
+| --inputs-file FILE | 同一模型 1–50 个输入的 JSON 数组或 JSONL，代替单个输入；一个报价覆盖这一批 |
 | --prompt TEXT | 补充提示词，不可与 JSON 的不同 prompt 冲突 |
 | --max-cost-usd NUMBER | 大于 0、不超过 10000 美元的提交估价上限 |
 | --media-seconds NUMBER | 大于 0、不超过 3600 秒的计费提示，不改变模型输入 |
 
-成功报价返回 `quote_id`，有效约 **30 分钟**，绑定登录、后端、模型与原始输入。失败或预算拒绝的估价不是可提交报价。展示规格、费用范围和警告，等明确批准后按对应类型运行：
+成功报价返回 `quote_id`，最多 **24 小时**内有效，绑定登录、后端、模型与原始输入。生成前会再读一次价格规则：报价过期但输入和价格都没变时，按原批准提交（`approval_expired`）；价格变了会报 `price_changed`，要重新报价、重新确认。失败或预算拒绝的估价不是可提交报价。展示规格、费用范围和警告，等明确批准后按对应类型运行：
 
 ```bash
 evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
@@ -72,6 +73,16 @@ evolink generate audio --quote QUOTE_ID --confirm --json
 ```
 
 以上为独立示例，一个报价只对应一种类型和一个任务。生成不接收新模型/输入；变化后重新报价与确认。`--confirm` 声明已经取得批准，不能替代询问用户。
+
+用 `--inputs-file` 得到的报价覆盖整批：`generate --quote QUOTE_ID --confirm` 一次提交所有输入（同时最多 10 个），不等出图，马上返回每个输入的任务编号或错误；`--wait` 只用于单个任务。结果用 `tasks batch --ids` 收。
+
+只在用户明确说不用估价、不用确认时：
+
+```bash
+evolink generate image --model MODEL_ID --input-file input.json --skip-estimate --json
+```
+
+`--skip-estimate` 不报价，直接提交，也可以和 `--inputs-file` 一起用：不核对价格，按实际用量计费，结果里会说明（`estimate_skipped`）。输入不合法、用户明确给的 `--max-cost-usd` 仍会拦下；不能和 `--quote`、`--confirm` 一起用。命令会保存一条带自己请求编号的记录，并返回 quote_id，供 `tasks resume` 使用。
 
 `--wait` 等结果，timeout 为 1–86400 秒、默认 1800。超时/Ctrl-C 不取消服务端任务。timeout 覆盖每次读取、重试和暂停；到时返回 `wait_timeout`，带上次核实的状态和 `read_at`；读不到最新状态时为 `status_check: unverified`。完整估价默认使用报价最大值做提交检查；预算局限见[费用与授权](/cn/cli/billing)。
 
@@ -95,7 +106,7 @@ evolink tasks resume --quote QUOTE_ID --json
 
 时间过滤只作用于当前取得的页；历史覆盖整个账户，不限于聊天。空页不能证明提交不存在，total 是服务端筛选后、时间过滤前数量。批量 ID 为 1–50 个，逗号分隔。
 
-已有 ID 继续 get/wait；提交响应丢失用原报价 resume，保留原请求 ID 和登录。报价文件丢失、过期或换账户后先核查历史/控制台，不盲目创建新请求。CLI 无取消命令。
+已有 ID 继续 get/wait；提交响应丢失用原报价 resume，保留原请求 ID 和登录。整批提交时，`tasks resume --quote QUOTE_ID` 会补交没提交成功的输入；已经成功的输入返回原来的任务，不会重复扣费。`tasks resume` 只在第一次提交后 23 小时内重放请求编号（EvoLink 保留 24 小时）；超过后会报 `recovery_window_passed`，这时改为查看最近的任务。报价文件丢失、过期或换账户后先核查历史/控制台，不盲目创建新请求。CLI 无取消命令。
 
 ### 余额与任务用量
 

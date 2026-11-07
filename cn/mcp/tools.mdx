@@ -89,6 +89,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 |---|---|---|---|
 | model | string | 是 | 1–128 字符 |
 | input | object | 否 | 计划提交的模型参数，省略为空对象 |
+| inputs | object[] | 否 | 同一模型的 1–50 个输入，代替 input，顺序就是提交顺序 |
 | media_seconds | number | 否 | 大于 0、不超过 3600，仅估价用 |
 
 ```json
@@ -96,6 +97,8 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 ```
 
 返回 input_valid、problems、warnings、estimate、pricing_scope、final_budget_enforced，以及能读取时的余额/额度。estimate.status 可为 estimated、partial、token_billed、needs_input、no_price；token_billed 带参考价，按实际 token 结算。见[费用说明](/cn/mcp/billing)。查询成功不等于输入有效或报价完整。
+
+可以确认的估价还会返回 `pricing_quote`，也就是这次输入的批准凭证。用户批准后，把它和同样的输入一起传给生成工具。凭证 24 小时内有效（`expires_at`）；过期以后，只要输入和价格都没变，仍按原来的批准提交，生成结果里会说明。输入或价格变了，要重新估价、重新确认。传 `inputs` 时，结果列出每个输入的估价和总价，一个 `pricing_quote` 只批准这几个输入，并且按这个顺序。它不能批准单个输入，单个输入的 `pricing_quote` 也不能批准一整批。
 
 该工具没有 `max_cost_usd`，也不会返回 CLI 本地报价编号。MCP 预算放在生成工具。media_seconds 不改变输出时长，不补全未知参考视频倍率。
 
@@ -124,20 +127,34 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 |---|---|---|---|
 | model | string | 是 | 1–128 字符，对应媒体类型 |
 | input | object | 否 | 按 get_model 的模型参数填，不放 model/callback_url |
+| inputs | object[] | 否 | 同一模型的 1–50 个输入，代替 input，一次调用提交；见[整批提交](#batches) |
 | prompt | string | 否 | input.prompt 的快捷方式，最多 20000 字符，仍受模型限制 |
-| client_request_id | string | 否 | 16–96 字符，字母数字及 . _ -；同一请求恢复时复用 |
+| client_request_id | string | 否 | 16–96 字符，字母数字及 . _ -；同一请求恢复时复用；用 inputs 时最多 93 字符，因为每一项会加上 .NN |
+| pricing_quote | object | 否 | estimate_cost 返回的批准凭证，只对应这次的输入或这一批；提交前按当前规则再核对 |
 | max_cost_usd | number | 否 | 大于 0、不超过 10000；仅提交前估价检查 |
 | media_seconds | number | 否 | 大于 0、不超过 3600；仅估价提示 |
+| wait_seconds | integer | 否 | 0–40；提交后等结果的秒数。图片默认 40，视频和音频默认 0；0 表示提交后马上返回 task_id。整批只能用 0 |
+| skip_estimate | boolean | 否 | 只在用户明确说不用估价、不用确认时使用：不估价，直接提交。见[不估价直接生成](#skip-estimate) |
 
-先查模型/参数、估价、展示限制并等待明确批准，再调用。以下只是调用形状：
+先查模型/参数、估价、展示限制并等待明确批准，再调用；用户明确说不用估价时除外（见下文）。以下只是调用形状：
 
 ```json
 {"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
 ```
 
-图片最多等待约 40 秒，完成则返回结果，否则给 task_id；视频/音频提交后返回 task_id，继续 get_task。提交可能包含预扣信息，完成后的实际扣费单独确认。
+图片最多等待约 40 秒，完成则返回结果，否则给 task_id；视频/音频提交后返回 task_id，继续 get_task。`wait_seconds` 可以改这三个工具的等待时间。提交可能包含预扣信息，完成后的实际扣费单独确认。
 
 任务还在运行时只查询，不能再调用生成工具“查看进度”。响应丢失时保留原 ID、账户、输入和请求编号；更换编号会创建新的付费意图。客户端重试保护不等于所有生产节点已实现相同后端幂等保证。
+
+<span id="skip-estimate" />
+
+**不估价直接生成。** 用户明确说不用估价或不用确认（例如“直接生成”“以后都直接生成”）时，助手跳过 `estimate_cost` 和确认，传 `skip_estimate: true`。范围按用户说的来：这一个任务、这一批，或这次对话后面的所有生成。助手不能从沉默、余额或自己的建议推断用户同意。用户说这次对话后面都不用估价时，助手要明确提醒一次：后面的生成会直接提交、不再询问；想恢复估价，可以新开一个对话，或直接说“恢复估价”。价格算不出来或报价变了，也照样提交，结果里会写明（`estimate_skipped`、`estimate_skip_reason`），按实际用量计费。输入不合法、用户明确给的 `max_cost_usd` 仍会拦下；开启模型联网搜索或图片搜索仍要用户同意。用户没说不用估价、而估价失败或给不出总价时，助手先问一句：要不要按实际用量直接生成。
+
+<span id="batches" />
+
+**整批提交。** 同一个模型要生成多个任务时，先把 `inputs`（1–50 项，每项和 `input` 一样）传给 `estimate_cost`，再连同返回的 `pricing_quote` 传给生成工具：一次估价，按总价确认一次，一次调用提交所有项（同时最多 10 个），并马上返回每一项的 `task_id` 或错误，不等出图。只要有一项输入不合法，就一项都不提交。`max_cost_usd` 管整批的总价；`media_seconds` 和 `pricing_parameters` 用于每一项。结果用 `list_tasks` 收（`task_ids`，每次最多 50 个）。不同模型的任务，每个任务调用一次，传 `wait_seconds: 0`。不要靠 `n` 凑张数：GPT Image 等模型常常返回比 `n` 少的图片，所以每张图用一项。
+
+调用开始 25 秒后不再开始新的提交；已经开始的提交不会被打断，没来得及开始的项会列为未提交。要补交时，在 24 小时内用同一个 `client_request_id` 和完全相同的 `inputs` 再调用一次：结果里列为要补交的项会提交，已经成功的项返回原来的任务，不会重复扣费。结果未知的项，稍后用同样的方式重试，或用 `list_tasks` 查。已成功、未提交、结果未知的项，都不能换新的 `client_request_id` 重新提交，那样会创建新任务并另外扣费。某一项的输入和这个 `client_request_id` 之前提交的不一样时，会被拒绝（`idempotency_conflict`）；它算新任务，要重新估价、重新确认，并用新的 `client_request_id`。
 
 ### get_task
 
