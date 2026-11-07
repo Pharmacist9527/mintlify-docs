@@ -22,7 +22,7 @@
             "post": {
                 "summary": "Fetch or read word-level lyrics timestamps for one song",
                 "operationId": "getSunoLyricsTimestamps",
-                "description": "Unreleased draft. This endpoint is under development and validation. Examples do not establish production availability. Final pricing, access scope, and release date will be announced after confirmation.\n\nSubmitting the same source_task_id + result_id again under the same account reads the latest operation state or saved result. Changing an API key or Idempotency-Key does not create another purchase. The API key must remain valid and authorized. During the supported retention period, saved purchased results can be read for free, including when the account balance is zero. A successful alignment that meets the delivery criteria is charged once per song after it is saved. Definite failures, instrumental songs, and unusable alignment results are not charged; reserved funds are returned. The initial release does not deliver partial or invalid lyric alignment; it returns alignment_unavailable without a charge.\n\nUse [Task Details](/en/api-manual/task-management/get-task-detail): source_task_id is the EvoLink music generation task id; result_id is the selected song's result_id in result_data. Different songs returned by one generation are processed separately. You do not need to generate the song again.\n\nThe first retrieval requires the source song to remain accessible through its original generation account. Existing songs can be requested, but access is not guaranteed for every historical song or for songs older than 14 days. Generated-file retention does not establish a timestamp lookup lifetime. Instrumental songs have no lyrics to align. Missing words, repeated choruses, and changes in the vocal performance can affect timing; review the audio before exporting a finished video.\n\nAfter a 202 response, wait for Retry-After and submit the same source_task_id and result_id to this endpoint again. Processing and reconciliation do not automatically submit another upstream request. The same two IDs can recover the operation even if the first HTTP response was lost. GET /v1/tasks/{id} reads the music generation task, not this timestamp operation.\n\nupstream_unknown means that the first request outcome is still being reconciled; it is not a confirmed failure. The operation is resolved within a bounded reconciliation window. If the outcome cannot be confirmed, reserved funds are returned and the terminal record is retained. Ordinary repeated requests do not create another purchase; changing Idempotency-Key does not authorize another charge.\n\nThe body must be one JSON object containing only source_task_id and result_id, with no extra fields or trailing JSON. The full request body is limited to 4096 bytes. Both IDs must be non-empty and have no leading or trailing whitespace; source_task_id is limited to 50 UTF-8 bytes and result_id to 128 UTF-8 bytes.\n\nA 202 response has one of preparing, calling, upstream_unknown, awaiting_settlement, or refund_pending and Retry-After: 2. Submit the same two IDs to read its latest state. completed returns 200 with words; failed and unknown_refunded return 422 with error. Every operation response includes operation_id, source_task_id, result_id, cached, and billing_status. The fund state is not_charged, reserved, refunded, or paid; use billing_status to determine whether funds were held, charged, or returned. Errors before an operation exists contain error only.",
+                "description": "Unreleased draft. This endpoint is under development and validation. Examples do not establish production availability. Final pricing, access scope, and release date will be announced after confirmation.\n\nSubmitting the same source_task_id + result_id again under the same account reads the latest operation state or saved result. Changing an API key or Idempotency-Key does not create another purchase. The API key must remain valid and authorized. During the supported retention period, saved purchased results can be read for free, including when the account balance is zero. A successful alignment that meets the delivery criteria is charged once per song after it is saved. Definite failures, instrumental songs, and unusable alignment results are not charged; reserved funds are returned. The initial release does not deliver partial or invalid lyric alignment; it returns alignment_unavailable without a charge.\n\nUse [Task Details](/en/api-manual/task-management/get-task-detail): source_task_id is the EvoLink music generation task id; result_id is the selected song's result_id in result_data. Different songs returned by one generation are processed separately. You do not need to generate the song again.\n\nThe first retrieval requires the source song to remain accessible through its original generation account. Existing songs can be requested, but access is not guaranteed for every historical song or for songs older than 14 days. Generated-file retention does not establish a timestamp lookup lifetime. Instrumental songs have no lyrics to align. Missing words, repeated choruses, and changes in the vocal performance can affect timing; review the audio before exporting a finished video.\n\nAfter a 202 response, wait for Retry-After and submit the same source_task_id and result_id to this endpoint again. Processing and reconciliation do not automatically submit another upstream request. The same two IDs can recover the operation even if the first HTTP response was lost. GET /v1/tasks/{id} reads the music generation task, not this timestamp operation.\n\nupstream_unknown means that the first request outcome is still being reconciled; it is not a confirmed failure. The operation is resolved within a bounded reconciliation window. If the outcome cannot be confirmed, reserved funds are returned and the terminal record is retained. Ordinary repeated requests do not create another purchase; changing Idempotency-Key does not authorize another charge.\n\nThe body must be one JSON object containing only source_task_id and result_id, with no extra fields or trailing JSON. The full request body is limited to 4096 bytes. Both IDs must be non-empty and have no leading or trailing whitespace; source_task_id is limited to 50 UTF-8 bytes and result_id to 128 UTF-8 bytes.\n\nA 202 response has one of preparing, calling, upstream_unknown, awaiting_settlement, or refund_pending and Retry-After: 2. Submit the same two IDs to read its latest state. completed returns 200 with words; failed and unknown_refunded return 422 with error. Every operation response includes operation_id, source_task_id, result_id, cached, and billing_status. The fund state is not_charged, reserved, refunded, or paid; use billing_status to determine whether funds were held, charged, or returned. Errors before an operation exists contain error only.\n\nThis beta only supports completed songs created with custom_mode=true and custom lyrics that were supplied and retained at creation time. Automatic-lyrics mode and songs without the original retained custom lyrics are not supported. The first retrieval must verify the original generation account, the selected song, and a valid audio duration before starting a paid alignment request. If the lyric reference is unavailable, the request returns 422/source_lyrics_unavailable; if the duration cannot be verified, it returns 503/source_metadata_unavailable. Both rejections happen before the paid alignment request and are not charged.\n\nBefore a result is charged and delivered, every lyric fragment must have valid timing within the verified source duration, and the returned lyric text must cover all of the retained custom lyrics in order. Differences in token boundaries, whitespace, and punctuation are tolerated. Section labels can be preserved in words; they are not treated as missing sung lyrics. Missing words, extra words, partial coverage, or malformed timing cause alignment_unavailable and return reserved funds. This check compares returned text with the retained lyrics; it does not establish that every timestamp matches the vocal performance. Real V6 alignment quality still requires listening tests.",
                 "tags": [
                     "Suno"
                 ],
@@ -112,7 +112,7 @@
                         }
                     },
                     "422": {
-                        "description": "The operation ended without delivered timestamps (failed or unknown_refunded), or the source is instrumental. Terminal operation responses include billing_status, which may be not_charged or refunded. Repeating the same request reads the terminal result and does not start another purchase.",
+                        "description": "The source has no usable retained custom lyrics, is instrumental, or the operation ended without delivered timestamps (failed or unknown_refunded). Terminal operation responses include billing_status, which may be not_charged or refunded. Repeating the same request reads the terminal result and does not start another purchase.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -146,6 +146,15 @@
                                             "error": {
                                                 "code": "no_lyrics",
                                                 "message": "Instrumental songs have no lyric timestamps.",
+                                                "type": "invalid_request_error"
+                                            }
+                                        }
+                                    },
+                                    "source_lyrics_unavailable": {
+                                        "value": {
+                                            "error": {
+                                                "code": "source_lyrics_unavailable",
+                                                "message": "This beta requires the original saved lyrics to verify alignment coverage.",
                                                 "type": "invalid_request_error"
                                             }
                                         }
@@ -215,11 +224,18 @@
                         }
                     },
                     "503": {
-                        "description": "New retrieval is unavailable, the original account cannot be verified, pricing is unavailable, or a temporary service error occurred.",
+                        "description": "New retrieval is unavailable, the original account or valid source duration cannot be verified, pricing is unavailable, or a temporary service error occurred.",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "source_metadata_unavailable",
+                                        "message": "The source audio duration could not be verified.",
+                                        "type": "invalid_request_error"
+                                    }
                                 }
                             }
                         }
@@ -297,7 +313,8 @@
                         "minItems": 1,
                         "items": {
                             "$ref": "#/components/schemas/AlignedWord"
-                        }
+                        },
+                        "description": "Before a result is charged and delivered, every lyric fragment must have valid timing within the verified source duration, and the returned lyric text must cover all of the retained custom lyrics in order. Differences in token boundaries, whitespace, and punctuation are tolerated. Section labels can be preserved in words; they are not treated as missing sung lyrics. Missing words, extra words, partial coverage, or malformed timing cause alignment_unavailable and return reserved funds. This check compares returned text with the retained lyrics; it does not establish that every timestamp matches the vocal performance. Real V6 alignment quality still requires listening tests."
                     },
                     "billing_status": {
                         "$ref": "#/components/schemas/BillingStatus"
@@ -454,7 +471,7 @@
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "Stable error code. Common values include invalid_request, model_not_allowed, model_endpoint_mismatch, source_not_found, unsupported_source, source_not_completed, no_lyrics, source_account_unavailable, pricing_unavailable, timestamps_unavailable, insufficient_quota, upstream_failed, alignment_unavailable, and upstream_outcome_unknown."
+                        "description": "Stable error code. Common values include invalid_request, model_not_allowed, model_endpoint_mismatch, source_not_found, unsupported_source, source_not_completed, no_lyrics, source_account_unavailable, pricing_unavailable, timestamps_unavailable, insufficient_quota, upstream_failed, alignment_unavailable, upstream_outcome_unknown, source_lyrics_unavailable, source_metadata_unavailable, and permission_denied."
                     },
                     "message": {
                         "type": "string"
