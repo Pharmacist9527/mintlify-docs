@@ -1,0 +1,469 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Suno 逐词歌词时间戳（Beta 草稿）",
+        "description": "未发布草稿。此接口正在开发与验收，示例不可视为线上可用性承诺。正式价格、开放范围和发布日期将在确认后公布。\n\n为已完成且属于当前账户的 Suno 歌曲获取逐词起止时间，适用于播放器高亮和歌词视频。本接口返回逐词数据，不提供独立的逐行时间戳。",
+        "version": "0.1.0-draft"
+    },
+    "x-draft": true,
+    "servers": [
+        {
+            "url": "https://api.evolink.ai",
+            "description": "未发布草稿。此接口正在开发与验收，示例不可视为线上可用性承诺。正式价格、开放范围和发布日期将在确认后公布。"
+        }
+    ],
+    "security": [
+        {
+            "bearerAuth": []
+        }
+    ],
+    "paths": {
+        "/v1/audios/lyrics/timestamps": {
+            "post": {
+                "summary": "获取或读取一首歌曲的逐词歌词时间戳",
+                "operationId": "getSunoLyricsTimestamps",
+                "description": "未发布草稿。此接口正在开发与验收，示例不可视为线上可用性承诺。正式价格、开放范围和发布日期将在确认后公布。\n\n同一账户对同一 source_task_id + result_id 重复提交，读取已有操作的最新状态或已保存结果，不会因为更换 API Key 或 Idempotency-Key 再次购买。API Key 必须仍有效且有权限。完成结果可在支持的保留期限内免费复读，余额为零也可读取已购结果。首次成功取得并保存符合交付标准的对齐数据后按单首歌曲收费；明确失败、纯音乐或无可用对齐数据不收费，已冻结费用退还。首版不交付部分或无效的歌词对齐，返回alignment_unavailable且不收费。\n\n由 [任务详情](/cn/api-manual/task-management/get-task-detail) 获取：source_task_id 使用 EvoLink 音乐生成任务的 id；result_id 使用该任务 result_data 中所选歌曲的 result_id。同一次生成返回的不同歌曲分别处理，不需要重新生成歌曲。\n\n首次获取要求源歌曲仍可由原生成账号查询。已生成歌曲可以尝试，但不保证所有历史歌曲或超过14天的歌曲可取回；生成文件的保留期不等于时间戳可查询期限。纯音乐没有可对齐歌词。时间戳可能受漏词、重复副歌和演唱变化影响，制作成片前应核对音频。\n\n收到202后，按Retry-After等待，再使用相同source_task_id和result_id提交到本接口。处理中或结果核对中不会自动重新发起上游请求。即使首次HTTP响应丢失，也可以用相同两个ID找回操作。普通GET /v1/tasks/{id}查询的是音乐生成任务，不查询这个时间戳操作。\n\nupstream_unknown表示首次请求的结果仍在核对，不代表已经明确失败。服务会在有限核对窗口内收口；无法确认结果时退还冻结费用，并保留终态。普通重复提交不会重新购买；不要通过更换Idempotency-Key尝试再次收费。\n\n请求体必须是只包含source_task_id和result_id的单个JSON对象，不接受额外字段或尾随JSON；总大小最多4096字节。两个ID均不能为空或带前后空白；source_task_id最多50个UTF-8字节，result_id最多128个UTF-8字节。\n\n202响应的status为preparing、calling、upstream_unknown、awaiting_settlement或refund_pending，并返回Retry-After: 2；使用相同两个ID复查最新状态。completed返回200和words；failed、unknown_refunded返回422和error。每个操作响应均包含operation_id、source_task_id、result_id、cached、billing_status。资金状态为not_charged、reserved、refunded或paid，应以billing_status判断是否已冻结、扣费或退还。操作尚未建立时的错误响应只包含error。",
+                "tags": [
+                    "Suno"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TimestampRequest"
+                            },
+                            "example": {
+                                "source_task_id": "task-unified-example",
+                                "result_id": "song-example"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "对齐已完成并保存；cached=true表示读取已有结果，本次不收费。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CompletedResponse"
+                                },
+                                "example": {
+                                    "operation_id": "lyrics-operation-example",
+                                    "status": "completed",
+                                    "source_task_id": "task-unified-example",
+                                    "result_id": "song-example",
+                                    "cached": false,
+                                    "words": [
+                                        {
+                                            "text": "Hello ",
+                                            "start": 1.2,
+                                            "end": 1.6,
+                                            "aligned": true
+                                        },
+                                        {
+                                            "text": "again",
+                                            "start": 1.7,
+                                            "end": 2.1,
+                                            "aligned": true
+                                        }
+                                    ],
+                                    "billing_status": "paid"
+                                }
+                            }
+                        }
+                    },
+                    "202": {
+                        "description": "操作尚未完成或结果正在核对。等待Retry-After后以相同两个ID复查。",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "再次查询同一操作前需等待的秒数。",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                "example": 2
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PendingResponse"
+                                },
+                                "example": {
+                                    "operation_id": "lyrics-operation-example",
+                                    "status": "upstream_unknown",
+                                    "source_task_id": "task-unified-example",
+                                    "result_id": "song-example",
+                                    "cached": true,
+                                    "billing_status": "reserved"
+                                }
+                            }
+                        }
+                    },
+                    "default": {
+                        "description": "参数、权限、源歌曲状态、支持范围、额度、对齐可用性或服务错误。返回稳定error.code；如有未完成的操作，继续用相同两个ID复查，不创建新的购买。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "操作已终止且未交付时间戳（failed或unknown_refunded），或源歌曲是纯音乐。操作终态响应包含billing_status，可能为not_charged或refunded。重复相同请求只读取终态，不会再次购买。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "$ref": "#/components/schemas/FailedOperationResponse"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/ErrorResponse"
+                                        }
+                                    ]
+                                },
+                                "examples": {
+                                    "unknown_refunded": {
+                                        "value": {
+                                            "operation_id": "lyrics-operation-example",
+                                            "status": "unknown_refunded",
+                                            "source_task_id": "task-unified-example",
+                                            "result_id": "song-example",
+                                            "cached": true,
+                                            "billing_status": "refunded",
+                                            "error": {
+                                                "code": "upstream_outcome_unknown",
+                                                "message": "Upstream outcome could not be confirmed; reservation refunded; no automatic retry",
+                                                "type": "api_error"
+                                            }
+                                        }
+                                    },
+                                    "no_lyrics": {
+                                        "value": {
+                                            "error": {
+                                                "code": "no_lyrics",
+                                                "message": "Instrumental songs have no lyric timestamps.",
+                                                "type": "invalid_request_error"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "请求体、ID、支持的源歌曲或端点不合法。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "API Key缺失、无效或已过期。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "API Key无访问权限或不能开始新的付费请求。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "未找到属于当前账户的源任务或所选歌曲。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "源音乐生成任务尚未完成。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "请求频率超限。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "暂不支持新的获取请求、无法核实原生成账号、价格不可用或服务暂时异常。",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key ：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+            }
+        },
+        "schemas": {
+            "TimestampRequest": {
+                "type": "object",
+                "required": [
+                    "source_task_id",
+                    "result_id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "source_task_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "已完成且属于当前账户的 EvoLink Suno 音乐生成任务ID。不能为空、不能有前后空白，最多50个UTF-8字节。",
+                        "maxLength": 50
+                    },
+                    "result_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "所选歌曲的result_id，必须属于source_task_id；不要填整首任务ID或音频URL。不能为空、不能有前后空白，最多128个UTF-8字节。",
+                        "maxLength": 128
+                    }
+                }
+            },
+            "CompletedResponse": {
+                "type": "object",
+                "required": [
+                    "operation_id",
+                    "status",
+                    "source_task_id",
+                    "result_id",
+                    "cached",
+                    "words",
+                    "billing_status"
+                ],
+                "properties": {
+                    "operation_id": {
+                        "type": "string",
+                        "description": "本次时间戳操作的稳定ID，与音乐生成任务ID不同。",
+                        "example": "lyrics-operation-example"
+                    },
+                    "source_task_id": {
+                        "type": "string",
+                        "example": "task-unified-example"
+                    },
+                    "result_id": {
+                        "type": "string",
+                        "example": "song-example"
+                    },
+                    "status": {
+                        "type": "string",
+                        "const": "completed"
+                    },
+                    "cached": {
+                        "type": "boolean",
+                        "description": "是否复用已有操作。复查已有操作不会开始新的购买；完成结果cached=true表示本次读取免费，不代表首次对齐免费。"
+                    },
+                    "words": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "$ref": "#/components/schemas/AlignedWord"
+                        }
+                    },
+                    "billing_status": {
+                        "$ref": "#/components/schemas/BillingStatus"
+                    }
+                }
+            },
+            "PendingResponse": {
+                "type": "object",
+                "required": [
+                    "operation_id",
+                    "status",
+                    "source_task_id",
+                    "result_id",
+                    "billing_status",
+                    "cached"
+                ],
+                "properties": {
+                    "operation_id": {
+                        "type": "string",
+                        "description": "本次时间戳操作的稳定ID，与音乐生成任务ID不同。",
+                        "example": "lyrics-operation-example"
+                    },
+                    "source_task_id": {
+                        "type": "string",
+                        "example": "task-unified-example"
+                    },
+                    "result_id": {
+                        "type": "string",
+                        "example": "song-example"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "preparing",
+                            "calling",
+                            "upstream_unknown",
+                            "awaiting_settlement",
+                            "refund_pending"
+                        ]
+                    },
+                    "billing_status": {
+                        "$ref": "#/components/schemas/BillingStatus"
+                    },
+                    "cached": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "AlignedWord": {
+                "type": "object",
+                "required": [
+                    "text",
+                    "start",
+                    "end",
+                    "aligned"
+                ],
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "按演唱顺序返回的歌词片段；空白、换行或章节标签可能保留，不要假设每项都是一个可高亮单词。"
+                    },
+                    "start": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "description": "相对歌曲开头的秒数，保留小数；未有效对齐时为null。"
+                    },
+                    "end": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "description": "相对歌曲开头的秒数，保留小数；未有效对齐时为null。"
+                    },
+                    "aligned": {
+                        "type": "boolean",
+                        "description": "该片段是否具有有效对齐；false时不能将start/end当作准确时间。"
+                    }
+                }
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "required": [
+                    "error"
+                ],
+                "properties": {
+                    "error": {
+                        "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                }
+            },
+            "BillingStatus": {
+                "type": "string",
+                "enum": [
+                    "not_charged",
+                    "reserved",
+                    "refunded",
+                    "paid"
+                ],
+                "description": "实际资金状态：not_charged表示本操作未成功冻结费用；reserved表示费用已冻结、尚待处理结果；paid表示已确认扣费；refunded表示冻结费用已退还。应独立于status检查此字段。"
+            },
+            "FailedOperationResponse": {
+                "type": "object",
+                "required": [
+                    "operation_id",
+                    "status",
+                    "source_task_id",
+                    "result_id",
+                    "cached",
+                    "billing_status",
+                    "error"
+                ],
+                "properties": {
+                    "operation_id": {
+                        "type": "string",
+                        "description": "本次时间戳操作的稳定ID，与音乐生成任务ID不同。",
+                        "example": "lyrics-operation-example"
+                    },
+                    "source_task_id": {
+                        "type": "string",
+                        "example": "task-unified-example"
+                    },
+                    "result_id": {
+                        "type": "string",
+                        "example": "song-example"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "failed",
+                            "unknown_refunded"
+                        ]
+                    },
+                    "cached": {
+                        "type": "boolean"
+                    },
+                    "billing_status": {
+                        "$ref": "#/components/schemas/BillingStatus"
+                    },
+                    "error": {
+                        "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                }
+            },
+            "ErrorDetail": {
+                "type": "object",
+                "required": [
+                    "code",
+                    "message"
+                ],
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "稳定错误码。常见值包括invalid_request、model_not_allowed、model_endpoint_mismatch、source_not_found、unsupported_source、source_not_completed、no_lyrics、source_account_unavailable、pricing_unavailable、timestamps_unavailable、insufficient_quota、upstream_failed、alignment_unavailable、upstream_outcome_unknown。"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}

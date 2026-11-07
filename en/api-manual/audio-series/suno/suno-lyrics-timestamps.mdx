@@ -1,0 +1,34 @@
+---
+title: "Suno Word-Level Lyrics Timestamps (Beta Draft)"
+openapi: '/en/api-manual/audio-series/suno/suno-lyrics-timestamps.json POST /v1/audios/lyrics/timestamps'
+---
+
+<Warning>
+Unreleased draft. This endpoint is under development and validation. Examples do not establish production availability. Final pricing, access scope, and release date will be announced after confirmation.
+</Warning>
+
+Retrieve word start and end times for a completed Suno song owned by the current account, for player highlighting or lyric videos. This endpoint provides word-level data and does not provide separate line-level timestamps.
+
+## Using the two IDs
+
+Use [Task Details](/en/api-manual/task-management/get-task-detail): source_task_id is the EvoLink music generation task id; result_id is the selected song's result_id in result_data. Different songs returned by one generation are processed separately. You do not need to generate the song again.
+
+## Existing songs and support scope
+
+The first retrieval requires the source song to remain accessible through its original generation account. Existing songs can be requested, but access is not guaranteed for every historical song or for songs older than 14 days. Generated-file retention does not establish a timestamp lookup lifetime. Instrumental songs have no lyrics to align. Missing words, repeated choruses, and changes in the vocal performance can affect timing; review the audio before exporting a finished video.
+
+## Processing and unknown outcomes
+
+After a 202 response, wait for Retry-After and submit the same source_task_id and result_id to this endpoint again. Processing and reconciliation do not automatically submit another upstream request. The same two IDs can recover the operation even if the first HTTP response was lost. GET /v1/tasks/{id} reads the music generation task, not this timestamp operation.
+
+upstream_unknown means that the first request outcome is still being reconciled; it is not a confirmed failure. The operation is resolved within a bounded reconciliation window. If the outcome cannot be confirmed, reserved funds are returned and the terminal record is retained. Ordinary repeated requests do not create another purchase; changing Idempotency-Key does not authorize another charge.
+
+## Billing and repeated requests
+
+Submitting the same source_task_id + result_id again under the same account reads the latest operation state or saved result. Changing an API key or Idempotency-Key does not create another purchase. The API key must remain valid and authorized. During the supported retention period, saved purchased results can be read for free, including when the account balance is zero. A successful alignment that meets the delivery criteria is charged once per song after it is saved. Definite failures, instrumental songs, and unusable alignment results are not charged; reserved funds are returned. The initial release does not deliver partial or invalid lyric alignment; it returns alignment_unavailable without a charge.
+
+## Request limits
+
+The body must be one JSON object containing only source_task_id and result_id, with no extra fields or trailing JSON. The full request body is limited to 4096 bytes. Both IDs must be non-empty and have no leading or trailing whitespace; source_task_id is limited to 50 UTF-8 bytes and result_id to 128 UTF-8 bytes.
+
+A 202 response has one of preparing, calling, upstream_unknown, awaiting_settlement, or refund_pending and Retry-After: 2. Submit the same two IDs to read its latest state. completed returns 200 with words; failed and unknown_refunded return 422 with error. Every operation response includes operation_id, source_task_id, result_id, cached, and billing_status. The fund state is not_charged, reserved, refunded, or paid; use billing_status to determine whether funds were held, charged, or returned. Errors before an operation exists contain error only.
