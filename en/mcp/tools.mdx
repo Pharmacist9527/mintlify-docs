@@ -6,7 +6,7 @@ description: "Parameters, examples, results, protocol, and backend mapping for 1
 <span id="mcp-tools" />
 ## MCP tool reference
 
-This page describes the 16 tools in the **1.12.0** OAuth remote MCP release. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+This page describes the 16 tools in the **1.8.2** OAuth remote MCP release. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
 
 The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
 
@@ -89,16 +89,13 @@ Returns the canonical model, requirements, examples, public pricing, reference_i
 |---|---|---|---|
 | model | string | Yes | 1–128 characters |
 | input | object | No | Planned model parameters; defaults to an empty object |
-| inputs | object[] | No | 1–50 inputs of one model instead of input, in the order they will be submitted |
 | media_seconds | number | No | Greater than 0 and at most 3600; estimation hint only |
 
 ```json
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-Returns input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced, and balance/limits when available. The estimate status can be estimated, partial, token_billed, needs_input, or no_price; token_billed carries a reference price billed by actual tokens. See [billing](/en/mcp/billing). A successful query does not prove valid input or a complete quote.
-
-An estimate that can be approved also returns `pricing_quote`, the approval record for exactly this input. After the user approves, pass it with the same input to the generation tool. It is current for 24 hours (`expires_at`); past that it still applies while the input and price are unchanged, and the generation result says so. A changed input or price needs a new estimate and approval. With `inputs`, the result lists each input's estimate and the total, and one `pricing_quote` approves exactly those inputs in that order. It never approves a single input, and a single input's `pricing_quote` never approves a batch.
+Returns input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced, and balance/limits when available. The estimate status can be estimated, partial, token_billed, needs_input, or no_price; see [billing](/en/mcp/billing). A successful query does not prove valid input or a complete quote.
 
 This tool has no `max_cost_usd` argument and does not produce the CLI's local quote_id. MCP budget checks belong to generation tools. media_seconds does not set output duration or fill unknown reference-video multipliers.
 
@@ -127,34 +124,20 @@ Choose the tool matching the output type. They share these top-level arguments:
 |---|---|---|---|
 | model | string | Yes | 1–128 characters; must match the media type |
 | input | object | No | Parameters from get_model; do not include model or callback_url |
-| inputs | object[] | No | 1–50 inputs of one model instead of input, submitted in one call; see [batches](#batches) |
 | prompt | string | No | Shortcut for input.prompt; up to 20000 characters, subject to model limits |
-| client_request_id | string | No | 16–96 characters: letters, digits, . _ -; reuse when recovering the same request; with inputs at most 93, since each item adds .NN |
-| pricing_quote | object | No | Approval record from estimate_cost for exactly this input or batch; checked against the current rules before submission |
+| client_request_id | string | No | 16–96 characters: letters, digits, . _ -; reuse when recovering the same request |
 | max_cost_usd | number | No | Greater than 0 and at most 10000; submission-time estimate check |
 | media_seconds | number | No | Greater than 0 and at most 3600; estimation hint only |
-| wait_seconds | integer | No | 0–40; how long to wait for the result after submitting. Images default to 40, video and audio to 0; 0 returns the task_id right away. A batch accepts only 0 |
-| skip_estimate | boolean | No | Only when the user explicitly said not to estimate or confirm; submits without an approved estimate. See [generating without an estimate](#skip-estimate) |
 
-Inspect the model and inputs, estimate the complete request, disclose limitations, and obtain explicit cost approval before calling, unless the user opted out of estimates (below). This is an illustrative call shape:
+Inspect the model and inputs, estimate the complete request, disclose limitations, and obtain explicit cost approval before calling. This is an illustrative call shape:
 
 ```json
 {"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
 ```
 
-Image generation waits for up to approximately 40 seconds, returning results if ready or a task_id otherwise. Video and audio return a task_id after submission; continue with get_task. `wait_seconds` changes this wait for each of the three tools. Submission can report a precharge, which must be distinguished from completed-task cost.
+Image generation waits for up to approximately 40 seconds, returning results if ready or a task_id otherwise. Video and audio return a task_id after submission; continue with get_task. Submission can report a precharge, which must be distinguished from completed-task cost.
 
 Query a running task rather than calling generation again to check progress. If the response is lost, retain the original ID, account, inputs, and request identifier. A different identifier creates a new paid intent. Client recovery protections do not prove identical backend idempotency guarantees across all production nodes.
-
-<span id="skip-estimate" />
-
-**Generating without an estimate.** When the user explicitly says not to estimate or confirm (for example "generate directly" or "from now on just generate"), the assistant skips `estimate_cost` and the confirmation and passes `skip_estimate: true`, within the scope the user gave: this task, this batch or the rest of the conversation. It never infers this from silence, the balance or its own suggestion. When the user opts out for the rest of the conversation, the assistant says once that later generations will be submitted without asking; a new conversation, or asking to restore estimates, brings them back. The generation is submitted even when its price cannot be computed or a quote changed, and the result says so (`estimate_skipped`, `estimate_skip_reason`); the task is charged by actual usage. Invalid input and an explicit `max_cost_usd` are still refused, and enabling model web or image search still needs the user's approval. If an estimate fails or has no total and the user has not opted out, the assistant asks once whether to generate anyway at actual usage.
-
-<span id="batches" />
-
-**Batches.** For several tasks of one model, pass `inputs` (1–50 items, each like `input`) to `estimate_cost` and then, with its `pricing_quote`, to the generation tool: one estimate, one approval for the total, and one call that submits every item (up to 10 at a time) and returns each item's `task_id` or error without waiting. If any item is invalid, nothing is submitted. `max_cost_usd` applies to the batch total; `media_seconds` and `pricing_parameters` apply to every item. Collect the results with `list_tasks` (`task_ids`, up to 50 per call). Submit tasks of different models one per call with `wait_seconds: 0`. Do not rely on `n` for the image count: some models, such as GPT Image, often return fewer images than `n`, so use one item per image.
-
-No item starts more than 25 seconds after the call began, and a started submission is never cut off; items not started are listed as not submitted. To finish a batch, call again with the same `client_request_id` and exactly the same `inputs` within 24 hours: the items the result lists to finish are submitted, and accepted items return their original tasks without a new charge. For an item with an unknown outcome, retry later the same way or check `list_tasks`. Never resubmit accepted, not-submitted or unknown-outcome items under a new `client_request_id`: that creates and charges new tasks. An item whose input differs from what that `client_request_id` submitted earlier is refused (`idempotency_conflict`); it is a new task that needs its own estimate, approval and `client_request_id`.
 
 ### get_task
 
@@ -269,7 +252,7 @@ Use balance and model queries for free connection verification. Use get_task/lis
 | Mode | Execution path | Authentication and installation |
 |---|---|---|
 | Remote MCP | Client → hosted EvoLink MCP → platform API | Streamable HTTP and browser OAuth; no local server installation |
-| Local stdio | Client → local MCP process → platform API | Node.js 20+, npx startup, and a personal API Key |
+| Local stdio | Client → local MCP process → platform API | Node.js 18+, npx startup, and a personal API Key |
 
 The remote endpoint is `https://mcp.evolink.ai/mcp`. Passport provides OAuth; the server requests https://api.evolink.ai and the file service. MCP URLs, platform /v1 routes, documentation, and llms.txt are separate entry points.
 
@@ -302,7 +285,7 @@ Examples using name / arguments describe tool input, not REST request bodies. To
 | upload_file | File service /url or /base64; local stdio can read allowed directories |
 | prepare_upload, get_upload | Hosted single-use PUT URL and status; receipt recovery depends on file-service support |
 
-Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.12.0 estimates from the public pricing rules (reference rates, no account discounts) and still has no final settlement cap.
+Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.8.2 estimates from the public pricing rules (reference rates, no account discounts) and still has no final settlement cap.
 
 ### Uploads, recovery, and access
 
