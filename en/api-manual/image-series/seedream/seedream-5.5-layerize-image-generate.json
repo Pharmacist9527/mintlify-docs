@@ -23,7 +23,7 @@
     "/v1/images/generations": {
       "post": {
         "summary": "doubao-seedream-5.5-layerize Interface",
-        "description": "- Seedream 5.5 Layer Decomposition (doubao-seedream-5.5-layerize) splits one image into a base image and several independent layers; every layer is a PNG with an alpha channel, while the base image format follows `output_format`\n- Exactly **one** input image is required; `prompt` is optional — omit it and the model automatically detects every major element in the image and splits them one by one\n- The actual number of images depends on the decomposition result, with the maximum controlled by `n` (including the base image, `2` ~ `100`, default `30`); if any layer fails, the entire request fails, with no partial success and a full refund\n- With `model_params.text_recognition=true`, layers containing regular text additionally return `text_recognition` (the full text, a bounding box for each line, and style information for each text segment such as similar font, color, bold and italic)\n- Processing is asynchronous. Use the returned task ID to [query the task](/en/api-manual/task-management/get-task-detail). Each image in `result_data` includes `z_index` (stacking order: `0` for the base image, increasing from `1` for layers) and `background` (`opaque` for the base image, `transparent` for layers). Layers also include `bounding_box` (`absolute` uses pixel coordinates in the base-image coordinate system; `normalized` ranges from `0` to `1000`), `name` and `description`\n- Billed per image: the base image and each layer count as one image, with the tier determined by each image’s own pixel count (up to `2610000` uses the lower tier; above that uses the higher tier). The input image is charged separately at the input-image rate. Task creation reserves the cost of `1` input image plus `n` images at the higher tier; completion is settled against the actual output count, and excess reserved credits are automatically returned\n- This model takes longer to process, approximately `150` seconds; larger `n` values take longer\n- Generated image links are valid for 24 hours, please save them promptly",
+        "description": "> 🚧 **This model is not yet available, stay tuned**\n\n- Seedream 5.5 Layer Decomposition (doubao-seedream-5.5-layerize) separates an image into a base image and independent layers\n- Provide `1` input image. `prompt` is optional; when omitted, the model automatically identifies and separates the main elements\n- Use `n` to set the maximum output count and `model_params.text_recognition` to enable text recognition\n- Processing is asynchronous. Use the returned task ID to [query task status](/en/api-manual/task-management/get-task-detail)\n- Generated image links are valid for 24 hours, please save them promptly\n\n### Output details\n\n- `output_format` sets the base image format. Independent layers are always PNG images with an alpha channel\n- Each image in `result_data` includes `z_index` (stacking order: `0` for the base image, increasing from `1` for layers) and `background` (`opaque` for the base image, `transparent` for layers). Layers also include `bounding_box` (`absolute` uses pixel coordinates in the base-image coordinate system; `normalized` ranges from `0` to `1000`), `name` and `description`\n- If any layer fails, the entire task fails with a full refund. Partial results are not returned\n\n### Billing\n\n- The base image and each layer are billed individually. The input image is charged separately\n- Task creation reserves credits for `1` input image and up to `n` output images. On completion, billing is settled against the actual output count and unused credits are returned automatically",
         "operationId": "createSeedreamLayerizeImageGeneration",
         "tags": [
           "Image Generation"
@@ -214,7 +214,7 @@
           },
           "image_urls": {
             "type": "array",
-            "description": "URL of the image to decompose (required)\n\n**Note:**\n- **Exactly `1` image is required**; omitting it or passing `2` or more returns an error\n- Supported formats: `.png`, `.jpeg`, `.jpg` (stricter than plain generation — webp and others are rejected)\n- Image size: no more than `30MB`\n- Total pixels: `[262144, 6000×6000]`, i.e. at least `512×512` (a higher lower bound than plain generation)\n- Aspect ratio (width/height) range: `[1/16, 16]`\n- The image URL must be directly viewable by the server, or the URL must trigger a direct download when accessed (usually such URLs end with an image file extension, such as `.png`, `.jpg`)\n- The input image is billed `1` time at the input-image rate",
+            "description": "URL of the image to decompose (required)\n\n**Note:**\n- **Exactly `1` image is required**; omitting it or passing `2` or more returns an error\n- Supported formats: `.png`, `.jpeg`, `.jpg` (stricter than plain generation — webp and others are rejected)\n- Image size: no more than `30MB`\n- Total pixels: `[262144, 6000×6000]`, i.e. at least `512×512` (a higher lower bound than plain generation)\n- Aspect ratio (width/height) range: `[1/16, 16]`\n- The image URL must be directly viewable by the server, or the URL must trigger a direct download when accessed (usually such URLs end with an image file extension, such as `.png`, `.jpg`)\n- The input image is charged separately",
             "items": {
               "type": "string",
               "format": "uri"
@@ -232,7 +232,7 @@
           },
           "n": {
             "type": "integer",
-            "description": "Maximum number of output images for this request, including the base image; defaults to `30`\n\n**Details:**\n- Allowed range: `2` ~ `100`; values outside this range return `400` with no charge\n- Decomposition stops when this count is reached; additional elements may be merged or omitted. Increase it for finer separation\n- The reserved amount covers `1` input image plus `n` images at the higher tier. On completion, only the actual output count is charged and the remainder is returned; larger `n` values reserve more credits",
+            "description": "Maximum number of output images, including the base image. Defaults to `30`.\n\n**Details:**\n- Allowed range: `2` to `100`. Values outside this range return `400` with no charge\n- Decomposition stops at this limit; remaining elements may be merged or omitted. A larger value allows finer separation\n- A larger `n` reserves more credits. On completion, billing is settled against the actual output count and unused credits are returned automatically",
             "minimum": 2,
             "maximum": 100,
             "default": 30,
@@ -240,7 +240,7 @@
           },
           "quality": {
             "type": "string",
-            "description": "Output resolution tier, defaults to `auto`\n\n**Options:** `auto`, `1K`, `1.5K`, `2K`\n\n**Notes:**\n- Layer mode **only accepts tiers**; passing a ratio (such as `16:9`) or explicit pixels (such as `2048x2048`) returns an error\n- `auto` makes the output follow the input image: if the original size falls within `[921600, 4624220]` pixels it is kept as is, below 1K it is output at 1K, above 2K it is output at 2K\n- Each layer keeps its own aspect ratio from the original image, and the base image keeps the aspect ratio of the input\n\n**Billing:** the tier is decided per output image from its own pixel count; `1K` and `1.5K` cost the same, and an output image above `2610000` pixels is billed at the higher tier. Task creation reserves the cost of `1` input image plus `n` images at the higher tier, then settles against the actual output count on completion.",
+            "description": "Output resolution. Defaults to `auto`.\n\n**Options:** `auto`, `1K`, `1.5K`, `2K`\n\n**Notes:**\n- Only the resolution options above are supported. Passing an aspect ratio (such as `16:9`) or pixel dimensions (such as `2048x2048`) returns an error\n- `auto` makes the output follow the input image: if the original size falls within `[921600, 4624220]` pixels it is kept as is, below 1K it is output at 1K, above 2K it is output at 2K\n- Each layer keeps its own aspect ratio from the original image, and the base image keeps the aspect ratio of the input",
             "enum": [
               "auto",
               "1K",
@@ -252,7 +252,7 @@
           },
           "prompt_priority": {
             "type": "string",
-            "description": "Prompt optimization strategy\n\n**Options:**\n- `standard`: Standard mode\n\n**Note:** Seedream 5.5 only supports `standard`. Passing `fast` returns `400` with no charge. When migrating from Seedream 5.0 Pro, remove `prompt_priority=fast`.",
+            "description": "Prompt optimization mode. Only `standard` is supported and is the default.\n\nPassing `fast` returns `400` with no charge.",
             "enum": [
               "standard"
             ],
