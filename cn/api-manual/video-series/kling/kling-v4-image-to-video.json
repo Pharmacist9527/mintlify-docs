@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "kling-v4-image-to-video接口",
-        "description": "- Kling-4.0 Image to Video (kling-v4-image-to-video) 模型支持图生视频功能\n- 支持首帧、尾帧，以及首尾帧之间的中间帧\n- 画面比例由首帧图决定，**不接受 `aspect_ratio`**\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
+        "description": "- Kling-4.0 Image to Video (kling-v4-image-to-video) 模型支持图生视频功能\n- 支持首帧、尾帧，以及首尾帧之间的中间帧，合计最多 `10` 张\n- 传入至少一张中间帧时可不传 `image_start`；不支持只传尾帧\n- 画面比例由输入帧决定，**不接受 `aspect_ratio`**\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)\n- 生成的视频链接，有效期为24小时，请尽快保存",
         "operationId": "createVideoGeneration",
         "tags": [
           "视频生成"
@@ -92,6 +92,21 @@
                     ],
                     "duration": 8,
                     "quality": "1080p"
+                  }
+                },
+                "keyframes_without_start": {
+                  "summary": "中间帧 + 尾帧（不传首帧）",
+                  "value": {
+                    "model": "kling-v4-image-to-video",
+                    "prompt": "<<<image_1>>>中的汽车沿海岸行驶，停在<<<image_2>>>中的房子前",
+                    "keyframes": [
+                      {
+                        "image_url": "https://example.com/coast-road.jpg"
+                      }
+                    ],
+                    "image_end": "https://example.com/house.jpg",
+                    "duration": 5,
+                    "quality": "720p"
                   }
                 }
               }
@@ -221,7 +236,6 @@
         "type": "object",
         "required": [
           "model",
-          "image_start",
           "prompt"
         ],
         "properties": {
@@ -237,18 +251,18 @@
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "首帧图片URL，用于图生视频功能（**必传**）\n\n**注意：**\n- 图像大小：不超过 `10MB`\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`\n- 图像尺寸：宽高 ≥ `300px`，宽高比在 `1:2.5` ~ `2.5:1` 之间\n- 图像URL需要服务器能直接访问，或者访问时会直接下载",
+            "description": "首帧图片URL，用于图生视频功能\n\n**注意：**\n- `keyframes` 中至少有一张中间帧时可不传，否则必传\n- 图像大小：不超过 `10MB`\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`\n- 图像尺寸：宽高 ≥ `300px`，宽高比在 `1:2.5` ~ `2.5:1` 之间\n- 图像URL需要服务器能直接访问，或者访问时会直接下载",
             "example": "https://example.com/portrait.jpg"
           },
           "image_end": {
             "type": "string",
             "format": "uri",
-            "description": "尾帧图片URL\n\n**注意：**\n- 必须同时提供 `image_start`（首帧）\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`\n- 图像大小：不超过 `10MB`\n- 图像URL需要服务器能直接访问，或者访问时会直接下载",
+            "description": "尾帧图片URL\n\n**注意：**\n- 需同时提供 `image_start`（首帧）或 `keyframes` 中的至少一张中间帧，不支持只传尾帧\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`\n- 图像大小：不超过 `10MB`\n- 图像URL需要服务器能直接访问，或者访问时会直接下载",
             "example": "https://example.com/night.jpg"
           },
           "keyframes": {
             "type": "array",
-            "description": "中间帧图片列表，按顺序均匀分布在首帧与尾帧之间\n\n**注意：**\n- 数量：`1` ~ `8` 张\n- 首帧、中间帧、尾帧合计不超过 `10` 张，且不超过 `duration` + 1（如 `3` 秒最多 `4` 张、`5` 秒最多 `6` 张）\n- 可不传尾帧，此时结尾画面由模型生成\n- 图像大小：不超过 `10MB`\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`\n- 图像尺寸：宽高 ≥ `300px`，宽高比在 `1:2.5` ~ `2.5:1` 之间\n- 图像URL需要服务器能直接访问，或者访问时会直接下载",
+            "description": "中间帧图片列表，按顺序均匀分布在首帧与尾帧之间\n\n**注意：**\n- 首帧、中间帧、尾帧合计不超过 `10` 张，因此中间帧最多为 `10` 减去已传的首帧和尾帧数量：同时传首尾帧时最多 `8` 张，只传其中之一时最多 `9` 张，都不传时最多 `10` 张\n- 张数上限与 `duration` 无关\n- 不传 `image_start` 时，至少需要 `1` 张中间帧\n- 可不传尾帧，此时结尾画面由模型生成\n- 图像大小：不超过 `10MB`\n- 支持的文件格式：`.jpg`、`.jpeg`、`.png`\n- 图像尺寸：宽高 ≥ `300px`，宽高比在 `1:2.5` ~ `2.5:1` 之间\n- 图像URL需要服务器能直接访问，或者访问时会直接下载",
             "items": {
               "type": "object",
               "properties": {
@@ -264,7 +278,7 @@
               "additionalProperties": false
             },
             "minItems": 0,
-            "maxItems": 8,
+            "maxItems": 10,
             "example": [
               {
                 "image_url": "https://example.com/half-open.jpg"
@@ -276,7 +290,7 @@
           },
           "prompt": {
             "type": "string",
-            "description": "文本提示词，描述想要生成什么样的视频\n\n**注意：**\n- 最长`2500`字符",
+            "description": "文本提示词，描述想要生成什么样的视频\n\n**注意：**\n- 最长`2500`字符\n\n**帧引用：**\n- 可在 prompt 中用 `<<<image_N>>>` 引用帧，例如：`<<<image_1>>>中的汽车沿海岸行驶，停在<<<image_2>>>中的房子前`\n- 帧按播放顺序编号：传了首帧时 `image_start` 为 `<<<image_1>>>`，其后依次为 `keyframes` 中的各帧（按数组顺序）和 `image_end`\n- `N` 不能超过实际传入的帧数\n- 不支持 `<<<video_N>>>`",
             "example": "让画面中的人物缓缓转头微笑",
             "maxLength": 2500
           },

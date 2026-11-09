@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "kling-v4-image-to-video API",
-        "description": "- Kling-4.0 Image to Video (kling-v4-image-to-video) genera vídeos a partir de imágenes\n- Admite un fotograma inicial, uno final y fotogramas intermedios entre ambos\n- La relación de aspecto la determina el primer fotograma, **no acepta `aspect_ratio`**\n- Modo de procesamiento asíncrono, use el ID de tarea devuelto para [consultar el estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de vídeo generados son válidos durante 24 horas, guárdelos oportunamente",
+        "description": "- Kling-4.0 Image to Video (kling-v4-image-to-video) genera vídeos a partir de imágenes\n- Admite un fotograma inicial, uno final y fotogramas intermedios entre ambos, hasta `10` imágenes en total\n- `image_start` puede omitirse si se proporciona al menos un fotograma intermedio; no se admite solo un fotograma final\n- La relación de aspecto la determinan los fotogramas de entrada, **no acepta `aspect_ratio`**\n- Modo de procesamiento asíncrono, use el ID de tarea devuelto para [consultar el estado](/es/api-manual/task-management/get-task-detail)\n- Los enlaces de vídeo generados son válidos durante 24 horas, guárdelos oportunamente",
         "operationId": "createVideoGeneration",
         "tags": [
           "Generación de video"
@@ -92,6 +92,21 @@
                     ],
                     "duration": 8,
                     "quality": "1080p"
+                  }
+                },
+                "keyframes_without_start": {
+                  "summary": "Fotograma intermedio + final (sin fotograma inicial)",
+                  "value": {
+                    "model": "kling-v4-image-to-video",
+                    "prompt": "El coche de <<<image_1>>> recorre la costa y se detiene frente a la casa de <<<image_2>>>",
+                    "keyframes": [
+                      {
+                        "image_url": "https://example.com/coast-road.jpg"
+                      }
+                    ],
+                    "image_end": "https://example.com/house.jpg",
+                    "duration": 5,
+                    "quality": "720p"
                   }
                 }
               }
@@ -221,7 +236,6 @@
         "type": "object",
         "required": [
           "model",
-          "image_start",
           "prompt"
         ],
         "properties": {
@@ -237,18 +251,18 @@
           "image_start": {
             "type": "string",
             "format": "uri",
-            "description": "URL de imagen del primer fotograma para generación de imagen a vídeo (**obligatorio**)\n\n**Nota:**\n- Tamaño de imagen: hasta `10MB`\n- Formatos compatibles: `.jpg`, `.jpeg`, `.png`\n- Dimensiones de imagen: ancho y alto >= `300px`, relación de aspecto entre `1:2.5` y `2.5:1`\n- La URL de la imagen debe ser accesible directamente por el servidor o activar una descarga directa al acceder",
+            "description": "URL de imagen del primer fotograma para generación de imagen a vídeo\n\n**Nota:**\n- Obligatorio salvo que `keyframes` contenga al menos un fotograma intermedio\n- Tamaño de imagen: hasta `10MB`\n- Formatos compatibles: `.jpg`, `.jpeg`, `.png`\n- Dimensiones de imagen: ancho y alto >= `300px`, relación de aspecto entre `1:2.5` y `2.5:1`\n- La URL de la imagen debe ser accesible directamente por el servidor o activar una descarga directa al acceder",
             "example": "https://example.com/portrait.jpg"
           },
           "image_end": {
             "type": "string",
             "format": "uri",
-            "description": "URL de imagen del último fotograma\n\n**Nota:**\n- Se debe proporcionar `image_start` (primer fotograma) al usar último fotograma\n- Formatos compatibles: `.jpg`, `.jpeg`, `.png`\n- Tamaño de imagen: hasta `10MB`\n- La URL de la imagen debe ser accesible directamente por el servidor o activar una descarga directa al acceder",
+            "description": "URL de imagen del último fotograma\n\n**Nota:**\n- Debe usarse junto con `image_start` (primer fotograma) o con al menos un fotograma intermedio en `keyframes`; no se admite solo un fotograma final\n- Formatos compatibles: `.jpg`, `.jpeg`, `.png`\n- Tamaño de imagen: hasta `10MB`\n- La URL de la imagen debe ser accesible directamente por el servidor o activar una descarga directa al acceder",
             "example": "https://example.com/night.jpg"
           },
           "keyframes": {
             "type": "array",
-            "description": "Imágenes de fotogramas intermedios, distribuidas uniformemente en el orden indicado entre el fotograma inicial y el final\n\n**Nota:**\n- Cantidad: de `1` a `8` imágenes\n- La suma del fotograma inicial, los intermedios y el final no debe superar ni `10` imágenes ni `duration` + 1 (por ejemplo, hasta `4` imágenes para `3` segundos o `6` imágenes para `5` segundos)\n- El fotograma final es opcional. Si se omite, el modelo genera la imagen de cierre\n- Tamaño de imagen: hasta `10MB`\n- Formatos compatibles: `.jpg`, `.jpeg`, `.png`\n- Dimensiones de imagen: ancho y alto >= `300px`, relación de aspecto entre `1:2.5` y `2.5:1`\n- La URL de la imagen debe ser accesible directamente por el servidor o activar una descarga directa al acceder",
+            "description": "Imágenes de fotogramas intermedios, distribuidas uniformemente en el orden indicado entre el fotograma inicial y el final\n\n**Nota:**\n- La suma del fotograma inicial, los intermedios y el final no debe superar `10` imágenes. Por tanto, el máximo de fotogramas intermedios es `10` menos los fotogramas inicial y final proporcionados: `8` con ambos, `9` con uno de ellos, `10` sin ninguno\n- El límite no depende de `duration`\n- Si se omite `image_start`, se requiere al menos `1` fotograma intermedio\n- El fotograma final es opcional. Si se omite, el modelo genera la imagen de cierre\n- Tamaño de imagen: hasta `10MB`\n- Formatos compatibles: `.jpg`, `.jpeg`, `.png`\n- Dimensiones de imagen: ancho y alto >= `300px`, relación de aspecto entre `1:2.5` y `2.5:1`\n- La URL de la imagen debe ser accesible directamente por el servidor o activar una descarga directa al acceder",
             "items": {
               "type": "object",
               "properties": {
@@ -264,7 +278,7 @@
               "additionalProperties": false
             },
             "minItems": 0,
-            "maxItems": 8,
+            "maxItems": 10,
             "example": [
               {
                 "image_url": "https://example.com/half-open.jpg"
@@ -276,7 +290,7 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Prompt de texto que describe el vídeo que se desea generar\n\n**Nota:**\n- Máximo `2500` caracteres",
+            "description": "Prompt de texto que describe el vídeo que se desea generar\n\n**Nota:**\n- Máximo `2500` caracteres\n\n**Referencias a fotogramas:**\n- Use `<<<image_N>>>` en el prompt para referirse a un fotograma, por ejemplo: `El coche de <<<image_1>>> recorre la costa y se detiene frente a la casa de <<<image_2>>>`\n- Los fotogramas se numeran en orden de reproducción: `image_start` (si se proporciona) es `<<<image_1>>>`, seguido de los fotogramas de `keyframes` en el orden del array y, por último, `image_end`\n- `N` no debe superar el número de fotogramas proporcionados\n- No se admite `<<<video_N>>>`",
             "example": "The person in the image slowly turns their head and smiles",
             "maxLength": 2500
           },
