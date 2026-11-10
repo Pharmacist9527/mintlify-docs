@@ -1,0 +1,324 @@
+---
+title: "MCP ツールと API のリファレンス"
+description: "16個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
+---
+
+<span id="mcp-tools" />
+## MCP ツールリファレンス
+
+このページでは、OAuth を使うリモート MCP のリリース **1.12.1** に含まれる16個のツールを説明します。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
+
+`name` と `arguments` を使った例は、MCP のツール呼び出しを表すもので、REST のリクエストボディではありません。例があるからといって、有料生成が許可されるわけではありません。
+
+| ツール | 用途 | 生成料金 |
+|---|---|---|
+| search_models | 利用可能なモデルとエイリアスを検索する | なし |
+| recommend_models | 要望と参照素材の種類に合うモデルを比較する | なし |
+| search_docs | バージョン管理された公式モデルリファレンスの索引を検索する | なし |
+| get_model | パラメータ、スキーマ、参照入力、価格を確認する | なし |
+| estimate_cost | 入力を検証し、料金を見積もる | なし |
+| get_pricing_rules | 公開のデフォルト価格ルールを読む（参考価格であり、見積書ではない） | なし |
+| generate_image | 画像を生成または編集する | 有料 |
+| generate_video | 動画を生成、編集、または延長する | 有料 |
+| generate_audio | 音楽、歌、読み上げ音声を生成する | 有料 |
+| get_task | タスク、結果、報告された料金を確認する | なし |
+| list_tasks | ID を指定して照会する、またはアカウントの履歴をページ単位で照会する | なし |
+| get_task_usage | 上限のある走査範囲内で、報告された料金を集計する | なし |
+| check_balance | アカウントの残高と共有の上限を確認する | なし |
+| upload_file | URL または base64 の参照素材をアップロードする | 生成料金なし。ファイルのクォータが適用されます |
+| prepare_upload | ローカルファイル用に、1回限りのアップロードを準備する | 生成料金なし。ファイルのクォータが適用されます |
+| get_upload | 既存のアップロードの状態と URL を取得し直す | なし |
+
+### search_models
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| type | string | いいえ | image/video/audio/all。デフォルトは all |
+| query | string | いいえ | 検索キーワード。最大100文字 |
+| limit | integer | いいえ | 1–50。デフォルトは 20 |
+| page | integer | いいえ | 1–100000。デフォルトは 1 |
+
+```json
+{"name":"search_models","arguments":{"type":"image","query":"seedream","limit":5,"page":1}}
+```
+
+models、total_matches、page、page_size、next_page を返します。各項目には、正式な ID、エイリアス、参照入力、ドキュメントのカバー範囲、開始価格が含まれます。並び順は、まずキーワードとの関連度、次に価格の有無、編集上の優先設定、ID の順に決まります。品質や人気のランキングではありません。開始価格はタスクの合計額ではなく、利用可否はページをまたぐ間に変わることがあります。
+
+### recommend_models
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| type | string | はい | image/video/audio |
+| query | string | いいえ | 最大100文字。すべての検索語が一致する必要があります |
+| references | string[] | いいえ | image/video/audio。最大3件。デフォルトは空 |
+| limit | integer | いいえ | 1–10。デフォルトは 3 |
+
+```json
+{"name":"recommend_models","arguments":{"type":"video","query":"seedance","references":["image"],"limit":3}}
+```
+
+ドキュメントに記載のある候補を、reasons、reference_inputs、selection_basis、単価とともに返します。必要な参照素材の種類については、ドキュメントに入力フィールドの記載がなければなりません。一致するモデルがない場合は、必要な参照素材を黙って外すのではなく、条件を変えたことを明らかにしたうえで調整してください。編集上の優先設定は、リアルタイムの人気や発売日の統計ではありません。
+
+### search_docs
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| query | string | はい | 前後の空白を除いて1–100文字 |
+| type | string | いいえ | image/video/audio/all。デフォルトは all |
+| limit | integer | いいえ | 1–20。デフォルトは 5 |
+
+```json
+{"name":"search_docs","arguments":{"query":"first frame","type":"video","limit":5}}
+```
+
+documents、total_matches、scope、ソースのバージョンを返します。利用可能なモデルについて、同梱されている公式のモデルタイトル、ID、パラメータの説明を検索します。公開中のドキュメントサイトをクロールすることはなく、アカウントや課金に関するドキュメントも検索しません。
+
+### get_model
+
+必須の `model`：1–128文字の文字列。返された正式な ID、または対応しているエイリアスを使います。
+
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
+
+正式なモデル、要件、例、公開価格、reference_inputs、parameters_source を返し、利用できる場合は input_schema とその出典も返します。パラメータのリファレンスはバージョン管理されており、アカウントでの利用可否はリアルタイムで照会されます。情報が不足しているという警告が出た場合は、デフォルト値を勝手に作らず、警告に従ってください。
+
+### estimate_cost
+
+| パラメータ | 型 | 必須 | 説明 |
+|---|---|---|---|
+| model | string | はい | 1–128文字 |
+| input | object | いいえ | 使用予定のモデルパラメータ。デフォルトは空のオブジェクト |
+| inputs | object[] | いいえ | input の代わりに指定する、同じモデルの1–50件の入力。送信される順に並べます |
+| pricing_parameters | object | いいえ | 価格ルールが必要とする課金使用量の、実測値または明確に見込まれる値（例：`{"search_count":2}`）。最大100件。GPT Image、Gemini Omni Flash、Qwen TTS のトークン数には使われません。値を捏造しないでください |
+| pricing_source | string | いいえ | デフォルトは pricing_rules（公開済みの価格ルール）。以前の値である account と public_reference は、エイリアスとして受け付けられます |
+| media_seconds | number | いいえ | 0 より大きく、3600 以下。見積もり用のヒントとしてのみ使われます |
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+input_valid、problems、warnings、estimate、pricing_scope、final_budget_enforced を返し、利用できる場合は balance/limits も返します。見積もりの状態は、estimated、partial、token_billed、needs_input、no_price のいずれかです。token_billed には参考価格が付き、課金は実際のトークン数に基づきます。価格が、入力からは分からない使用量によって決まる場合、見積もりには金額も `pricing_quote` もありません。`total_known` は false になり、`missing_usage` に不足している値がそれぞれ示され、`usage_help` にその指定方法が示されます。[課金](/ja/mcp/billing)を参照してください。照会が成功しても、入力が有効であることや、完全な見積書であることの証明にはなりません。
+
+承認できる見積もりは、`pricing_quote` も返します。これは、この入力そのものに対する承認記録です。ユーザーが承認したら、同じ入力とともに生成ツールに渡してください。承認済みの価格以下である限り、見積もりから24時間有効です（`expires_at`）。生成ツールはもう一度見積もりを行い、価格が変わっていないか下がっていれば、その後に価格ルールが変更されていても送信します。価格が上がっていれば `price_changed`、入力が変わっていれば `quote_input_changed`、`pricing_quote` の有効期限が切れていれば `quote_expired` で拒否されます。いずれの場合も、新しい見積もりと承認が必要です。`inputs` を指定した場合、結果には各入力の見積もりと合計額が示され、1つの `pricing_quote` が、それらの入力をその順序どおりに承認するものになります。それが単一の入力だけを承認することはなく、単一の入力の `pricing_quote` がバッチを承認することもありません。
+
+このツールには `max_cost_usd` 引数がなく、CLI のローカルの quote_id も生成しません。MCP での予算チェックは、生成ツールで行われます。media_seconds は、出力の長さを設定するものではなく、参照動画の不明な倍率を埋めるものでもありません。
+
+### get_pricing_rules
+
+| パラメータ | 型 | 必須 | 説明 |
+|---|---|---|---|
+| model | string | いいえ | 単一のモデル ID。最大100文字 |
+| product_id | string | いいえ | 製品シリーズで絞り込みます |
+| operation | string | いいえ | `text_to_video` などの操作で絞り込みます |
+| modality | string | いいえ | `text`、`image`、`video`、`audio` のいずれか |
+| lifecycle | string | いいえ | `active`、`preview`、`deprecated` のいずれか |
+| view | string | いいえ | `summary` または `full`。デフォルトは `full` |
+
+```json
+{"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
+```
+
+公開のデフォルト価格ルールを返します。課金要素ごとの単価（十進数の文字列）、最低料金、料金段階、完全な計算式に加えて、price_scope と price_selection が含まれます。これらはアカウントの割引を含まない参考価格であり、タスクの見積書でも、請求書でも、最終的な支出の上限でもありません。単価を掛け合わせて請求額を算出しないでください。特定の生成で見込まれる料金を知るには、`estimate_cost` を使ってください。実際の入力に対して、同じルールを評価します。結果が空の場合は、一致する公開ルールがないという意味であり、モデルが無料という意味ではありません。一覧では、ルールを読み取れない、またはルールが不完全なモデルは除外され、`rejected_models` に列挙されて、`warnings` に示されます。ほかのモデルは通常どおり返されます。除外されたモデルが無料というわけではありません。単一のモデルを指定した照会は、そのルールを読み取れない場合、これまでどおり失敗します。
+
+### generate_image、generate_video、generate_audio
+
+出力の種類に合ったツールを選んでください。これらのツールは、次のトップレベル引数を共有します：
+
+| パラメータ | 型 | 必須 | 説明 |
+|---|---|---|---|
+| model | string | はい | 1–128文字。メディアの種類と一致している必要があります |
+| input | object | いいえ | get_model で得たパラメータ。model と callback_url は含めないでください |
+| inputs | object[] | いいえ | input の代わりに指定する、同じモデルの1–50件の入力。一度の呼び出しで送信されます。[バッチ](#batches)を参照してください |
+| prompt | string | いいえ | input.prompt のショートカット。最大20000文字で、モデルごとの制限も適用されます |
+| client_request_id | string | いいえ | 16–96文字。使える文字は、英字、数字、. _ - です。同じリクエストを復旧するときは、同じ値を再利用します。inputs を指定する場合は、各項目に .NN が付加されるため、最大93文字です |
+| pricing_quote | object | いいえ | estimate_cost が返す承認記録。この入力またはバッチそのものが対象で、expires_at まで有効です。送信前に、現在のルールと照合されます |
+| pricing_parameters | object | いいえ | estimate_cost に渡したものと同じ課金使用量 |
+| max_cost_usd | number | いいえ | 0 より大きく、10000 以下。送信時の見積もりに対するチェックです |
+| media_seconds | number | いいえ | 0 より大きく、3600 以下。見積もり用のヒントとしてのみ使われます |
+| wait_seconds | integer | いいえ | 0–40。送信後に結果を待つ時間です。デフォルトは、画像が 40、動画と音声が 0 です。0 を指定すると、task_id がすぐに返されます。バッチでは 0 だけを指定できます |
+| skip_estimate | boolean | いいえ | ユーザーが、見積もりや確認は不要だと明確に述べた場合にだけ使います。承認済みの見積もりなしで送信します。[見積もりなしで生成する](#skip-estimate)を参照してください |
+
+呼び出す前に、モデルと入力を確認し、リクエスト全体を見積もり、制限を伝えたうえで、料金について明確な承認を得てください。ただし、ユーザーが見積もりを不要とした場合は除きます（後述）。次は、呼び出しの形を示す例です：
+
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
+```
+
+画像生成は、最大で約40秒待機し、準備ができていれば結果を、そうでなければ task_id を返します。動画と音声は、送信後に task_id を返します。その後は get_task で続けてください。`wait_seconds` を使うと、これらのツールのそれぞれについて、この待機時間を変更できます。送信時には仮押さえ額が報告されることがあり、これは完了したタスクの料金とは区別する必要があります。
+
+実行中のタスクについては、進捗を確認するために生成をもう一度呼び出すのではなく、タスクを照会してください。レスポンスを受け取れなかった場合は、元の ID、アカウント、入力、リクエスト ID を保持してください。別のリクエスト ID を使うと、新たな有料のリクエストとして扱われます。クライアント側に復旧用の保護機能があっても、本番環境のすべてのノードでバックエンドの冪等性が同じように保証されていることの証明にはなりません。
+
+<span id="skip-estimate" />
+
+**見積もりなしで生成する**。ユーザーが、見積もりや確認は不要だと明確に述べた場合（たとえば「直接生成して」や「これからはそのまま生成して」）、アシスタントは `estimate_cost` と確認を省略し、`skip_estimate: true` を渡します。適用範囲はユーザーが指定したとおりで、このタスク、このバッチ、または会話の残り全体のいずれかです。アシスタントは、沈黙、残高、自分自身の提案からこれを推測してはいけません。ユーザーが会話の残り全体について見積もりを不要とした場合、アシスタントは、以降の生成は確認なしで送信されることを一度だけ伝えます。新しい会話を始めるか、見積もりを元に戻すよう求めると、見積もりは再び行われます。価格を算出できない場合や、`pricing_quote` が期限切れ、価格の上昇、内容の変更を理由に拒否された場合でも、生成は送信され、結果にその旨が示されます（`estimate_skipped`、`estimate_skip_reason`）。タスクは実際の使用量に基づいて課金されます。無効な入力は、引き続き拒否されます。明示した `max_cost_usd` も引き続き適用されます（これを超えるリクエストや、これと照らして価格をチェックできないリクエストは、送信されません）。また、モデルのウェブ検索や画像検索を有効にするには、引き続きユーザーの承認が必要です。見積もりが失敗した場合や合計額が出ない場合で、ユーザーが見積もりを不要としていないときは、アシスタントは、実際の使用量での課金でそのまま生成するかどうかを一度だけ尋ねます。
+
+<span id="batches" />
+
+**バッチ**。同じモデルで複数のタスクを扱う場合は、`inputs`（1–50項目。それぞれ `input` と同じ形式）を `estimate_cost` に渡し、次に、返された `pricing_quote` とともに生成ツールに渡します。見積もりは一度、合計額に対する承認も一度で、一度の呼び出しですべての項目が送信され（同時に最大10件）、完了を待たずに、各項目の `task_id` またはエラーが返されます。無効な項目が含まれている場合は、何も送信されません。`max_cost_usd` はバッチの合計額に適用され、`media_seconds` と `pricing_parameters` はすべての項目に適用されます。結果は `list_tasks` で取得します（`task_ids`、呼び出しごとに最大50件）。モデルが異なるタスクは、`wait_seconds: 0` を指定して、呼び出しごとに1件ずつ送信してください。画像の枚数を `n` に頼らないでください。GPT Image など一部のモデルは、`n` より少ない枚数の画像しか返さないことがよくあるため、画像1枚につき項目を1つ使ってください。
+
+呼び出しの開始から25秒を過ぎると、新しい項目の送信は始まりません。すでに始まった送信が途中で打ち切られることはなく、開始されなかった項目は未送信として一覧に示されます。バッチを完了させるには、最初の送信から24時間以内に、同じ `client_request_id` とまったく同じ `inputs` でもう一度呼び出してください。結果の中で完了させるべきものとして示された項目が送信され、受け付け済みの項目については元のタスクが返され、新たな課金は発生しません。その時点で `pricing_quote` の有効期限が切れている場合は、同じ入力をもう一度見積もり、新しいものを渡してください。結果が不明な項目については、あとで同じ方法で再試行するか、`list_tasks` で確認してください。この24時間のあいだは、受け付け済み、未送信、結果不明のいずれの項目も、新しい `client_request_id` で再送信してはいけません。新しいタスクが作成され、課金されてしまいます。それを過ぎると、同じ `client_request_id` を使っても二重の課金は防げなくなります。まず `list_tasks` で確認し、通らなかった項目だけを、新しい見積もりと新しい `client_request_id` を使った新しいバッチとして送信してください。その `client_request_id` で以前に送信したものと入力が異なる項目は、拒否されます（`idempotency_conflict`）。それは新しいタスクであり、独自の見積もり、承認、`client_request_id` が必要です。
+
+### get_task
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| task_id | string | はい | 元の、対応しているタスク ID。4–128文字 |
+| wait_seconds | integer | いいえ | 0–45。デフォルトは 30。再試行を含む、呼び出し全体の上限です。0 を指定すると、タスクを待たずに一度だけ読み取ります。その読み取りにも、最大15秒かかることがあります |
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+status、progress、results、報告された料金、または error を返します。実行中は、同じ ID の照会を続けてください。失敗したタスクは、エラーコード（`error.code`）、API も返す説明（`error.message`）、そして `billing_note` を返します。このタスクは課金されず、送信時に仮押さえされたクレジットは自動的に返還されます。オリジナルの結果は、通常24時間保持されます。プレビューの表示は、ホストのクライアントによって異なります。
+
+### list_tasks
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| task_ids | string[] | いいえ | 1–50個の ID。バッチモード |
+| status | string | いいえ | processing/completed/failed/cancelled |
+| type | string | いいえ | image/video/audio |
+| model | string | いいえ | 正確なモデル ID。1–128文字 |
+| page | integer | いいえ | 1–100000。デフォルトは 1 |
+| since / until | string | いいえ | ISO 8601、Unix 秒、または 30m/2h/1d。最大40文字 |
+| limit | integer | いいえ | 1–50。デフォルトは 20 |
+
+```json
+{"name":"list_tasks","arguments":{"type":"video","since":"2h","page":1,"limit":20}}
+```
+
+```json
+{"name":"list_tasks","arguments":{"task_ids":["TASK_ID_ONE","TASK_ID_TWO"]}}
+```
+
+task_ids は、status/type/model/page/since/until と併用できません。バッチモードは tasks と missing を返し、履歴は total/page/page_size/next_page/last_page を返します。終了した行について結果のリンクやエラーコードを読み取れない場合でも、基本のページはそのまま返されます。details_status、行ごとの details_reason（read_failed、invalid、not_returned のいずれか）、details_retry_task_ids が、何が欠けているか、何を無料で再試行すればよいかを示します。not_returned の行は、get_task で確認してください。processing には、キュー待ちのタスクも含まれます。時刻フィルターは、選択したページに適用されます。total は、時刻フィルタリングの前に数えた値です。履歴はアカウント全体が対象で、この会話に限定されません。ページが空でも、送信が行われなかったことの証明にはなりません。
+
+### get_task_usage
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| since | string | いいえ | デフォルトは 30d。作成時刻の下限 |
+| until | string | いいえ | デフォルトは現在時刻。その時刻を含みます |
+| model | string | いいえ | 正確な ID。1–128文字 |
+| type | string | いいえ | image/video/audio |
+| max_pages | integer | いいえ | 1–20。デフォルトは 5。各ページは50件のタスク |
+
+```json
+{"name":"get_task_usage","arguments":{"since":"7d","type":"video","max_pages":5}}
+```
+
+totals、by_model、by_status、coverage、as_of を返します。missing_cost_tasks、truncated、concurrent_change_detected、complete_for_retained_tasks を確認してください。このツールは、アカウントで保持されている完了済みタスクについて、報告された料金を集計します。完全な請求書でも、支払いや返金の台帳でも、MCP だけの使用量レポートでも、精算額の上限でもありません。
+
+### check_balance
+
+引数はありません：
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+account_balance_credits/usd、spent_scope、spent_credits を返し、利用できる場合は、合計上限と1日の上限を、コンソールへのリンクとともに返します。OAuth キーの支出には、この会話だけでなく、そのアカウントの CLI とすべての OAuth MCP セッションの分が含まれます。
+
+### upload_file
+
+| パラメータ | 型 | 必須 | 説明 |
+|---|---|---|---|
+| file_url | string | いずれかのソースが必須 | 公開の HTTPS メディア。プライベートネットワークの URL や、認証情報を含む URL は使えません |
+| base64_data | string | いずれかのソースが必須 | リモートモードでは、デコード後で最大 1 MiB |
+| mime_type | string | 条件付き | 生の base64 では必須。data URL には MIME が含まれています |
+| file_name | string | いいえ | ディレクトリを含まない、ファイル名のみ |
+| upload_path | string | いいえ | 相対ディレクトリ。.. は使えません |
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+URL は、実際にアクセスできるメディアに置き換えてください。file_url、ファイルのプロパティ、有効期限の情報を返します。参照素材は、通常72時間保持されます。リモート MCP は file_path を受け付けません。ローカル stdio では、代わりに、許可されたディレクトリ内の絶対パスを使えます。ソースは1つだけ選んでください。アップロードが成功しても、選択したモデルがそのメディアに対応していることの証明にはなりません。
+
+### prepare_upload
+
+必須の `file_name`：メディアの種類の判定に使われる拡張子を含む文字列。任意の `upload_path`：相対ディレクトリ。
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返します。この URL の有効期間は約15分で、1回限り使用でき、受け付けるのは最大 **95 MiB** です。返されたコマンドを、ファイルを実際に読み取れる環境で実行してから、確認済みの file_url を使ってください。ブラウザの添付ファイルには、この方法ではアクセスできない場合があります。このアドレスには一時的な許可情報が含まれています。公開したり、個人用のキーを付け加えたりしないでください。
+
+### get_upload
+
+必須の `upload_id`：元の prepare の結果から取得します：
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
+
+状態には waiting/uploading/done/failed/expired/outcome_unknown があります。file_url は、done の結果が確認できてから使ってください。サーバー側のローカルな状態は、約1時間保持されます。互換性のあるファイルサービスでは、約72時間、レシートを取得できます。レシートに対応していない場合や検証できない場合は、outcome_unknown になることがあります。照会しても、ファイルがもう一度アップロードされることはありません。元の ID を保持し、まず状態を確認してください。
+
+### 結果とエラー
+
+ツールは、読める形式のテキストと structuredContent を返します。失敗した場合は、isError/error/next_step が含まれることがあります。完了したメディアには、resource_link と、任意で画像のサムネイルが含まれることがあります。コンテンツブロックへの対応状況は、ホストによって異なります。受け渡しの基準になるのは、あくまでオリジナルの URL です。プレビューは、すべてのホストで保証されるわけではありません。
+
+ツールのエラーと、input_valid、見積もりの状態、task.status などの業務フィールドを確認してください。HTTP 200 だけでは、生成が成功したことにはなりません。送信のタイムアウトは、タスクが作成されたあとに起きることもあり、課金されていないことの証明にはなりません。照会の失敗は、元のタスクが失敗したことの証明ではありません。
+
+<span id="task-progress-and-results" />
+
+## タスクの進捗と結果
+
+無料の接続検証には、残高とモデルの照会を使ってください。既存のタスクには get_task/list_tasks を使い、そのあとでオリジナルの URL と、報告された実際の料金を渡します。参照素材、復旧、保存、グレーのプレビューについては、[ワークフローガイド](/ja/mcp/overview#workflows)で説明しています。表示上の問題を理由に、有料生成をもう一度行ってはいけません。
+
+<span id="api" />
+## MCP プロトコルとバックエンド API
+
+| モード | 実行経路 | 認証とインストール |
+|---|---|---|
+| リモート MCP | クライアント → ホスト型の EvoLink MCP → プラットフォーム API | Streamable HTTP とブラウザの OAuth。ローカルへのサーバーのインストールは不要です |
+| ローカル stdio | クライアント → ローカルの MCP プロセス → プラットフォーム API | Node.js 20 以上、npx による起動、個人用の API Key |
+
+リモートのエンドポイントは `https://mcp.evolink.ai/mcp` です。OAuth は Passport が提供し、サーバーは https://api.evolink.ai とファイルサービスにリクエストを送ります。MCP の URL、プラットフォームの /v1 ルート、ドキュメント、llms.txt は、それぞれ別の入口です。
+
+### 初期化とツールの呼び出し
+
+initialize、プロトコルのバージョン、Accept、認証、セッション、コンテンツブロックの処理は、ホストまたは MCP SDK に任せてください。初期化のあとに tools/list を読み取り、それから tools/call を呼び出します：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_balance","arguments":{}}}
+```
+
+name / arguments を使った例は、ツールの入力を表すもので、REST のリクエストボディではありません。ツールは、テキスト、構造化データ、リソースリンク、サムネイルを返すことがあります。表示のされ方は、ホストによって異なります。HTTP の成功だけでなく、ツールのエラーとタスクの状態も確認してください。
+
+### ツールとバックエンドの操作
+
+| MCP ツール | バックエンドの操作または実装 |
+|---|---|
+| search_models | `GET /v1/models` に、エイリアス、利用可否、リファレンスを加えたもの |
+| get_model、recommend_models、search_docs | バージョン管理されたリファレンスと、アカウントのモデル一覧。同名の REST ルートではありません |
+| estimate_cost | `GET /v1/catalog/models/{model_id}/pricing-rules?view=full` と、サーバー側の見積もりルール（1.7.0 以降） |
+| get_pricing_rules | `GET /v1/catalog/pricing-rules` と `GET /v1/catalog/models/{model_id}/pricing-rules`（view=full） |
+| generate_image | `POST /v1/images/generations` |
+| generate_video | `POST /v1/videos/generations` |
+| generate_audio | `POST /v1/audios/generations` |
+| get_task | `GET /v1/tasks/{task_id}` |
+| task_ids を指定した list_tasks | `POST /v1/tasks/batch` |
+| list_tasks、get_task_usage | `GET /v1/tasks`、ページ分割、範囲に上限のある集計 |
+| check_balance | `GET /v1/credits` |
+| アップロード許可 | `POST /v1/files/upload-token` |
+| upload_file | ファイルサービスの /url または /base64。ローカル stdio は、許可されたディレクトリを読み取れます |
+| prepare_upload、get_upload | ホスト型の1回限りの PUT URL と状態。レシートによる復旧ができるかどうかは、ファイルサービスの対応状況によります |
+
+モデルのパラメータは arguments.input に指定し、サーバーが REST リクエストに変換します。media_seconds は課金のためのヒントです。max_cost_usd は、送信前に見積もりをチェックするだけです。公開済みの 1.12.1 は、公開の価格ルール（参考価格で、アカウントの割引は含みません）から見積もりを行い、最終的な精算額の上限は依然としてありません。
+
+### アップロード、復旧、アクセス
+
+prepare_upload の PUT URL は、ファイルを読み取れる環境でのみ使い、そのあとで get_upload を照会してください。リモートサーバーはデスクトップ上のパスを読み取れず、チャットの添付ファイルからは元のバイト列を取得できない場合があります。[参照素材のアップロード](/ja/mcp/overview#files)を参照してください。
+
+有料の送信については、client_request_id、正規化された入力、アカウントの識別情報、返された task_id を保存してください。結果が不明な場合は、元のタスクと履歴を照会してください。再送信するためにリクエスト ID を変えてはいけません。クライアント側のリクエスト ID だけでは、あらゆる二重課金に対するバックエンドの保護が一様に保証されるわけではありません。
+
+OAuth で利用できるのは、限られたメディア操作だけです。任意のキー管理や管理用 API は利用できません。現在、利用できるキャンセルツールは提供されていません。待機を止めても、タスクはキャンセルされません。CLI のコマンドと実行については、[CLI リファレンス](/ja/cli/reference#api)で別途説明しています。
+
+<span id="cli-reference" />
+
+## CLI コマンドのドキュメント
+
+CLI の完全なリファレンスは、現在は[別の CLI セクション](/ja/cli/reference#cli-reference)にあります。このページでは、MCP のツールとプロトコルを説明しています。

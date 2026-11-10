@@ -1,0 +1,241 @@
+---
+title: "CLI : connexion, accord et dépannage"
+description: "Limites des coûts, accès au compte, conservation et dépannage pas à pas"
+---
+
+<span id="pricing" />
+
+## Coûts et accord dans la CLI
+
+Cette page décrit la version publiée CLI 0.14.1. La CLI appelle directement les API de la plateforme et gère localement les commandes et les estimations enregistrées ; la connexion au compte passe par Passport. Commencez par le [flux de travail complet](/fr/cli/workflows).
+
+1. Exécutez `evolink estimate` avec le modèle final et les entrées finales, puis présentez le coût estimé.
+2. Une fois ce modèle, ces paramètres et ce coût approuvés, générez à l’aide du `quote_id` enregistré et de `--confirm`.
+3. Refaites l’estimation et obtenez un nouvel accord si l’entrée ou la connexion au compte change, si le prix augmente ou si le devis expire. Ne réutilisez pas un autre devis. Si l’utilisateur demande explicitement de ne pas estimer ni confirmer, utilisez `generate --skip-estimate` à la place des étapes 1 et 2.
+4. Interrogez la tâche initiale et l’usage du compte. Une estimation ne prouve ni une facturation réelle ni un remboursement.
+
+Consultez [Modèles, coûts et quotas](/fr/cli-mcp/models-and-billing#pricing) pour les états d’estimation, les limites de la tarification publique, l’accord et les budgets. Dans les versions publiées, max_cost_usd n’est comparé qu’à l’estimation faite avant la soumission ; il ne plafonne pas le montant final facturé.
+
+Les devis restent valables 24 heures à compter de l’estimation et sont liés à l’identité, au modèle et aux entrées d’origine. La génération refait l’estimation avant la soumission : la même entrée est soumise si le prix est égal ou inférieur au prix approuvé, y compris si les règles tarifaires ont été mises à jour entre-temps, tandis qu’un prix plus élevé (`price_changed`), une entrée modifiée (`quote_input_changed`) ou un devis expiré (`quote_expired`) n’envoient rien et exigent une nouvelle estimation et un nouvel accord. Les devis ne sont pas des reçus de paiement. `--confirm` exprime l’accord pour cette tâche ; il ne remplace ni la connexion au compte ni la permission d’exécution de l’hôte. Les consultations de modèles, de solde et de tâches ne soumettent aucune génération. La génération est facturée ; les limites de taille et de conservation du service de fichiers s’appliquent séparément. Le taux de conversion de référence est d’environ 68 crédits pour 1 $ ; fiez-vous aux valeurs réellement renvoyées et aux relevés du compte.
+
+Consultez les [règles d’accès communes](/fr/cli-mcp/models-and-billing#authorization) ; cette page conserve les actions de connexion et de déconnexion propres à cette voie.
+
+<span id="authorization" />
+
+## Connexion, permissions et quotas
+
+Passport gère la connexion dans le navigateur, et le stockage sécurisé du système enregistre les identifiants de connexion de la CLI. Les requêtes métier utilisent la clé existante liée à OAuth. La CLI et le MCP distant peuvent partager l’accès au compte ainsi que les quotas et les permissions de la clé. Mettre en pause ou modifier une clé partagée affecte tout ce qui l’utilise ; chaque session OAuth se déconnecte séparément.
+
+```bash
+evolink auth status --json
+```
+
+Pour vous déconnecter de cette CLI locale, exécutez séparément :
+
+```bash
+evolink auth logout
+```
+
+Un MCP local configuré avec une clé API personnelle utilise les permissions de cette clé ; la connexion de la CLI n’autorise pas un processus MCP distinct. Le solde, les quotas quotidiens et totaux, l’accès aux modèles et les permissions d’outils peuvent empêcher la soumission. Une tâche échouée n’est pas facturée, et les crédits réservés à la soumission sont restitués automatiquement ; une coupure de connexion ou une déconnexion ne prouve pas qu’un remboursement a été effectué.
+
+<span id="retention" />
+
+## Conservation et expiration
+
+Les durées de validité par défaut des devis, des références, des autorisations d’importation et des URL d’origine sont tenues à jour dans [Tâches, références et résultats](/fr/cli-mcp/tasks-and-files#retention). Les valeurs réellement renvoyées font foi ; la prise en charge des reçus dépend du déploiement du service de fichiers.
+
+<span id="faq" />
+
+## Dépannage de la CLI : repérer l’étape en échec
+
+Vérifiez la version et l’accès sur la machine, sous l’utilisateur du système et dans le terminal qui exécutent la CLI. Ces consultations ne soumettent aucune génération :
+
+```bash
+evolink --version
+evolink auth status --json
+evolink doctor --json
+```
+
+| Symptôme | Section de dépannage |
+|---|---|
+| `node`, `npm` ou `evolink` est introuvable | [Environnement et installation](#cli-install) |
+| Échec de la connexion, du rappel SSH ou du stockage sécurisé | [Connexion](#login) |
+| Compétence installée mais inutilisable par l’agent | [Détection des compétences](#skills-discovery) |
+| Modèle introuvable, entrées rejetées ou prix incomplet | [Modèles et tarification](#models-and-pricing) |
+| Délai de génération dépassé ; soumission à l’issue inconnue | [Tâches et reprise](#tasks-and-recovery) |
+| Importation en échec ou à l’issue inconnue | [Importations](#uploads) |
+| Téléchargement en 403, aperçu gris ou résultat réduit à un lien | [Téléchargements](#download) |
+| Le problème persiste après ces vérifications | [Informations pour le support](#support) |
+
+Résolvez l’étape en cours avant de continuer. La vérification de la connexion n’exige aucune génération payante ; ne lancez pas de générations répétées pour tester l’installation.
+
+<span id="cli-install" />
+### Environnement et installation : commandes introuvables, permissions, délais dépassés
+
+**Étape 1 : vérifiez l’environnement d’exécution réel.** Exécutez dans le terminal utilisé par votre agent :
+
+```bash
+node --version
+npm --version
+```
+
+La CLI nécessite Node.js 22+. En cas de `command not found` ou de commande non reconnue sous Windows, installez [Node.js](https://nodejs.org/en/download) et rouvrez le terminal. Une installation sur votre ordinateur local n’installe pas la CLI dans SSH, WSL ou un conteneur.
+
+**Étape 2 : vérifiez l’emplacement d’installation de npm.**
+
+```bash
+npm config get prefix
+```
+
+| Symptôme | Action |
+|---|---|
+| npm a réussi mais evolink est introuvable | Ouvrez un nouveau terminal, confirmez qu’il s’agit du même environnement Node/npm et vérifiez que son répertoire global de commandes figure dans PATH |
+| EACCES / permission denied | Utilisez un environnement Node/npm accessible en écriture par l’utilisateur en suivant les [recommandations de npm sur les permissions](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally/), réinstallez la CLI, puis vérifiez son chemin et sa version |
+| Erreur de délai, de DNS, de certificat ou de proxy | Vérifiez l’accès au registre npm officiel et les paramètres de proxy ; conservez l’erreur et laissez la vérification des certificats activée |
+| PowerShell bloque les scripts | Utilisez l’Invite de commandes dans le même environnement Windows, ou suivez la politique de votre organisation pour les appareils |
+| Commande evolink ancienne ou présente en plusieurs exemplaires | Repérez la commande utilisée par l’agent, puis mettez à jour l’environnement Node correspondant |
+
+Choisissez les commandes d’inspection des chemins adaptées à votre système :
+
+<Tabs>
+  <Tab title="macOS / Linux">
+
+```bash
+command -v node
+command -v npm
+command -v evolink
+```
+
+  </Tab>
+  <Tab title="Windows PowerShell">
+
+```powershell
+Get-Command node
+Get-Command npm
+Get-Command evolink
+```
+
+  </Tab>
+</Tabs>
+
+**Étape 3 : vérifiez à nouveau.** Après avoir corrigé le problème en question, installez ou mettez à jour la CLI, puis exécutez `evolink --version`. Ne passez à la connexion que lorsque la commande fonctionne. Consultez l’[installation complète](/fr/cli/setup#cli-install).
+
+<span id="login" />
+### Connexion et rappels : navigateur absent ou connexion inachevée
+
+1. Laissez `evolink auth login` ou `setup` s’exécuter. Si aucun navigateur ne s’ouvre, ouvrez manuellement le lien de cette tentative, vérifiez le compte et autorisez l’accès.
+2. Revenez au terminal d’origine et attendez la fin de la commande. Après l’autorisation, le navigateur arrive sur la page EvoLink MCP avec un avis « autorisation reçue » ; cela signifie seulement que le rappel est arrivé, et non que l’accès au compte est vérifié. N’interrompez pas la commande prématurément.
+3. Vérifiez séparément l’authentification enregistrée et l’accès réel au compte :
+
+```bash
+evolink auth status --json
+evolink balance --json
+```
+
+Vous devez obtenir respectivement `authenticated: true` et des données de solde réelles. Après une expiration du délai, lancez une nouvelle tentative avec un nouveau lien plutôt que de réutiliser un code d’autorisation. Pour une attente plus longue :
+
+```bash
+evolink auth login --timeout 600
+```
+
+| Symptôme | Action |
+|---|---|
+| Le rappel vers 127.0.0.1 / localhost ne peut pas se connecter | Vérifiez que la commande de connexion s’exécute toujours et sur quelles machines s’exécutent le navigateur et la CLI ; à distance, utilisez le [transfert du rappel SSH](/fr/cli/setup#ssh-login) |
+| credential_store_unavailable | Sous Linux, vérifiez D-Bus, Secret Service et l’état de déverrouillage pour ce même utilisateur ; configurez d’abord le stockage sécurisé |
+| Connexion absente après un changement d’utilisateur, de conteneur ou de serveur | La session appartient à l’environnement d’origine ; autorisez le nouvel environnement sans copier de fichiers d’identifiants de connexion |
+| Clé en pause, expirée ou ayant dépassé sa limite | Examinez la clé partagée dans la console ; une nouvelle autorisation ne peut ni lever la pause ni augmenter les limites |
+| L’agent indique que le jeton de connexion a expiré, ou la date `access_token_expires_at` de `auth status` est passée | Il s’agit seulement de l’expiration du jeton d’accès de courte durée ; la CLI le renouvelle avant la commande suivante, et aucune nouvelle connexion n’est donc nécessaire. Vérifiez avec `evolink balance --json` ; n’exécutez à nouveau `auth login` qu’en cas de `login_required` ou de `login_expired` |
+| Après l’autorisation, le navigateur reste sur une page bilingue à l’adresse 127.0.0.1 au lieu de revenir au site | La CLI installée est antérieure à 0.9.1. Effectuez la mise à niveau avec `npm install -g @evolinkai/cli@latest`, puis exécutez `evolink skills install` ; à partir de la version 0.10.0, la CLI annonce elle-même les nouvelles versions, voir [Comment savoir qu’une nouvelle version existe](/fr/cli/setup#update-check) |
+| La sortie affiche `EvoLink CLI X is available` | C’est un avis de nouvelle version, et non une erreur ; la commande elle-même s’est terminée. Effectuez la mise à niveau comme indiqué et exécutez `evolink skills install` ; définissez `EVOLINK_CLI_UPDATE_CHECK=0` pour désactiver les vérifications |
+
+`--no-browser` nécessite tout de même un rappel du navigateur. Ce n’est ni une authentification par code d’appareil ni une authentification sans navigateur. Ne saisissez pas une clé API en guise de jeton OAuth distant.
+
+<span id="skills-discovery" />
+### Compétences et permissions : les fichiers installés ne sont pas utilisés par l’agent
+
+1. Vérifiez le répertoire de l’utilisateur qui exécute l’agent. Utilisez la valeur `--agent` correspondante ; pour Codex :
+
+```bash
+evolink skills status --agent codex --json
+```
+
+2. `current: true` signifie que les fichiers installés correspondent à la CLI. Si des fichiers sont manquants ou obsolètes, utilisez `evolink skills install --agent codex`. En cas de `modified`, conservez les modifications locales ; en cas de `conflict`, résolvez le conflit de compétence ou les métadonnées invalides au lieu de supprimer tout le répertoire des compétences.
+3. Demandez à l’agent de confirmer qu’il détecte et lit `evolink-cli`. Actualisez ou ouvrez une nouvelle conversation si nécessaire. Examinez dans l’hôte les permissions de commande requises ; les restrictions de l’organisation doivent être traitées dans ses propres paramètres.
+
+`assistant_discovery: not_checked` signifie que le chargement par l’hôte n’a pas encore été vérifié. La présence d’un fichier `SKILL.md` ou la lecture d’une page de documentation ne prouve pas que l’agent peut exécuter la CLI.
+
+Synchronisez les compétences après avoir mis à jour la CLI. N’utilisez `--replace-modified` qu’après avoir décidé de remplacer les modifications locales ; les sauvegardes se trouvent dans `~/.evolink-media/skill-backups/`. Les répertoires et le contenu sont répertoriés dans [Ressources lisibles par les agents](/fr/cli/skills#skills).
+
+<span id="models-and-pricing" />
+### Modèles et tarification : recherche vide, paramètres invalides, estimation incomplète
+
+1. Recherchez les modèles en temps réel et utilisez l’identifiant canonique renvoyé. Une famille, un nom d’affichage ou un alias n’est pas forcément un identifiant de soumission valide. Élargissez la formulation de la recherche sans abandonner les capacités de référence requises.
+2. Examinez `models show` / `models schema` pour ce modèle. Vérifiez les champs obligatoires, l’orthographe, les énumérations, les limites numériques et les références mutuellement exclusives. Ne copiez pas les champs `duration`, `size` ou `quality` d’un autre modèle.
+3. Refaites l’estimation et examinez `input_valid`, `problems`, `estimate.status`, `basis` et `warnings`. Une entrée ou une identité modifiée, un prix plus élevé ou un devis expiré exigent une nouvelle estimation et un nouvel accord.
+
+Pour `needs_input`, fournissez l’entrée ou l’usage facturable que désignent `missing_usage` et `usage_help`, avec `--media-seconds` ou `--pricing-parameters` ; `no_price` est inutilisable et `partial` n’est pas un total. Une durée inconnue ou des multiplicateurs de référence inconnus ne peuvent pas être comblés par un prix de départ. Conservez le budget ; ne supprimez pas discrètement les plafonds, ne changez pas de clé et ne réduisez pas les spécifications pour contourner un refus.
+
+Si aucun modèle n’a de prix dans la recherche, `models show` ou `models recommend`, et que `pricing_warning` indique `Public pricing rules are unavailable or invalid`, la CLI est en version 0.10.1 ou antérieure : ces versions écartent tous les prix lorsque le catalogue contient une règle par paliers sans `multiplier`, et une telle règle est publiée depuis le 12 octobre. Effectuez la mise à niveau vers la version 0.10.2 ou ultérieure avec `npm install -g @evolinkai/cli@latest`, puis exécutez `evolink skills install`. À partir de la version 0.10.2, un modèle dont les règles ne peuvent pas être lues est écarté et nommé dans `pricing_warning` ; les autres modèles conservent leurs prix.
+
+Les estimations publiées, fondées sur les prix publics par défaut, ne sont pas des devis faisant autorité pour un compte donné, et `max_cost_usd` n’est pas un plafond de règlement final. Consultez [Coûts](/fr/cli/billing) et la [référence des commandes](/fr/cli/reference).
+
+<span id="tasks-and-recovery" />
+
+### Délai de génération dépassé, tâches en cours ou soumissions à l’issue inconnue
+
+<Steps>
+  <Step title="Interroger la tâche initiale lorsqu’un identifiant existe">
+    ```bash
+    evolink tasks get TASK_ID --json
+    evolink tasks wait TASK_ID --timeout 600 --json
+    ```
+    L’expiration du délai d’attente n’annule pas la génération. Utilisez batch ou list pour plusieurs tâches et téléchargez les originaux une fois les tâches terminées. Si une consultation renvoie `status_check: unverified` (`task_response_invalid`, `task_identity_mismatch` ou `task_status_unknown`), le dernier état n’a pas pu être vérifié : interrogez à nouveau la même tâche au lieu de générer. Un résultat de `generate` avec `submission_state: accepted` possède déjà un identifiant de tâche, même si son état est absent.
+  </Step>
+  <Step title="Reprendre le devis initial si aucun identifiant de tâche n’a été renvoyé">
+    ```bash
+    evolink tasks resume --quote QUOTE_ID --json
+    ```
+    Conservez l’identité, le devis et l’identifiant de requête d’origine. Ne changez ni de compte, ni de devis, ni d’identifiant pour générer à nouveau. Une issue inconnue ne signifie pas que rien n’a été soumis ni facturé.
+  </Step>
+  <Step title="Conserver les preuves avant de traiter un échec">
+    Notez l’identifiant de la tâche initiale, le code d’erreur et l’heure. Une tâche dont l’échec est confirmé n’est pas facturée, et les crédits réservés à la soumission sont restitués automatiquement. Il n’existe aucune commande publique d’annulation utilisable. Fermer le terminal ou arrêter une attente n’annule pas la tâche côté serveur.
+  </Step>
+</Steps>
+
+Pour un devis qui n’a pas été soumis et qui a expiré, ou dont l’entrée a changé ou dont le prix a augmenté, refaites l’estimation et obtenez un nouvel accord. Reprenez d’abord les tâches existantes ou les soumissions à l’issue inconnue. Consultez la [référence des commandes de tâches](/fr/cli/reference#cli-reference).
+
+<span id="uploads" />
+
+### Importations en échec, trop volumineuses ou à l’issue inconnue
+
+1. Vérifiez le chemin absolu, les permissions et le format réel sur la machine qui exécute l’agent. Un hôte distant ou un conteneur ne peut pas lire directement un chemin de votre ordinateur local.
+2. Les importations locales de la CLI sont limitées à 95 MiB ; les modèles peuvent imposer des limites plus strictes de format, de nombre ou de taille. Vérifiez d’abord la documentation du modèle. Les pièces jointes d’une conversation doivent devenir des fichiers lisibles ou des URL accessibles.
+3. Après une issue inconnue, conservez l’`upload_id` d’origine et interrogez-le :
+
+```bash
+evolink uploads get UPLOAD_ID --json
+```
+
+4. La consultation des reçus dépend du déploiement du service de fichiers. `outcome_unknown` ne prouve pas que rien n’a été importé. Ne demandez une importation de remplacement qu’après un échec confirmé ou une expiration. Les références sont généralement conservées 72 heures ; réimportez les entrées expirées, mettez à jour la requête, puis refaites l’estimation et obtenez un nouvel accord avant la génération.
+
+Consultez les [flux de travail des références](/fr/cli/workflows#files) pour les méthodes d’importation et la [référence des commandes](/fr/cli/reference) pour les champs des reçus. Ne partagez dans la conversation ni URL d’importation à usage unique, ni URL privées signées, ni clés.
+
+<span id="download" />
+
+### Téléchargements et aperçus
+
+Interrogez la tâche initiale, confirmez qu’elle est terminée et utilisez son URL d’origine. Préférez la commande download de la CLI ; consultez la [référence CLI](/fr/cli/reference). Les téléchargements utilisent déjà un UA de produit.
+
+Les vérifications HTTP et de format, l’exemple Python avec un User-Agent de produit, les liens expirés et les aperçus gris sont traités dans le [dépannage des téléchargements](/fr/cli-mcp/tasks-and-files#download). Reprenez les tâches à l’issue inconnue au lieu de générer à nouveau ou de modifier les aperçus.
+
+<span id="support" />
+
+### Informations à fournir au support
+
+Suivez la [liste de contrôle pour le support](/fr/cli-mcp/tasks-and-files#support) : versions, étape en échec, identifiants et erreurs expurgées. Conservez les diagnostics de cette voie ; ne partagez ni clés, ni jetons, ni URL privées, ni copies de l’environnement.
+
+<span id="mcp-connection" />
+
+### Dépanner une connexion MCP native
+
+La CLI et MCP sont des points d’entrée distincts. Consultez le [dépannage MCP](/fr/mcp/billing#mcp-connection) pour l’OAuth natif, la détection des outils et le stdio local. Une installation réussie de la CLI ne valide pas l’accès à MCP. Cette entrée de compatibilité préserve les anciens liens ; les commandes, la connexion et les compétences de la CLI sont traitées plus haut.

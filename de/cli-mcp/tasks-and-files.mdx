@@ -1,0 +1,102 @@
+---
+title: "Aufträge, Referenzen und Ergebnisse"
+description: "Gemeinsame Regeln für Auftragswiederaufnahme, Gültigkeitsdauer von Dateien, Download, Vorschauen und Support-Schritte"
+---
+
+Diese Seite enthält die gemeinsamen Regeln für Aufträge und Dateien. Die Schritte zur Ausführung finden Sie unter [CLI-Abläufe](/de/cli/workflows) und [MCP-Abläufe](/de/mcp/overview#workflows).
+
+<span id="tasks" />
+## Einmal absenden und die Auftragskennung aufbewahren
+
+Die Generierung kann Ausgaben direkt oder eine task_id zurückgeben. Bewahren Sie Kennung, Modell, Eingaben und den gemeldeten Status auf und fragen Sie dann den ursprünglichen Auftrag ab, bis er abgeschlossen oder nachweislich fehlgeschlagen ist. Werten Sie die tatsächlich zurückgegebenen Status aus; eine Zeitüberschreitung beim Warten eines Werkzeugs ist kein Fehlschlag der Generierung.
+
+| Ergebnis | Maßnahme |
+|---|---|
+| Eine task_id liegt vor | Ursprünglichen Auftrag abfragen oder auf ihn warten; mehrere Kennungen gebündelt abfragen |
+| Noch in der Warteschlange oder in Ausführung | Weiter abfragen; das Beenden des Wartens bricht den Auftrag nicht ab |
+| Status nicht verifiziert: `task_response_invalid`, `task_identity_mismatch` oder `task_status_unknown`, mit `status_check: unverified` | Ursprüngliche Auftragskennung behalten und erneut abfragen; die Abfrage ist kostenlos. Das bedeutet weder einen Fehlschlag noch, dass nichts abgebucht wurde, noch eine Erstattung; generieren Sie daher nicht erneut |
+| Angenommen (`submission_state: accepted`), aber noch kein Status | Der Auftrag existiert; fragen Sie seine task_id ab, statt erneut zu generieren |
+| Abgeschlossen | Jedes Original speichern; Anzahl, Format, bekannte Kosten und Ablaufzeit nennen |
+| Nachweislich fehlgeschlagen | Fehlercode (`error.code`), dessen Erläuterung (`error.message`) und Zeitpunkt nennen; der Auftrag wird nicht berechnet, und die beim Absenden reservierten Credits werden automatisch wieder gutgeschrieben |
+| Übermittlung mit unbekanntem Ausgang, ohne Kennung | Über den ursprünglichen Weg wiederaufnehmen, wie unten beschrieben |
+
+Batch- und Listenabfragen behalten die Aufträge, die sie verifizieren konnten, und kennzeichnen den Rest (`partial`, `missing`, `details_missing`). Ein fehlendes Detail bedeutet nicht, dass der Auftrag nie existiert hat; fragen Sie diese Kennungen erneut ab. Muss ein Status, ein Ergebnis oder ein Kontoeintrag geprüft werden, enthalten die Antworten `dashboard_url` und eine englische `dashboard_guidance`. Melden Sie sich im [EvoLink-Dashboard](https://evolink.ai/dashboard) mit demselben EvoLink-Konto an und behalten Sie die ursprüngliche Auftragskennung; der Link allein bestätigt weder den Abschluss noch eine Abbuchung noch eine Erstattung. Hinweise, Linkbeschriftungen und Generierungsbestätigungen sind standardmäßig auf Englisch; bitten Sie den Assistenten darum, wenn Sie eine andere Sprache bevorzugen.
+
+Die veröffentlichten Versionen von CLI und MCP bieten derzeit keine nutzbare öffentliche Möglichkeit zum Abbrechen. Das Schließen eines Terminals, einer Unterhaltung oder einer Verbindung bricht den Auftrag weder ab noch belegt es, dass nichts abgebucht wurde.
+
+<span id="recovery" />
+## Wiederaufnahme nach Zeitüberschreitungen und unbekanntem Ausgang
+
+<Steps>
+  <Step title="Ursprüngliche Identität und Übermittlungsdaten aufbewahren">
+    Die CLI behält quote_id und den zugehörigen Wiederaufnahmedatensatz; MCP behält client_request_id, die ursprünglichen Eingaben und Fehler. Ziehen Sie die Abfrage einer vorhandenen task_id einer erneuten Generierung vor.
+  </Step>
+  <Step title="Über den ursprünglichen Weg wiederaufnehmen">
+    Folgen Sie der [CLI-Wiederaufnahme](/de/cli/billing#tasks-and-recovery) oder der [MCP-Wiederaufnahme](/de/mcp/billing#tasks-and-recovery). Behalten Sie die ursprüngliche Identität, die Eingaben und die Anfragekennung bei. Wechseln Sie weder Konto noch Keys noch den CLI- oder MCP-Weg, um erneut abzusenden. EvoLink bewahrt eine Anfragekennung 24 Stunden lang auf: In dieser Zeit liefern dieselbe Kennung und dieselben Eingaben den ursprünglichen Auftrag ohne erneute Abbuchung zurück. `tasks resume` der CLI wiederholt die Anfrage innerhalb von 23 Stunden nach dem ersten Absenden, solange das Preisangebot nicht abgelaufen und der Preis nicht gestiegen ist; andernfalls sendet der Befehl nichts. Nach 24 Stunden verhindert die Kennung keinen zweiten Auftrag mehr; prüfen Sie daher die letzten Aufträge, bevor Sie erneut absenden.
+  </Step>
+  <Step title="Fakten zu Auftrag und Abrechnung klären">
+    Speichern Sie abgeschlossene Ausgaben; prüfen Sie nach einem nachweislichen Fehlschlag die Abrechnung. Ist der Ausgang weiterhin unbekannt, bewahren Sie Fehler und Zeitpunkt auf und wenden Sie sich an den Support. Unbekannt heißt nicht, dass nichts generiert oder abgebucht wurde.
+  </Step>
+</Steps>
+
+<span id="files" />
+## Referenzen für das Modell lesbar machen
+
+1. Prüfen Sie die akzeptierten Bild-, Video- und Audiotypen, Anzahlen, Größen und Kombinationen von Referenzen.
+2. Verwenden Sie eine Datei, die in der Ausführungsumgebung lesbar ist, oder eine URL, auf die der Server zugreifen kann. Chat-Anhänge und Desktop-Pfade sind nicht automatisch aus der Ferne lesbar.
+3. Prüfen Sie den Upload-Beleg und die Datei-URL, bevor Sie die URL in die Modelleingaben aufnehmen und erneut schätzen.
+4. Bewahren Sie die ursprüngliche upload_id auf, wenn der Ausgang unbekannt ist. Fordern Sie einen Ersatz erst nach nachweislichem Fehlschlag oder nach Ablauf der Gültigkeit an; ob Belege unterstützt werden, hängt vom Deployment ab.
+
+| Weg | Ort der Eingabe und Grenzen | Anleitung |
+|---|---|---|
+| Lokale Datei über die CLI | Für die CLI lesbar; höchstens 95 MiB, Modelle können strenger sein | [Referenzen mit der CLI](/de/cli/workflows#files) |
+| Remote-MCP mit URL/Inline-Daten | Vom Server lesbare URL; Grenze von 1 MiB für base64 | [MCP-Upload-Werkzeuge](/de/mcp/tools) |
+| Einmaliger Upload über Remote-MCP | prepare_upload, Upload aus einer Umgebung mit Dateizugriff, dann get_upload; Grenze von 95 MiB | [Referenzen mit MCP](/de/mcp/overview#files) |
+| Lokales stdio | file_path auf dem Rechner des MCP-Prozesses; es gelten die Grenzen von Modell und Dateidienst | [Lokales MCP](/de/mcp/other-clients#local-mcp) |
+
+<span id="retention" />
+## Gültigkeitsdauer und Speicherung
+
+| Element | Aktueller Standard |
+|---|---|
+| Original-URL der Generierung | In der Regel 24 Stunden; zügig speichern |
+| Hochgeladene Referenz | In der Regel 72 Stunden; nach Ablauf erneut hochladen |
+| Zustimmung zum Preisangebot (CLI `quote_id`, MCP `pricing_quote`) | Gilt 24 Stunden ab der Kostenschätzung, für dieselbe Eingabe zum genehmigten Preis oder darunter; eine abgelaufene Zustimmung (`quote_expired`), ein höherer Preis (`price_changed`) oder eine geänderte Eingabe (`quote_input_changed`) erfordern eine neue Kostenschätzung und Zustimmung |
+| Anfragekennung (`client_request_id`) | Wird von EvoLink 24 Stunden ab dem ersten Absenden aufbewahrt; `tasks resume` der CLI wiederholt die Anfrage innerhalb von 23 Stunden, nur solange das Preisangebot nicht abgelaufen und der Preis nicht gestiegen ist |
+| Autorisierung für den einmaligen Remote-Upload | In der Regel 15 Minuten, einmalige Verwendung |
+| Status-URL des Remote-Uploads | In der Regel 1 Stunde; ursprüngliche upload_id aufbewahren |
+
+Maßgeblich sind die tatsächlich zurückgegebenen Werte. Die Kompatibilität der Belege hängt vom Deployment des Dateidienstes ab. Heruntergeladene Originale verbleiben im Speicher des Benutzers; temporäre URLs, Dokumentation und Chat-Anhänge sind kein dauerhafter Speicher. Laden Sie abgelaufene Referenzen erneut hoch und holen Sie für geänderte Eingaben eine neue Bestätigung ein.
+
+<span id="download" />
+## Fehlerbehebung bei Download und Vorschau
+
+1. Fragen Sie den ursprünglichen Auftrag ab und vergewissern Sie sich, dass er abgeschlossen ist. Verwenden Sie dessen Original-URL; Header können abgelaufene, private oder ungültige Links nicht reparieren.
+2. CLI-Benutzer können download verwenden. MCP-Benutzer können Originale im Browser öffnen oder aus einer Umgebung mit Dateizugriff speichern. Siehe [CLI-Downloads](/de/cli/reference) und [MCP-Übergabe](/de/mcp/overview#delivery).
+3. Prüfen Sie HTTP-Status, Content-Type und das tatsächliche Format. Fehler-HTML oder Fehler-JSON sind keine Medien. Passen Sie Dateiendungen an das echte Format an, statt jedes Bild in PNG umzubenennen.
+4. Öffnen Sie das Original, wenn eine Vorschau grau ist oder nur ein Link erscheint. Funktioniert es, übergeben oder speichern Sie es. Vorschauen des Hosts dürfen keine Neugenerierung oder Bearbeitung ohne Zustimmung auslösen.
+
+### Standardanfragen von Python werden abgelehnt
+
+Funktioniert ein gültiges Original im Browser oder mit curl, scheitert aber Python mit Standardeinstellungen, kann kontrollierter Code einen Produkt-User-Agent setzen. Dieses Bildbeispiel setzt voraus, dass result_url bereits eine gültige Original-URL ist:
+
+```python
+from urllib.request import Request, urlopen
+from shutil import copyfileobj
+
+request = Request(result_url, headers={"User-Agent": "EvoLinkClient/1.0"})
+with urlopen(request, timeout=60) as response:
+    if not response.headers.get_content_type().startswith("image/"):
+        raise ValueError("Expected an image response")
+    with open("result.png", "xb") as output:
+        copyfileobj(response, output)
+```
+
+Das Beispiel lehnt Antworten ab, die kein Bild sind, und vermeidet das Überschreiben. Ändern Sie die Dateiendung, wenn das tatsächliche Format nicht PNG ist. Video und Audio brauchen passende MIME-Prüfungen, Dateinamen und eine eigene Prüfung. Dieser Ansatz wurde nur für bestimmte Metadaten- und Bildfälle geprüft, nicht für jeden Client, jede Datei oder jedes Netzwerk. CLI-Downloads setzen bereits einen Produkt-UA.
+
+<span id="support" />
+## Informationen für den Support
+
+Nennen Sie Betriebssystem, Agent und Version, CLI-/MCP-Version, Weg, fehlgeschlagene Phase, Zeitpunkt, Fehlercode, erwartetes und tatsächliches Verhalten, vorhandene task_id, quote_id/client_request_id, upload_id und geschwärzte Diagnosedaten. Erwähnen Sie SSH, Container oder Proxys.
+
+Verbergen Sie OAuth-Tokens, Keys, vollständige Autorisierungslinks, einmalige Upload-URLs, signierte private URLs und private Dateien. Geben Sie keine Dateien mit Anmeldedaten und keine vollständigen Umgebungsauszüge weiter. Beginnen Sie mit der [CLI-Fehlerbehebung](/de/cli/billing#faq) oder der [MCP-Fehlerbehebung](/de/mcp/billing#faq), um die Phase einzugrenzen.

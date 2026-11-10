@@ -1,0 +1,152 @@
+---
+title: "CLI のメディア、参照素材、タスク"
+description: "モデルの選択、承認、メディア生成、アップロード、タスクの復旧、オリジナルファイルのダウンロード"
+---
+
+<span id="workflows" />
+## 1つのタスクを完了する
+
+ログインとスキルの検出が済んだら、次の流れに従います：要件 → モデルのパラメータ → 参照素材 → 無料の見積もり → 承認 → 一度だけの送信 → 元のタスクの照会 → オリジナルファイルのダウンロード。以下のコマンドは手順を示すためのもので、生成を許可するものではありません。
+
+<span id="models" />
+## ステップ 1：モデルを選び、入力を確認する
+
+```bash
+evolink models search --type image --query seedream --limit 5 --json
+evolink models recommend --type image --query "coffee advertisement" --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink docs search --query "reference images" --json
+```
+
+MODEL_ID は、検索結果にある正式な ID に置き換えてください。reference_inputs、必須項目、列挙値、範囲、同時に指定できないオプションを確認します。先頭に表示されること、安いこと、新しいこと、ベータ版であることは、適していることの根拠にはなりません。
+
+選ぶ順序、新しいシリーズ、料金のルールは、[モデル、料金、クォータ](/ja/cli-mcp/models-and-billing#models)にまとめています。指定されたモデルが利用できるかを確認してください。例はデフォルトの推奨ではありません。
+
+<span id="files" />
+## ステップ 2：参照素材を準備してアップロードする
+
+CLI は、CLI を実行するマシン上のファイルを読み取ります。アップロードの前に、パス、権限、形式、サイズ、モデルの要件を確認してください：
+
+```bash
+evolink upload ./reference.png --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+```
+
+通常のローカルファイルは、1 バイトから 95 MiB までである必要があります。画像・動画・音声には、さらにモデルごとの形式、数、寸法、長さの制限があります。デスクトップ上のパスではなく、返された file_url を、image_url や image_urls などの対応フィールドに指定してください。
+
+参照素材の有効期間は、通常72時間です。レスポンスを受け取れなかった場合は、upload_id を保持し、元のレシートを確認してください。互換性のあるファイルサービス側の復旧手段が使えない場合は、結果を「不明」と報告してください。タイムアウトしたというだけの理由で、アップロードを繰り返さないでください。公開の HTTPS 上の参照素材がそのまま受け付けられるかどうかも確認してください。
+
+<span id="images" />
+## ステップ 3：入力を準備し、無料で見積もる
+
+この画像の例では、まず z-image-turbo が利用できるかを確認します。これは流れを示すためのもので、デフォルトの推奨ではありません：
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+作業ディレクトリに input.json を作成します：
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft morning light"}
+```
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+input_valid、problems、estimate.status、basis、warnings、quote_id を確認します。モデル、出力、参照素材、数量、料金の範囲、含まれていない項目を示したうえで、承認を待ちます。partial と no_price を、保証された合計額として説明することはできません。token_billed は参考価格であり、実際のトークン数で精算されます。[CLI の料金](/ja/cli/billing)を参照してください。
+
+## ステップ 4：承認後に一度だけ送信する
+
+ユーザーがこのプランを承認したら、その見積書を使って画像を送信します：
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+--confirm は、承認をすでに得ていることを宣言するものです。生成では、新しいモデルや入力は受け付けられません。見積書は、見積もった時点から24時間有効です。その間、同じ入力は、価格が承認済みの価格以下であれば送信されます。仕様やアカウントが変わった場合、価格が上がった場合（`price_changed`）、見積書の有効期限が切れた場合（`quote_expired`）は、見積もりをやり直して承認を得てください。同じ見積書を、画像、動画、音声のそれぞれとして送信しないでください。
+
+<span id="batch" />
+## 同じモデルで複数の画像やタスクを扱う
+
+入力（1–50件。それぞれ単一の入力と同じ形式）を JSON 配列または JSONL ファイルに書き、まとめて見積もったうえで、バッチの合計額に対する一度の承認を待ちます：
+
+```bash
+evolink estimate --model z-image-turbo --inputs-file inputs.jsonl --json
+evolink generate image --quote QUOTE_ID --confirm --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+```
+
+`generate` はすべての入力をまとめて送信し、完了を待たずに、各入力のタスク ID またはエラーを返します。送信されなかった入力がある場合は、最初の送信から23時間以内に `tasks resume --quote QUOTE_ID` で完了させてください。受け付け済みの入力については元のタスクが返され、新たな課金は発生しません。この期間内は、新しい見積もりや generate コマンドでそれらを再送信してはいけません。見積書の有効期限が切れている場合や価格が上がっている場合、`tasks resume` は何も送信しません。`tasks batch` または `tasks list` で通った入力を確認し、残りだけを新しいバッチとして見積もってください。GPT Image など一部のモデルは、`n` より少ない枚数の画像しか返さないことがよくあるため、画像1枚につき入力を1つ使ってください。
+
+ユーザーが、見積もりや確認は不要だと明確に述べた場合は、`generate` に `--skip-estimate` を追加し、`--model` と、`--input-file` または `--inputs-file` を指定して、見積書は省略します。[CLI リファレンス](/ja/cli/reference)を参照してください。
+
+<span id="video" />
+## 動画タスク
+
+実際のモデルのスキーマに基づいて video-input.json を用意します。プロンプト、長さ、アスペクト比、品質、音声、参照素材を確認してください。画像からの動画生成、参照動画、編集、延長では、それぞれ異なるモデルや入力を使うことがあります。
+
+```bash
+evolink estimate --model VIDEO_MODEL_ID --input-file video-input.json --json
+```
+
+見積もりがカバーしている範囲を示し、このタスクの承認を待ってから、次を実行します：
+
+```bash
+evolink generate video --quote VIDEO_QUOTE_ID --confirm --json
+```
+
+task_id を保存して照会します。待つ代わりに生成し直さないでください。参照素材の長さ、品質、音声は料金に影響することがあり、公開されている見積もり方法は、すべての倍率をカバーしているわけではありません。ローカルでの自動編集、フレーム補間、字幕の追加を行わずに、まずオリジナルの動画を渡してください。
+
+<span id="audio" />
+## 音楽、歌、読み上げ音声
+
+音楽モデルと読み上げ音声モデルは、別々に選んでください。スキーマに従って audio-input.json を用意し、対応している歌詞や説明、言語、声、インストゥルメンタルモード、参照素材、そして同時に指定できないオプションの制約を反映させます。
+
+```bash
+evolink estimate --model AUDIO_MODEL_ID --input-file audio-input.json --json
+```
+
+この見積書が承認されたら：
+
+```bash
+evolink generate audio --quote AUDIO_QUOTE_ID --confirm --json
+```
+
+長さの指定に対応していないモデルに、無理に長さを指定しないでください。media_seconds は課金のためのヒントであり、出力の長さを制御するものではありません。出力の長さや使用量が不明な場合はその旨を説明し、音声の結果はすべて保持してください。
+
+<span id="tasks" />
+## ステップ 5：照会、待機、復旧
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --status processing --page 1 --limit 20 --json
+```
+
+processing にはキューでの待機も含まれます。completed、failed、cancelled は終了状態です。タスクの失敗と、照会コマンドの失敗は別のものです。時刻によるフィルタリングは現在のページにだけ適用されます。ページが空でも、送信されなかったことの証明にはなりません。タイムアウト、Ctrl-C、ウィンドウを閉じることでは、タスクはキャンセルされません。CLI には現在、キューをキャンセルするコマンドがありません。
+
+送信のレスポンスを受け取れなかった場合は、元のアカウントと見積書の記録を保持します：
+
+```bash
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+outcome_unknown は、課金されていないという意味ではありません。再送信するために、記録を削除したり、キーやルートを変えたり、代わりの見積書を作成したりしないでください。先に復旧を行ってください。`tasks resume` は、見積書の有効期限が切れておらず、価格が上がっていない場合に、最初の送信から23時間以内であれば、元のリクエスト ID で再送します。23時間を過ぎると `recovery_window_passed` で拒否され、見積書の有効期限が切れている場合や価格が上がっている場合は `quote_expired` または `price_changed` で拒否されます。いずれの場合も何も送信されないため、見積もりをやり直す前に最近のタスクを確認してください。失敗したタスクは課金されず、仮押さえされたクレジットは自動的に返還されます。課金記録上の証拠がない限り、返金が反映されたとは伝えないでください。
+
+<span id="delivery" />
+## ステップ 6：オリジナルファイルをダウンロードして渡す
+
+```bash
+evolink download TASK_ID --output ./coffee-cup.png --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+単一の結果を取得するモードか、すべての結果を取得するモードを選びます。親ディレクトリはあらかじめ用意してください。ファイルは上書きされません。オリジナルファイルはそれぞれ 1 GiB までで、種類と内容がチェックされます。バッチの再開では、名前がたまたま一致したファイルではなく、元の記録が使われます。インデックスは 1 から始まります。拡張子は実際の形式と一致させる必要があります。
+
+オリジナルの URL の有効期間は、通常24時間です。早めに保存し、保存場所、オリジナルのリンク、モデル、仕様、報告された実際の料金を伝えてください。balance/usage は完全な請求書ではありません。サムネイルがグレーの場合は、生成し直すのではなく、オリジナルファイルを確認してください。[CLI リファレンス](/ja/cli/reference)と[ダウンロードのトラブルシューティング](/ja/cli/billing#download)を参照してください。

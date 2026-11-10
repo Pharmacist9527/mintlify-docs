@@ -1,0 +1,102 @@
+---
+title: "Tâches, références et résultats"
+description: "Règles communes : reprise des tâches, expiration des fichiers, téléchargement, aperçus et démarches auprès du support"
+---
+
+Cette page regroupe les règles communes relatives aux tâches et aux fichiers. Consultez les [flux de travail CLI](/fr/cli/workflows) et les [flux de travail MCP](/fr/mcp/overview#workflows) pour les étapes d’exécution.
+
+<span id="tasks" />
+## Soumettre une seule fois et conserver l’identifiant de tâche
+
+La génération peut renvoyer directement des sorties ou un task_id. Conservez l’identifiant, le modèle, les entrées et l’état indiqué, puis interrogez la tâche initiale jusqu’à son achèvement ou jusqu’à un échec confirmé. Interprétez les états réellement renvoyés ; l’expiration du délai d’attente d’un outil n’est pas un échec de génération.
+
+| Situation | Action |
+|---|---|
+| Un task_id existe | Interrogez ou attendez la tâche initiale ; regroupez plusieurs identifiants dans une requête par lot |
+| Toujours en file d’attente ou en cours | Continuez à interroger ; arrêter une attente n’annule rien |
+| État non vérifié : `task_response_invalid`, `task_identity_mismatch` ou `task_status_unknown`, avec `status_check: unverified` | Conservez l’identifiant de la tâche initiale et interrogez-la à nouveau ; la consultation est gratuite. Ce n’est ni un échec, ni une facturation nulle, ni un remboursement ; ne générez donc pas à nouveau |
+| Acceptée (`submission_state: accepted`) mais pas encore d’état | La tâche existe ; interrogez son task_id au lieu de générer à nouveau |
+| Terminée | Enregistrez chaque original ; indiquez le nombre, le format, les coûts connus et l’expiration |
+| Échec confirmé | Indiquez le code d’erreur (`error.code`), son explication (`error.message`) et l’heure ; la tâche n’est pas facturée, et les crédits réservés à la soumission sont restitués automatiquement |
+| Soumission à l’issue inconnue, sans identifiant | Reprenez par la voie initiale, comme décrit ci-dessous |
+
+Les requêtes par lot et les listes conservent les tâches qu’elles ont pu vérifier et signalent les autres (`partial`, `missing`, `details_missing`). Un détail manquant ne signifie pas que la tâche n’a jamais existé ; interrogez à nouveau ces identifiants. Lorsqu’un état, un résultat ou un relevé de compte doit être vérifié, les réponses incluent `dashboard_url` et un `dashboard_guidance` en anglais. Connectez-vous à la [console EvoLink](https://evolink.ai/dashboard) avec le même compte EvoLink et conservez l’identifiant de la tâche initiale ; le lien seul ne confirme ni l’achèvement, ni une facturation, ni un remboursement. Les avis, les libellés de liens et les confirmations de génération sont en anglais par défaut ; demandez à l’assistant si vous préférez une autre langue.
+
+Les versions publiées de la CLI et de MCP ne proposent actuellement aucun moyen public utilisable d’annuler une tâche. Fermer un terminal, une conversation ou une connexion n’annule pas la tâche et ne prouve pas l’absence de facturation.
+
+<span id="recovery" />
+## Reprendre après une expiration de délai ou une issue inconnue
+
+<Steps>
+  <Step title="Conserver l’identité initiale et l’enregistrement de la soumission">
+    La CLI conserve le quote_id et son enregistrement de reprise ; MCP conserve le client_request_id, les entrées initiales et les erreurs. Préférez interroger un task_id existant plutôt que de générer à nouveau.
+  </Step>
+  <Step title="Reprendre par la voie initiale">
+    Suivez la [reprise dans la CLI](/fr/cli/billing#tasks-and-recovery) ou la [reprise dans MCP](/fr/mcp/billing#tasks-and-recovery). Conservez l’identité, les entrées et l’identifiant de requête d’origine. Ne changez ni de compte, ni de clé, ni de voie (CLI ou MCP) pour soumettre à nouveau. EvoLink conserve un identifiant de requête pendant 24 heures : pendant ce délai, le même identifiant et les mêmes entrées renvoient la tâche initiale sans nouvelle facturation. Dans la CLI, `tasks resume` le rejoue dans les 23 heures suivant la première soumission, tant que le devis n’a pas expiré et que le prix n’a pas augmenté ; sinon, la commande n’envoie rien. Après 24 heures, l’identifiant n’empêche plus la création d’une seconde tâche ; vérifiez donc les tâches récentes avant de soumettre à nouveau.
+  </Step>
+  <Step title="Établir les faits concernant la tâche et la facturation">
+    Enregistrez les sorties terminées ; après un échec confirmé, examinez la facturation. Si l’issue reste inconnue, conservez l’erreur et l’heure, puis contactez le support. Une issue inconnue ne signifie pas que rien n’a été généré ni facturé.
+  </Step>
+</Steps>
+
+<span id="files" />
+## Rendre les références lisibles par le modèle
+
+1. Vérifiez les types d’image, de vidéo et d’audio acceptés, leur nombre, leur taille et les combinaisons de références autorisées.
+2. Utilisez un fichier lisible dans l’environnement d’exécution ou une URL accessible au serveur. Les pièces jointes d’une conversation et les chemins de fichiers de votre ordinateur ne sont pas automatiquement lisibles à distance.
+3. Confirmez le reçu d’importation et l’URL du fichier avant de l’ajouter aux entrées du modèle et d’estimer à nouveau.
+4. Conservez l’upload_id d’origine lorsque l’issue est inconnue. Ne demandez une importation de remplacement qu’après un échec confirmé ou une expiration ; la prise en charge des reçus dépend du déploiement.
+
+| Voie | Emplacement des entrées et limites | Instructions |
+|---|---|---|
+| Fichier local avec la CLI | Lisible par la CLI ; 95 MiB maximum, les modèles pouvant être plus stricts | [Références dans la CLI](/fr/cli/workflows#files) |
+| URL ou données intégrées avec le MCP distant | URL lisible par le serveur ; limite de 1 MiB en base64 | [Outils d’importation MCP](/fr/mcp/tools) |
+| Importation à usage unique avec le MCP distant | prepare_upload, importation depuis un environnement capable de lire des fichiers, puis get_upload ; limite de 95 MiB | [Références dans MCP](/fr/mcp/overview#files) |
+| stdio local | file_path sur la machine du processus MCP ; les limites du modèle et du service de fichiers s’appliquent | [MCP local](/fr/mcp/other-clients#local-mcp) |
+
+<span id="retention" />
+## Expiration et conservation
+
+| Élément | Valeur par défaut actuelle |
+|---|---|
+| URL d’origine du fichier généré | Généralement 24 heures ; enregistrez le fichier rapidement |
+| Référence importée | Généralement 72 heures ; réimportez-la après expiration |
+| Accord sur un devis (`quote_id` dans la CLI, `pricing_quote` dans MCP) | Valable 24 heures à compter de l’estimation, pour la même entrée, au prix approuvé ou à un prix inférieur ; un accord expiré (`quote_expired`), un prix plus élevé (`price_changed`) ou une entrée modifiée (`quote_input_changed`) exigent une nouvelle estimation et un nouvel accord |
+| Identifiant de requête (`client_request_id`) | Conservé par EvoLink pendant 24 heures à compter de la première soumission ; dans la CLI, `tasks resume` le rejoue dans les 23 heures, uniquement tant que le devis n’a pas expiré et que le prix n’a pas augmenté |
+| Autorisation d’importation à usage unique (MCP distant) | Généralement 15 minutes, un seul usage |
+| URL d’état de l’importation (MCP distant) | Généralement 1 heure ; conservez l’upload_id d’origine |
+
+Les valeurs réellement renvoyées font foi. La compatibilité des reçus dépend du déploiement du service de fichiers. Les originaux téléchargés restent dans le stockage de l’utilisateur ; les URL temporaires, la documentation et les pièces jointes d’une conversation ne constituent pas un stockage permanent. Réimportez les références expirées et confirmez à nouveau les entrées modifiées.
+
+<span id="download" />
+## Dépannage des téléchargements et des aperçus
+
+1. Interrogez la tâche initiale et confirmez qu’elle est terminée. Utilisez son URL d’origine ; des en-têtes ne peuvent pas réparer des liens expirés, privés ou invalides.
+2. Les utilisateurs de la CLI peuvent utiliser download. Les utilisateurs de MCP peuvent ouvrir les originaux dans un navigateur ou les enregistrer depuis un environnement capable de gérer des fichiers. Consultez [Téléchargements avec la CLI](/fr/cli/reference) et [Livraison avec MCP](/fr/mcp/overview#delivery).
+3. Vérifiez le code d’état HTTP, le Content-Type et le format réel. Une erreur en HTML ou en JSON n’est pas un média. Faites correspondre les extensions aux formats réels au lieu de renommer toutes les images en PNG.
+4. Ouvrez l’original lorsqu’un aperçu est gris ou que seul un lien apparaît. S’il fonctionne, livrez-le ou enregistrez-le. Les aperçus de l’hôte ne doivent pas déclencher une nouvelle génération ou une modification non approuvées.
+
+### Requêtes Python par défaut rejetées
+
+Lorsqu’un original valide fonctionne dans un navigateur ou avec curl mais que la requête Python par défaut échoue, du code que vous contrôlez peut définir un User-Agent de produit. Cet exemple pour une image suppose que result_url est déjà une URL d’origine valide :
+
+```python
+from urllib.request import Request, urlopen
+from shutil import copyfileobj
+
+request = Request(result_url, headers={"User-Agent": "EvoLinkClient/1.0"})
+with urlopen(request, timeout=60) as response:
+    if not response.headers.get_content_type().startswith("image/"):
+        raise ValueError("Expected an image response")
+    with open("result.png", "xb") as output:
+        copyfileobj(response, output)
+```
+
+L’exemple rejette les réponses qui ne sont pas des images et évite d’écraser un fichier existant. Changez l’extension lorsque le format réel n’est pas PNG. La vidéo et l’audio exigent des vérifications MIME adaptées, des noms de fichiers correspondants et une vérification distincte. Cette approche n’a été vérifiée que pour certains cas de métadonnées et d’images, et non pour tous les clients, fichiers ou réseaux. Les téléchargements de la CLI définissent déjà un UA de produit.
+
+<span id="support" />
+## Informations à fournir au support
+
+Indiquez le système d’exploitation, l’agent et sa version, la version de la CLI ou de MCP, la voie utilisée, l’étape en échec, l’heure, le code d’erreur, le comportement attendu et le comportement constaté, le task_id existant, le quote_id ou le client_request_id, l’upload_id et des diagnostics expurgés. Précisez si SSH, des conteneurs ou des proxys sont utilisés.
+
+Masquez les jetons OAuth, les clés, les liens d’autorisation complets, les URL d’importation à usage unique, les URL privées signées et les fichiers privés. Ne partagez ni fichiers d’identifiants de connexion ni copies complètes de l’environnement. Commencez par le [dépannage CLI](/fr/cli/billing#faq) ou le [dépannage MCP](/fr/mcp/billing#faq) pour repérer l’étape concernée.
