@@ -57,7 +57,7 @@ evolink models show z-image-turbo --json
 evolink estimate --model z-image-turbo --input-file input.json --json
 ```
 
-阅读 input_valid、problems、estimate.status、basis、warnings 和返回 quote_id。向用户展示模型、输出、参考、数量、费用范围和未覆盖项，然后停止等待确认。partial、no_price 或 token_billed 不应被说成可保证的总价；费用限制见[CLI 计费说明](/cn/cli/billing)。
+阅读 input_valid、problems、estimate.status、basis、warnings 和返回 quote_id。向用户展示模型、输出、参考、数量、费用范围和未覆盖项，然后停止等待确认。partial、no_price 不应被说成可保证的总价，token_billed 是参考价、按实际 token 结算；费用限制见[CLI 计费说明](/cn/cli/billing)。
 
 ## 第四步：批准后只提交一次
 
@@ -67,7 +67,22 @@ evolink estimate --model z-image-turbo --input-file input.json --json
 evolink generate image --quote QUOTE_ID --confirm --wait --json
 ```
 
---confirm 声明已经取得批准。生成命令不传新的模型或输入；改规格、价格、账户或超过约 30 分钟报价有效期时，重新报价和确认。不要把同一报价分别提交图片、视频和音频。
+--confirm 声明已经取得批准。生成命令不传新的模型或输入；改规格、价格、账户时，重新报价和确认。报价最多 24 小时内有效；过期后，只要输入和价格都没变，仍按原批准提交，结果里会说明。不要把同一报价分别提交图片、视频和音频。
+
+<span id="batch" />
+## 同一模型的多张图或多个任务
+
+把输入（1–50 个，每个和单个输入一样）写进 JSON 数组或 JSONL 文件，一起估价，然后按总价等用户确认一次：
+
+```bash
+evolink estimate --model z-image-turbo --inputs-file inputs.jsonl --json
+evolink generate image --quote QUOTE_ID --confirm --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+```
+
+`generate` 一次提交所有输入，不等出图，马上返回每个输入的任务编号或错误。有的输入没提交成功时，用 `tasks resume --quote QUOTE_ID` 补交：已经成功的输入返回原来的任务，不会重复扣费。不要用新的估价或生成命令重新提交它们。GPT Image 等模型常常返回比 `n` 少的图片，所以每张图用一个输入。
+
+用户明确说不用估价、不用确认时，在 `generate` 后面加 `--skip-estimate`，并用 `--model` 和 `--input-file` 或 `--inputs-file`，不用报价；见 [CLI 参考](/cn/cli/reference)。
 
 <span id="video" />
 ## 视频任务
@@ -121,7 +136,7 @@ processing 包含排队；completed、failed 和 cancelled 是已结束状态。
 evolink tasks resume --quote QUOTE_ID --json
 ```
 
-outcome_unknown 不证明没扣费。不要删除记录、换 Key、换入口或新建报价重发；先恢复原请求。任务明确失败时不收费，预扣的积分会自动退回；没有账务证据时，不要说退款已经到账。
+outcome_unknown 不证明没扣费。不要删除记录、换 Key、换入口或新建报价重发；先恢复原请求。`tasks resume` 在第一次提交后 23 小时内重放原请求编号；超过后会拒绝（`recovery_window_passed`），这时改为查看最近的任务。任务明确失败时不收费，预扣的积分会自动退回；没有账务证据时，不要说退款已经到账。
 
 <span id="delivery" />
 ## 第六步：下载并交付原件
