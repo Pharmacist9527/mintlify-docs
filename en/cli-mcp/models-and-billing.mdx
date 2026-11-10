@@ -3,7 +3,7 @@ title: "Models, costs, and quotas"
 description: "Shared model selection, estimate states, approval, access, and budget boundaries"
 ---
 
-This page maintains business rules shared by CLI and MCP. See [CLI reference](/en/cli/reference) and [MCP reference](/en/mcp/tools) for exact inputs. It describes released CLI 0.14.0 and MCP 1.12.0. For search fees, check the actual returned `search_charges`.
+This page maintains business rules shared by CLI and MCP. See [CLI reference](/en/cli/reference) and [MCP reference](/en/mcp/tools) for exact inputs. It describes released CLI 0.14.1 and MCP 1.12.1. For search fees, check the actual returned `search_charges`.
 
 <span id="models" />
 ## Choose a model
@@ -29,15 +29,23 @@ Families worth comparing include GPT Image 2.5/2.0 and Seedream 5.0 for images; 
 |---|---|---|
 | `estimated` | Estimated amount; actual settlement still applies | Present the plan, amount, and known limitations, then obtain approval |
 | `partial` | Missing pricing factors | Do not treat as a complete total; identify and resolve missing factors |
-| `token_billed` | Reference price for GPT Image and Gemini Omni Flash token models: what EvoLink reserves at submission; billed by actual tokens | Show it as a reference price, not a fixed total; the task settles at actual tokens, refunding or charging the difference |
-| `needs_input` | Required input missing | Supply duration, references, or other required information and estimate again |
+| `token_billed` | Reference price for GPT Image, Gemini Omni Flash and Qwen TTS token models: what EvoLink reserves at submission; billed by actual tokens | Show it as a reference price, not a fixed total; the task settles at actual tokens, refunding or charging the difference |
+| `needs_input` | Required input or billing usage missing | Read `missing_usage` and `usage_help`, supply what they name, and estimate again |
 | `no_price` | No usable price | Do not describe as free or submit automatically |
 
 GPT Image token models (`gpt-image-1.5`, `gpt-image-2`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`, `gpt-image-2.6-flare`, `gpt-image-2.6-sunburst`) return `token_billed` with a reference price: the credits EvoLink reserves at submission for the exact input, from the output tokens for the size and quality, the prompt tokens, and 1,536 tokens per reference image or mask, times `n`. With `size` set to `auto` it counts a 2048×2048 output, so setting a size gives a closer reference price. A `gpt-image-2.6` GIF counts the one image all its frames are drawn on (512×512 frames when `size` is `auto`). The task settles at the tokens it actually uses, so the final charge may be lower or slightly higher. Token counts in `pricing_parameters` are not used for these models. An explicit `max_cost_usd` must cover 1.5 times the reference price.
 
-Gemini Omni Flash video models (`gemini-omni-flash-*`, `gemini-omni-1.1-flash-*`, `gemini-omni-1.2-flash-*`) also return `token_billed` with a reference price, counted the way EvoLink reserves at submission: video output tokens for the output's resolution and duration, the prompt tokens, 2,020 tokens per input image, and the tokens of any input or reference video. With an input or reference video, give its length as `media_seconds` (MCP) or `--media-seconds` (CLI); for several reference videos, give the longest one's. Without it there is no reference price, and the estimate asks for it. The request does not carry a video's resolution, which EvoLink reads at submission, so the reference price counts it at 4k and the estimate also gives the price for a lower-resolution input (usually 720p); show the user both. Token counts in `pricing_parameters` are not used for these models either, and `max_cost_usd` is compared with 1.5 times the reference price. The task settles at the tokens it actually uses.
+Gemini Omni Flash video models (`gemini-omni-flash-*`, `gemini-omni-1.1-flash-*`, `gemini-omni-1.2-flash-*`) also return `token_billed` with a reference price, counted the way EvoLink reserves at submission: video output tokens for the output's resolution and duration, the prompt tokens, 2,020 tokens per input image, and the tokens of any input or reference video. With an input or reference video, give its length as `media_seconds` (MCP) or `--media-seconds` (CLI); for several reference videos, give the longest one's. Without it there is no reference price, and the estimate asks for it. The request does not carry a video's resolution, which EvoLink reads at submission, so the reference price counts it at 4k and the estimate also lists the price at each input resolution: 360p, 720p, 1080p and 4k (`reference_usage.input_resolution_prices`); show the user these prices. Token counts in `pricing_parameters` are not used for these models either, and `max_cost_usd` is compared with 1.5 times the reference price. The task settles at the tokens it actually uses.
+
+`qwen-audio-3.1-tts-flash` returns `token_billed` with a reference price as well, counted from the text the way EvoLink reserves at submission. Token counts in `pricing_parameters` are not used, `max_cost_usd` is compared with 1.5 times the reference price, and the task settles at the tokens it actually uses. `hot_fix: null` is read as no `hot_fix`.
 
 Usage given as 0 that would price a generation at 0 counts as missing: no media generation is free.
+
+<span id="missing-usage" />
+
+When a model's price depends on usage the input does not give, such as the length of a reference video, the estimate returns no amount and no approval: `total_known` is `false`, `missing_usage` names each missing value, and `usage_help` says how to supply it, with `media_seconds` or `pricing_parameters` in MCP and `--media-seconds` or `--pricing-parameters` in CLI. Generation refuses such a request before submitting (`quote_usage_required`). A `partial` estimate keeps the priced part and names what else the total depends on. `get_model` and `models show` list the usage a model's price needs in `billing_usage`. Supply measured or explicitly expected values; do not invent them.
+
+Estimates read the settings EvoLink bills by. Midjourney `speed` and `type` come from `model_params`; Seedream 5.0 Pro is priced at 2K when `size` or `quality` makes the output 2K; MiniMax H3 and H3 Max reference-to-video count reference images beyond the free ones. Tencent video upscale needs the source frame rate as `pricing_parameters.output_fps` unless `model_params.max_fps` is `"30"`. Seedance draft-to-video assumes the draft was made without the content filter unless `pricing_parameters.content_filter` is `true`.
 
 Check `input_valid`, `problems`, `basis`, and `warnings`. Catalog starting prices are not complete request quotes. Resolution, sound, references, actual input duration, and audio billing methods can affect costs.
 
@@ -58,7 +66,7 @@ Released clients mainly use public default prices, not complete account discount
 <span id="approval" />
 ## Approval and budgets
 
-Show the exact model, final inputs, output specifications/count, estimated cost, and limitations. Obtain explicit approval for this generation. Changes to model, references, inputs, identity, or price require a new estimate and approval. An approval is current for 24 hours; past that, an expired quote whose input and price are unchanged is still submitted under it, and the result says so (`approval_expired`).
+Show the exact model, final inputs, output specifications/count, estimated cost, and limitations. Obtain explicit approval for this generation. An approval holds for 24 hours from the estimate, for the same input at the approved price or lower. Generation estimates again before submitting and proceeds when the price is unchanged or lower, also under later pricing rules. A higher price (`price_changed`), a changed model, input or reference (`quote_input_changed`), a different account, or an approval past its expiry (`quote_expired`) needs a new estimate and approval.
 
 | Constraint | Current meaning |
 |---|---|
@@ -80,7 +88,7 @@ When the user explicitly says not to estimate or confirm (for example "generate 
 <span id="batches" />
 ### Several tasks of one model
 
-One estimate covers up to 50 inputs of one model (MCP `inputs`, CLI `--inputs-file`): it returns each input's price, the total, and one approval for exactly that batch. After approval, one call submits every input at once and returns the task IDs without waiting; collect the results with `list_tasks` or `tasks batch`. If some inputs were not submitted, finish the batch with the same request ID and exactly the same inputs: in MCP, call again with the same `client_request_id` within 24 hours; in CLI, run `tasks resume --quote` within 23 hours of the first submission. Accepted inputs return their original tasks without a new charge. Never resubmit accepted, not-submitted or unknown-outcome inputs under a new request ID. Some models, such as GPT Image, often return fewer images than `n`, so use one input per image.
+One estimate covers up to 50 inputs of one model (MCP `inputs`, CLI `--inputs-file`): it returns each input's price, the total, and one approval for exactly that batch. After approval, one call submits every input at once and returns the task IDs without waiting; collect the results with `list_tasks` or `tasks batch`. If some inputs were not submitted, finish the batch with the same request ID and exactly the same inputs: in MCP, call again with the same `client_request_id` within 24 hours of the first submission (estimate again first if the approval has expired); in CLI, run `tasks resume --quote` within 23 hours of the first submission, while the quote is unexpired and the price has not risen. Accepted inputs return their original tasks without a new charge. Within that window, never resubmit accepted, not-submitted or unknown-outcome inputs under a new request ID. After it, check which tasks exist (`list_tasks`, `tasks batch` or `tasks list`) and submit only the inputs that did not go through, as a new batch with a new estimate and request ID. Some models, such as GPT Image, often return fewer images than `n`, so use one input per image.
 
 <span id="authorization" />
 ## Permissions, balance, and quotas

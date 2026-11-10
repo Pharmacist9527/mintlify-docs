@@ -6,7 +6,7 @@ description: "全部命令、参数、JSON 输出、恢复机制与 REST 执行�
 <span id="cli-reference" />
 ## CLI 命令参考
 
-本页对应 `@evolinkai/cli` **0.14.0**。运行 `evolink --help` 或 `evolink COMMAND --help --json` 看本机帮助。所有业务命令支持 `--json`；MODEL_ID、QUOTE_ID、TASK_ID、UPLOAD_ID 请替换为实际值。
+本页对应 `@evolinkai/cli` **0.14.1**。运行 `evolink --help` 或 `evolink COMMAND --help --json` 看本机帮助。所有业务命令支持 `--json`；MODEL_ID、QUOTE_ID、TASK_ID、UPLOAD_ID 请替换为实际值。
 
 ### 登录、诊断与技能
 
@@ -33,6 +33,7 @@ agent 为 all/codex/claude-code/cursor/gemini/opencode/copilot/openclaw/hermes�
 evolink models search --type image --query seedream --limit 5 --page 1 --json
 evolink models show MODEL_ID --json
 evolink models schema MODEL_ID --json
+evolink models pricing --model MODEL_ID --json
 evolink models recommend --type video --query seedance --references image --limit 3 --json
 evolink docs search --type video --query "first frame" --limit 5 --json
 ```
@@ -42,6 +43,7 @@ evolink docs search --type video --query "first frame" --limit 5 --json
 | models search | type image/video/audio/all，默认 all；limit 1–50，默认 20；page 1–100000；query 最多 100 字符 |
 | models show MODEL_ID | 规范 ID、别名、参数、价格、参考输入、文档来源与 schema |
 | models schema MODEL_ID | 版本化输入/提交 schema；缺 schema 时明确报错 |
+| models pricing | 公开默认价格规则，不用登录，不是任务报价；可选 --model、--modality text/image/video/audio、--view summary/full（默认 full）、--product-id、--operation、--lifecycle active/preview/deprecated |
 | models recommend | 必填 type image/video/audio；references 逗号分隔 image/video/audio；limit 1–10 |
 | docs search | 必填 query，最多 100 字符；type 同搜索；limit 1–20，默认 5 |
 
@@ -63,8 +65,11 @@ evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --jso
 | --prompt TEXT | 补充提示词，不可与 JSON 的不同 prompt 冲突 |
 | --max-cost-usd NUMBER | 大于 0、不超过 10000 美元的提交估价上限 |
 | --media-seconds NUMBER | 大于 0、不超过 3600 秒的计费提示，不改变模型输入 |
+| --pricing-parameters JSON | JSON 对象，填价格规则需要的实测用量或用户明确预期的用量，例如 `{"search_count":2}`；按 `missing_usage` 列出的项目填，不要编造 |
+| --pricing-source pricing_rules | 可选。估价一律按已发布的价格规则；旧取值 account、public_reference 仍可传入，效果相同 |
+| --refresh-quote QUOTE_ID | 用已保存的输入和预算，给一份还没提交的报价重新估价；不能和上面的选项一起用 |
 
-成功报价返回 `quote_id`，最多 **24 小时**内有效，绑定登录、后端、模型与原始输入。生成前会再读一次价格规则：报价过期但输入和价格都没变时，按原批准提交（`approval_expired`）；价格变了会报 `price_changed`，要重新报价、重新确认。失败或预算拒绝的估价不是可提交报价。展示规格、费用范围和警告，等明确批准后按对应类型运行：
+成功报价返回 `quote_id`，从估价时起 **24 小时**内有效（`expires_at`），绑定登录、后端、模型与原始输入。生成前会再读一次价格规则：同样的输入，价格没变或更低就提交，价格规则更新过也一样；价格变高报 `price_changed`，输入变了报 `quote_input_changed`，报价过期报 `quote_expired`。这三种情况都不会发出任何请求，要重新报价、重新确认。失败或预算拒绝的估价不是可提交报价。估价缺少计费用量时会失败，列出缺少的每一项和用哪个选项补，不保存报价。展示规格、费用范围和警告，等明确批准后按对应类型运行：
 
 ```bash
 evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
@@ -73,6 +78,16 @@ evolink generate audio --quote QUOTE_ID --confirm --json
 ```
 
 以上为独立示例，一个报价只对应一种类型和一个任务。生成不接收新模型/输入；变化后重新报价与确认。`--confirm` 声明已经取得批准，不能替代询问用户。
+
+<span id="refresh-quote" />
+
+还没提交的报价需要更新时（例如已经过期，或价格变高），刷新它：
+
+```bash
+evolink estimate --refresh-quote QUOTE_ID --json
+```
+
+刷新后的报价有新的 quote_id，沿用原来的请求编号，并取代旧报价。把新报价展示给用户，重新取得批准，只提交最新的这一份。提交或恢复已被取代的报价会报 `quote_superseded`，并指出当前的报价或它的任务。已经开始提交的报价不能刷新（`submission_already_started`），应恢复它的任务。同一份报价正被另一次刷新取代时，会报 `quote_refresh_conflict`。
 
 用 `--inputs-file` 得到的报价覆盖整批：`generate --quote QUOTE_ID --confirm` 一次提交所有输入（同时最多 10 个），不等出图，马上返回每个输入的任务编号或错误；`--wait` 只用于单个任务。结果用 `tasks batch --ids` 收。
 
@@ -106,7 +121,7 @@ evolink tasks resume --quote QUOTE_ID --json
 
 时间过滤只作用于当前取得的页；历史覆盖整个账户，不限于聊天。空页不能证明提交不存在，total 是服务端筛选后、时间过滤前数量。批量 ID 为 1–50 个，逗号分隔。
 
-已有 ID 继续 get/wait；提交响应丢失用原报价 resume，保留原请求 ID 和登录。整批提交时，`tasks resume --quote QUOTE_ID` 会补交没提交成功的输入；已经成功的输入返回原来的任务，不会重复扣费。`tasks resume` 只在第一次提交后 23 小时内重放请求编号（EvoLink 保留 24 小时）；超过后会报 `recovery_window_passed`，这时改为查看最近的任务。报价文件丢失、过期或换账户后先核查历史/控制台，不盲目创建新请求。CLI 无取消命令。
+已有 ID 继续 get/wait；提交响应丢失用原报价 resume，保留原请求 ID 和登录。整批提交时，`tasks resume --quote QUOTE_ID` 会补交没提交成功的输入；已经成功的输入返回原来的任务，不会重复扣费。`tasks resume` 只在第一次提交后 23 小时内重放请求编号（EvoLink 保留 24 小时）；超过后会报 `recovery_window_passed`。它也遵守报价规则：报价过期（`quote_expired`）或价格变高（`price_changed`）时什么都不会发出。遇到这几种情况，先用 `tasks batch` 或 `tasks list` 看哪些已经成功，再只把剩下的作为新的生成或新的一批去估价。报价文件丢失、过期或换账户后先核查历史/控制台，不盲目创建新请求。CLI 无取消命令。
 
 ### 余额与任务用量
 
@@ -176,7 +191,7 @@ CLI 0.8.0 起，媒体业务直接走 **终端或 Agent → EvoLink CLI → 平�
 | uploads get | 兼容文件服务 `GET /api/v1/files/upload-receipts/{upload_id}` |
 | download | 直接下载任务原件地址，检查格式并记录结果 |
 
-CLI 的 `quote_id`、`--confirm`、恢复文件是客户端流程，不是新增后台字段。已发布 0.14.0 按公开价格规则估价（参考价，不含账户折扣）。`--max-cost-usd` 不是最终结算硬上限。
+CLI 的 `quote_id`、`--confirm`、恢复文件是客户端流程，不是新增后台字段。已发布 0.14.1 按公开价格规则估价（参考价，不含账户折扣）。`--max-cost-usd` 不是最终结算硬上限。
 
 ### 请求、恢复与脚本集成
 
