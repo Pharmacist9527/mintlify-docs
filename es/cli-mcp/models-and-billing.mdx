@@ -1,0 +1,110 @@
+---
+title: "Modelos, costos y cuotas"
+description: "Reglas comunes de elección de modelo, estados de la estimación, aprobación, acceso y alcance de los presupuestos"
+---
+
+Esta página reúne las reglas de negocio comunes a la CLI y a MCP. Consulta la [referencia de la CLI](/es/cli/reference) y la [referencia de MCP](/es/mcp/tools) para conocer las entradas exactas. Describe las versiones publicadas CLI 0.14.1 y MCP 1.12.1. Para los cargos por búsqueda, comprueba el valor de `search_charges` que se devuelve realmente.
+
+<span id="models" />
+## Elige un modelo
+
+1. Identifica la tarea: generación o edición de imágenes, video a partir de texto o de imagen, música o voz. Especifica la cantidad, la calidad, la duración, las referencias y el presupuesto.
+2. Consulta el catálogo disponible para la cuenta, usa el ID exacto del modelo que devuelve y revisa el esquema. Los nombres de familia, los alias y los nombres para mostrar no son automáticamente IDs válidos para enviar.
+3. Compara las familias adecuadas más recientes o recomendadas y explica la calidad, la compatibilidad con referencias, el costo y la espera prevista. No afirmes una popularidad medida sin estadísticas de la plataforma.
+4. Comprueba los campos obligatorios, los rangos y las entradas mutuamente excluyentes antes de estimar la solicitud final. Vuelve a confirmar después de cambiar de modelo o de entradas.
+
+Entre las familias que conviene comparar están GPT Image 2.5/2.0 y Seedream 5.0 para imágenes; Seedance 2.5/2.0 y Wan 3.0 para video; y Suno v6 para música. Son orientaciones para la búsqueda, no garantías de disponibilidad en la cuenta. Para la narración, elige modelos de voz. Los modelos de ejemplo ilustran los flujos de trabajo; no son una recomendación predeterminada.
+
+| Información | CLI | MCP |
+|---|---|---|
+| Modelos disponibles | `models search`, `models recommend` | `search_models`, `recommend_models` |
+| Parámetros y límites | `models show`, `models schema` | `get_model` |
+| Documentación de los modelos | `docs search` | `search_docs` |
+| Costo estimado de las entradas finales | `estimate` | `estimate_cost` |
+
+<span id="pricing" />
+## Cómo leer una estimación
+
+| Estado | Significado | Acción |
+|---|---|---|
+| `estimated` | Importe estimado; sigue aplicándose la liquidación real | Presenta el plan, el importe y las limitaciones conocidas, y después obtén la aprobación |
+| `partial` | Faltan factores de precio | No lo trates como un total completo; identifica y resuelve los factores que faltan |
+| `token_billed` | Precio de referencia de los modelos de GPT Image, Gemini Omni Flash y Qwen TTS que se cobran por tokens: lo que EvoLink reserva al enviar la tarea; se factura según los tokens reales | Muéstralo como precio de referencia, no como un total fijo; la tarea se liquida según los tokens reales, y la diferencia se reembolsa o se cobra |
+| `needs_input` | Falta una entrada obligatoria o el uso facturable | Lee `missing_usage` y `usage_help`, proporciona lo que indican y vuelve a estimar |
+| `no_price` | No hay un precio utilizable | No lo describas como gratis ni lo envíes automáticamente |
+
+Los modelos de GPT Image que se cobran por tokens (`gpt-image-1.5`, `gpt-image-2`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`, `gpt-image-2.6-flare`, `gpt-image-2.6-sunburst`) devuelven `token_billed` con un precio de referencia: los créditos que EvoLink reserva al enviar la tarea para esa entrada exacta, calculados a partir de los tokens de salida según el tamaño y la calidad, los tokens del prompt y 1536 tokens por cada imagen de referencia o máscara, todo ello multiplicado por `n`. Con `size` en `auto` se cuenta una salida de 2048×2048, así que indicar un tamaño da un precio de referencia más ajustado. Un GIF de `gpt-image-2.6` se cuenta como la única imagen sobre la que se dibujan todos sus fotogramas (fotogramas de 512×512 cuando `size` es `auto`). La tarea se liquida según los tokens que usa realmente, por lo que el cargo final puede ser inferior o ligeramente superior. En estos modelos no se usan los recuentos de tokens de `pricing_parameters`. Un `max_cost_usd` explícito debe cubrir 1.5 veces el precio de referencia.
+
+Los modelos de video Gemini Omni Flash (`gemini-omni-flash-*`, `gemini-omni-1.1-flash-*`, `gemini-omni-1.2-flash-*`) también devuelven `token_billed` con un precio de referencia, calculado igual que la reserva que hace EvoLink al enviar la tarea: los tokens de salida de video según la resolución y la duración de la salida, los tokens del prompt, 2020 tokens por cada imagen de entrada y los tokens de cualquier video de entrada o de referencia. Si hay un video de entrada o de referencia, indica su duración con `media_seconds` (MCP) o `--media-seconds` (CLI); si hay varios videos de referencia, indica la del más largo. Sin ese dato no hay precio de referencia y la estimación lo pide. La solicitud no incluye la resolución del video, que EvoLink lee al enviar la tarea, así que el precio de referencia lo cuenta a 4k y la estimación indica además el precio para cada resolución de entrada: 360p, 720p, 1080p y 4k (`reference_usage.input_resolution_prices`); muestra estos precios al usuario. En estos modelos tampoco se usan los recuentos de tokens de `pricing_parameters`, y `max_cost_usd` se compara con 1.5 veces el precio de referencia. La tarea se liquida según los tokens que usa realmente.
+
+`qwen-audio-3.1-tts-flash` también devuelve `token_billed` con un precio de referencia, calculado a partir del texto igual que la reserva que hace EvoLink al enviar la tarea. No se usan los recuentos de tokens de `pricing_parameters`, `max_cost_usd` se compara con 1.5 veces el precio de referencia y la tarea se liquida según los tokens que usa realmente. `hot_fix: null` se interpreta como si no se hubiera enviado `hot_fix`.
+
+Un uso indicado como 0 que dejaría el precio de una generación en 0 se trata como uso que falta: ninguna generación multimedia es gratis.
+
+<span id="missing-usage" />
+
+Cuando el precio de un modelo depende de un uso que la entrada no indica, como la duración de un video de referencia, la estimación no devuelve ningún importe ni ninguna aprobación: `total_known` es `false`, `missing_usage` indica cada valor que falta y `usage_help` explica cómo proporcionarlo, con `media_seconds` o `pricing_parameters` en MCP y con `--media-seconds` o `--pricing-parameters` en la CLI. La generación rechaza una solicitud así antes de enviarla (`quote_usage_required`). Una estimación `partial` conserva la parte que ya tiene precio e indica de qué más depende el total. `get_model` y `models show` indican en `billing_usage` el uso que necesita el precio de un modelo. Proporciona valores medidos o explícitamente previstos; no los inventes.
+
+Las estimaciones leen los ajustes con los que EvoLink factura. En Midjourney, `speed` y `type` se toman de `model_params`; Seedream 5.0 Pro se calcula al precio de 2K cuando `size` o `quality` hacen que la salida sea 2K; en MiniMax H3 y H3 Max, la generación de video a partir de referencias cuenta las imágenes de referencia que superan las gratuitas. El escalado de video de Tencent necesita la velocidad de fotogramas del video de origen en `pricing_parameters.output_fps`, salvo que `model_params.max_fps` sea `"30"`. La conversión de borrador a video de Seedance supone que el borrador se creó sin el filtro de contenido, salvo que `pricing_parameters.content_filter` sea `true`.
+
+Comprueba `input_valid`, `problems`, `basis` y `warnings`. Los precios iniciales del catálogo no son cotizaciones completas de una solicitud. La resolución, el sonido, las referencias, la duración real de la entrada y los métodos de facturación del audio pueden afectar al costo.
+
+En la generación con Seedance 2.5, `draft: true` sin `quality` usa `480p`. Cuando la estimación devuelva `effective_input` y `defaults_applied`, muestra esos ajustes efectivos antes de la aprobación; la generación usa los mismos ajustes. La conversión de borrador a video tiene entradas propias. Las comprobaciones específicas de un modelo no se trasladan a otros IDs de modelo ni a otras operaciones.
+
+En `seedance-2.5-video-edit`, `input.duration: -1` selecciona el modo de edición. Los segundos de salida previstos para calcular el precio van en `pricing_parameters.duration_seconds`; no sustituyen al ajuste de generación ni determinan el uso final.
+
+La búsqueda está desactivada de forma predeterminada en siete modelos multimedia: `doubao-seedream-5.0-lite`, `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`, `gemini-nano-banana-2.1`, `seedance-2.0-text-to-video`, `seedance-2.0-fast-text-to-video` y `seedance-2.5-text-to-video`. Seedream la activa con `model_params.tools: [{"type":"web_search"}]`; los demás usan `model_params.web_search: true`. Gemini 3.1 Flash Image y Nano Banana 2.1 admiten además `model_params.image_search: true`, que es independiente.
+
+Mantén desactivadas la búsqueda web y la búsqueda de imágenes del modelo, salvo que el usuario pida o apruebe explícitamente activarlas. Nunca actives la búsqueda por iniciativa propia ni solo porque un ejemplo copiado la active. Si el agente cree que hace falta la búsqueda, primero debe explicar las tarifas adicionales por búsqueda y que el total es desconocido, y después esperar el consentimiento explícito antes de activarla. La aprobación de una tarea sin búsqueda no autoriza a añadirla; si cambian los ajustes de búsqueda, hacen falta una estimación y una aprobación nuevas. Estas son instrucciones para el asistente; el servidor no verifica el consentimiento dado en la conversación.
+
+No añadas una advertencia sobre cargos por búsqueda cuando la búsqueda esté desactivada. Cuando la entrada final active la búsqueda, incluso si el usuario la pidió, informa de la tarifa unitaria actual de cada tipo activado antes de la aprobación de la generación. Si faltan los recuentos, se obtiene un subtotal `partial` del costo conocido que supone cero búsquedas y no incluye los cargos por búsqueda. Tampoco se incluye otro uso desconocido, como los tokens de texto o de razonamiento. Una misma tarea puede no hacer ninguna búsqueda o hacer varias; los recuentos reales dependen de la tarea y de la estrategia del modelo, así que el total de los cargos por búsqueda se desconoce antes de generar. Las búsquedas web y las de imágenes se facturan por separado.
+
+`pricing_parameters.search_count` e `image_search_count` describen el uso previsto, no límites de ejecución. Prever cero búsquedas no desactiva la búsqueda. Una estimación incompleta no puede comprobar un presupuesto explícito del usuario. No inventes recuentos para eliminar un uso desconocido. Si un cliente antiguo trata como estimación completa una búsqueda activada sin recuento previsto, actualiza el cliente antes de aprobar esa cotización.
+
+Los clientes publicados usan sobre todo los precios públicos predeterminados, no los descuentos de cuenta completos, el uso medido ni las cotizaciones de liquidación de la cuenta. Que existan endpoints nuevos o código candidato no demuestra que ya se usen en producción. Detente cuando el precio o la comparación con el presupuesto estén incompletos. La conversión de referencia es de unos 68 créditos por $1; guíate por las respuestas reales y los registros de la cuenta.
+
+<span id="approval" />
+## Aprobación y presupuestos
+
+Muestra el modelo exacto, las entradas finales, las especificaciones y la cantidad de la salida, el costo estimado y las limitaciones. Obtén la aprobación explícita para esta generación. Una aprobación es válida durante 24 horas desde la estimación, para la misma entrada y al precio aprobado o a uno inferior. La generación vuelve a estimar antes de enviar y continúa si el precio no ha cambiado o es inferior, también cuando las reglas de precios se hayan actualizado después. Un precio más alto (`price_changed`), un cambio de modelo, de entrada o de referencia (`quote_input_changed`), una cuenta distinta o una aprobación ya caducada (`quote_expired`) requieren una nueva estimación y una nueva aprobación.
+
+| Restricción | Significado actual |
+|---|---|
+| Inicio de sesión en la cuenta | Acceso a los servicios de la cuenta |
+| Permiso de comandos o herramientas del host | Permiso para que el agente ejecute una operación |
+| Aprobación del costo de cada tarea | Aceptación de este plan y de su costo estimado |
+| `max_cost_usd` explícito | En los clientes publicados, comparación con la estimación antes del envío (si la estimación es un precio de referencia, debe cubrir 1.5 veces ese precio); **no es un tope del cargo final** |
+| Cuota de la clave de la plataforma | Límites diarios y totales de la cuenta y políticas de acceso |
+
+Son comprobaciones independientes. El inicio de sesión y el permiso del host no aprueban ningún cargo. No elimines presupuestos ni cambies de clave o de vía para eludir un rechazo. Un tope final requiere el soporte correspondiente en el servidor; la documentación actual no puede prometer que la liquidación nunca supere el presupuesto de una estimación.
+
+La CLI guarda un `quote_id` local y envía con `--confirm`. El MCP nativo mantiene las entradas, las estimaciones y la aprobación explícita dentro del flujo de trabajo del agente; no tiene el archivo de cotización de la CLI ni un botón de aprobación en el servidor para toda la sesión. Consulta la [aprobación en la CLI](/es/cli/billing#pricing) y la [aprobación en MCP](/es/mcp/billing#pricing).
+
+<span id="skip-estimate" />
+### Generar sin estimación
+
+Cuando el usuario dice explícitamente que no hace falta estimar ni confirmar (por ejemplo, "genera directamente"), el agente envía sin cotización: `skip_estimate: true` en MCP y `--skip-estimate` en la CLI. El alcance es el que haya indicado el usuario: esta tarea, este lote o todas las generaciones posteriores de la conversación. El agente nunca lo deduce del silencio, del saldo ni de su propia sugerencia. Cuando el usuario renuncia a las estimaciones para el resto de la conversación, el agente avisa una sola vez de que las generaciones posteriores se enviarán sin preguntar; una conversación nueva, o pedir que se restablezcan las estimaciones, las recupera. Las entradas no válidas y un presupuesto explícito se siguen comprobando, la búsqueda sigue necesitando aprobación y la tarea se cobra según el uso real. Cuando una estimación falla o no tiene total y el usuario no ha renunciado a las estimaciones, el agente pregunta una sola vez si debe generar de todos modos al costo del uso real.
+
+<span id="batches" />
+### Varias tareas de un mismo modelo
+
+Una sola estimación cubre hasta 50 entradas de un mismo modelo (`inputs` en MCP, `--inputs-file` en la CLI): devuelve el precio de cada entrada, el total y una única aprobación para exactamente ese lote. Tras la aprobación, una sola llamada envía todas las entradas a la vez y devuelve los identificadores de las tareas sin esperar; recoge los resultados con `list_tasks` o `tasks batch`. Si algunas entradas no se enviaron, completa el lote con el mismo identificador de solicitud y exactamente las mismas entradas: en MCP, vuelve a llamar con el mismo `client_request_id` dentro de las 24 horas posteriores al primer envío (si la aprobación ha caducado, vuelve a estimar antes); en la CLI, ejecuta `tasks resume --quote` dentro de las 23 horas posteriores al primer envío, siempre que la cotización no haya caducado y el precio no haya subido. Las entradas aceptadas devuelven sus tareas originales sin un nuevo cargo. Dentro de ese plazo, nunca vuelvas a enviar con un identificador de solicitud nuevo las entradas aceptadas, las no enviadas ni las de resultado desconocido. Pasado ese plazo, comprueba primero qué tareas existen (`list_tasks`, `tasks batch` o `tasks list`) y envía solo las entradas cuyo envío no se completó, como un lote nuevo con una estimación y un identificador de solicitud nuevos. Algunos modelos, como GPT Image, suelen devolver menos imágenes que `n`, así que usa una entrada por imagen.
+
+<span id="authorization" />
+## Permisos, saldo y cuotas
+
+Actualmente, la CLI y el OAuth del MCP remoto de una misma cuenta pueden compartir los permisos, las cuotas y el estado de pausa de la clave interna. Los cambios afectan a todo lo que la usa, mientras que las sesiones de la CLI y del host siguen siendo independientes. El stdio local usa la clave API personal que tenga configurada.
+
+Las consultas de modelos, saldo y tareas no envían ninguna generación multimedia. La generación se factura; las subidas tienen límites propios del servicio de archivos. Resuelve la falta de saldo, de cuota o de acceso en la configuración correspondiente de la cuenta. Volver a autenticarse no añade saldo ni quita la pausa de una clave.
+
+Una tarea fallida (`status: failed`) no se cobra; los créditos reservados al enviarla se devuelven automáticamente. Que se agote el tiempo de espera, cerrar sesión o cerrar una página no demuestra que no haya habido cargo ni que se haya hecho un reembolso. Di que un reembolso ha llegado solo si hay una prueba de facturación explícita; las consultas de uso no son extractos completos.
+
+<span id="troubleshooting" />
+## Búsqueda vacía, entradas no válidas o precio incompleto
+
+1. Amplía los términos de búsqueda sin renunciar a las capacidades de tarea o de referencia necesarias; comprueba la cuenta y los permisos.
+2. Vuelve a leer el esquema de este modelo y comprueba los campos, los valores enumerados, los rangos y las referencias mutuamente excluyentes.
+3. Estima las entradas finales y sigue la tabla de estados. No rellenes los factores desconocidos con precios iniciales.
+4. Vuelve a confirmar las solicitudes que aún no se han enviado. Para las solicitudes enviadas o de resultado desconocido, [recupéralas primero](/es/cli-mcp/tasks-and-files#recovery).
+
+Consulta la [solución de problemas de modelos en la CLI](/es/cli/billing#models-and-pricing) y la [solución de problemas de modelos en MCP](/es/mcp/billing#models-and-pricing) para ver las acciones propias de cada vía.

@@ -1,0 +1,324 @@
+---
+title: "Referencia de herramientas y de la API de MCP"
+description: "Parámetros, ejemplos, resultados, protocolo y correspondencia con el backend de las 16 herramientas"
+---
+
+<span id="mcp-tools" />
+## Referencia de herramientas de MCP
+
+Esta página describe las 16 herramientas de la versión **1.12.1** del MCP remoto con OAuth. La referencia válida es el `tools/list` del servidor conectado. El stdio local no ofrece `prepare_upload` ni `get_upload`; su `upload_file` acepta además rutas dentro de directorios permitidos explícitamente.
+
+Los ejemplos con `name` y `arguments` describen llamadas a herramientas MCP, no cuerpos de solicitudes REST. Un ejemplo no autoriza ninguna generación de pago.
+
+| Herramienta | Finalidad | Cargo por generación |
+|---|---|---|
+| search_models | Busca modelos disponibles y alias | Ninguno |
+| recommend_models | Compara modelos que se ajustan a la solicitud y a los tipos de referencia | Ninguno |
+| search_docs | Busca en el índice oficial versionado de referencias de modelos | Ninguno |
+| get_model | Consulta los parámetros, el esquema, las referencias y los precios | Ninguno |
+| estimate_cost | Valida las entradas y estima el costo | Ninguno |
+| get_pricing_rules | Lee las reglas de precios públicas predeterminadas (tarifas de referencia, no una cotización) | Ninguno |
+| generate_image | Genera o edita imágenes | De pago |
+| generate_video | Genera, edita o extiende video | De pago |
+| generate_audio | Genera música, canciones o voz | De pago |
+| get_task | Consulta una tarea, sus resultados y el costo informado | Ninguno |
+| list_tasks | Consulta identificadores o el historial paginado de la cuenta | Ninguno |
+| get_task_usage | Resume los costos informados dentro de un recorrido acotado | Ninguno |
+| check_balance | Consulta el saldo de la cuenta y los límites compartidos | Ninguno |
+| upload_file | Sube una referencia desde una URL o en base64 | Sin cargo por generación; se aplican las cuotas de archivos |
+| prepare_upload | Prepara una subida de un solo uso para un archivo local | Sin cargo por generación; se aplican las cuotas de archivos |
+| get_upload | Recupera el estado y la URL de una subida existente | Ninguno |
+
+### search_models
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| type | string | No | image/video/audio/all; predeterminado: all |
+| query | string | No | Palabras clave de búsqueda, hasta 100 caracteres |
+| limit | integer | No | 1–50; predeterminado: 20 |
+| page | integer | No | 1–100000; predeterminado: 1 |
+
+```json
+{"name":"search_models","arguments":{"type":"image","query":"seedream","limit":5,"page":1}}
+```
+
+Devuelve models, total_matches, page, page_size y next_page. Los resultados incluyen los IDs canónicos, los alias, las referencias, la cobertura de la documentación y los precios iniciales. El orden tiene en cuenta primero la relevancia de las palabras clave y después la disponibilidad de precio, la preferencia editorial y el ID. No es una clasificación de calidad ni de popularidad. Los precios iniciales no son totales de tareas, y la disponibilidad puede cambiar de una página a otra.
+
+### recommend_models
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| type | string | Sí | image/video/audio |
+| query | string | No | Hasta 100 caracteres; deben coincidir todos los términos de búsqueda |
+| references | string[] | No | image/video/audio; como máximo 3 elementos; predeterminado: vacío |
+| limit | integer | No | 1–10; predeterminado: 3 |
+
+```json
+{"name":"recommend_models","arguments":{"type":"video","query":"seedance","references":["image"],"limit":3}}
+```
+
+Devuelve candidatos documentados con reasons, reference_inputs, selection_basis y precios unitarios. Los tipos de referencia requeridos deben tener campos de entrada documentados. Si ningún modelo coincide, ajusta la solicitud de forma transparente en lugar de descartar una referencia necesaria. Las preferencias editoriales no son estadísticas en vivo de popularidad ni de fechas de lanzamiento.
+
+### search_docs
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| query | string | Sí | 1–100 caracteres después de recortar los espacios |
+| type | string | No | image/video/audio/all; predeterminado: all |
+| limit | integer | No | 1–20; predeterminado: 5 |
+
+```json
+{"name":"search_docs","arguments":{"query":"first frame","type":"video","limit":5}}
+```
+
+Devuelve documents, total_matches, scope y la versión de la fuente. Busca en los títulos, los IDs y las descripciones de parámetros oficiales, incluidos en el paquete, de los modelos disponibles. No rastrea el sitio de documentación en vivo ni busca en la documentación de cuentas y facturación.
+
+### get_model
+
+`model` es obligatorio: una cadena de 1–128 caracteres, con un ID canónico devuelto o un alias admitido.
+
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
+
+Devuelve el modelo canónico, los requisitos, los ejemplos, los precios públicos, reference_inputs, parameters_source y, cuando está disponible, input_schema con su fuente. Las referencias de parámetros están versionadas; la disponibilidad en la cuenta se consulta en vivo. Sigue las advertencias sobre información que falta en lugar de inventar valores predeterminados.
+
+### estimate_cost
+
+| Parámetro | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| model | string | Sí | 1–128 caracteres |
+| input | object | No | Parámetros del modelo previstos; de forma predeterminada, un objeto vacío |
+| inputs | object[] | No | 1–50 entradas de un mismo modelo en lugar de input, en el orden en que se enviarán |
+| pricing_parameters | object | No | Uso facturable, medido o explícitamente previsto, que necesitan las reglas de precios, como `{"search_count":2}`; hasta 100 elementos. No se usa para los recuentos de tokens de GPT Image, Gemini Omni Flash ni Qwen TTS. No inventes valores |
+| pricing_source | string | No | De forma predeterminada es pricing_rules, las reglas de precios publicadas; los valores antiguos account y public_reference se aceptan como alias |
+| media_seconds | number | No | Mayor que 0 y como máximo 3600; solo es una indicación para la estimación |
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+Devuelve input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced y, cuando están disponibles, el saldo y los límites. El estado de la estimación puede ser estimated, partial, token_billed, needs_input o no_price; token_billed lleva un precio de referencia y se factura según los tokens reales. Cuando el precio depende de un uso que la entrada no indica, la estimación no tiene importe ni `pricing_quote`: `total_known` es false, `missing_usage` indica cada valor que falta y `usage_help` explica cómo proporcionarlo. Consulta [Facturación](/es/mcp/billing). Que la consulta funcione no demuestra que la entrada sea válida ni que la cotización esté completa.
+
+Una estimación que se puede aprobar devuelve además `pricing_quote`, el registro de aprobación para exactamente esta entrada. Cuando el usuario apruebe, pásalo con la misma entrada a la herramienta de generación. Es válido durante 24 horas desde la estimación (`expires_at`), al precio aprobado o a uno inferior: la herramienta de generación vuelve a estimar y envía si el precio no ha cambiado o es inferior, también cuando las reglas de precios se hayan actualizado después. Un precio más alto se rechaza con `price_changed`, una entrada modificada con `quote_input_changed` y un `pricing_quote` caducado con `quote_expired`; en cada caso hacen falta una nueva estimación y una nueva aprobación. Con `inputs`, el resultado indica la estimación de cada entrada y el total, y un único `pricing_quote` aprueba exactamente esas entradas en ese orden. Nunca aprueba una sola entrada, y el `pricing_quote` de una sola entrada nunca aprueba un lote.
+
+Esta herramienta no tiene el argumento `max_cost_usd` y no genera el quote_id local de la CLI. En MCP, las comprobaciones de presupuesto corresponden a las herramientas de generación. media_seconds no define la duración de la salida ni rellena los multiplicadores desconocidos de un video de referencia.
+
+### get_pricing_rules
+
+| Parámetro | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| model | string | No | Un solo ID de modelo, hasta 100 caracteres |
+| product_id | string | No | Filtra por familia de productos |
+| operation | string | No | Filtra por operación, como `text_to_video` |
+| modality | string | No | `text`, `image`, `video` o `audio` |
+| lifecycle | string | No | `active`, `preview` o `deprecated` |
+| view | string | No | `summary` o `full`; predeterminado: `full` |
+
+```json
+{"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
+```
+
+Devuelve las reglas de precios públicas predeterminadas: la tarifa unitaria de cada componente de facturación (cadenas decimales), el cargo mínimo, los tramos y las expresiones completas, además de price_scope y price_selection. Son tarifas de referencia sin descuentos de cuenta, no la cotización de una tarea, ni una factura, ni un tope de gasto final; no multipliques las tarifas unitarias para obtener una factura. Usa `estimate_cost` para conocer el costo previsto de una generación concreta; evalúa las mismas reglas con la entrada real. Un resultado vacío significa que no hay reglas públicas que coincidan, no que el modelo sea gratis. En una lista, un modelo cuyas reglas no se pueden leer o están incompletas se omite, aparece en `rejected_models` y se indica en `warnings`; los demás modelos se devuelven con normalidad, y un modelo omitido no es gratis. La consulta de un solo modelo sigue fallando cuando sus reglas no se pueden leer.
+
+### generate_image, generate_video, generate_audio
+
+Elige la herramienta que corresponda al tipo de salida. Comparten estos argumentos de nivel superior:
+
+| Parámetro | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| model | string | Sí | 1–128 caracteres; debe corresponder al tipo de contenido multimedia |
+| input | object | No | Parámetros indicados por get_model; no incluyas model ni callback_url |
+| inputs | object[] | No | 1–50 entradas de un mismo modelo en lugar de input, enviadas en una sola llamada; consulta [Lotes](#batches) |
+| prompt | string | No | Atajo para input.prompt; hasta 20000 caracteres, sujeto a los límites del modelo |
+| client_request_id | string | No | 16–96 caracteres: letras, dígitos, . _ -; reutilízalo al recuperar la misma solicitud; con inputs, como máximo 93, porque cada elemento añade .NN |
+| pricing_quote | object | No | Registro de aprobación de estimate_cost para exactamente esta entrada o este lote, válido hasta su expires_at; se comprueba con las reglas actuales antes del envío |
+| pricing_parameters | object | No | El mismo uso facturable que se pasó a estimate_cost |
+| max_cost_usd | number | No | Mayor que 0 y como máximo 10000; comprobación de la estimación en el momento del envío |
+| media_seconds | number | No | Mayor que 0 y como máximo 3600; solo es una indicación para la estimación |
+| wait_seconds | integer | No | 0–40; cuánto tiempo se espera el resultado después de enviar. El valor predeterminado es 40 para imágenes y 0 para video y audio; 0 devuelve el task_id de inmediato. Un lote solo acepta 0 |
+| skip_estimate | boolean | No | Solo cuando el usuario haya dicho explícitamente que no hace falta estimar ni confirmar; envía sin una estimación aprobada. Consulta [Generar sin estimación](#skip-estimate) |
+
+Revisa el modelo y las entradas, estima la solicitud completa, informa de las limitaciones y obtén la aprobación explícita del costo antes de llamar, salvo que el usuario haya renunciado a las estimaciones (véase más abajo). Este es un ejemplo ilustrativo del formato de la llamada:
+
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
+```
+
+La generación de imágenes espera hasta unos 40 segundos y devuelve los resultados si están listos o, si no, un task_id. El video y el audio devuelven un task_id después del envío; continúa con get_task. `wait_seconds` cambia esta espera en cada una de las tres herramientas. El envío puede informar de un cargo previo, que debe distinguirse del costo de la tarea completada.
+
+Consulta una tarea en ejecución en lugar de volver a llamar a la generación para ver el progreso. Si se pierde la respuesta, conserva el identificador original, la cuenta, las entradas y el identificador de solicitud. Un identificador distinto crea una nueva solicitud facturable. Las protecciones de recuperación del cliente no demuestran que todos los nodos de producción ofrezcan las mismas garantías de idempotencia en el backend.
+
+<span id="skip-estimate" />
+
+**Generar sin estimación.** Cuando el usuario dice explícitamente que no hace falta estimar ni confirmar (por ejemplo, "genera directamente" o "a partir de ahora, genera sin más"), el asistente omite `estimate_cost` y la confirmación y pasa `skip_estimate: true`, dentro del alcance que haya indicado el usuario: esta tarea, este lote o el resto de la conversación. Nunca lo deduce del silencio, del saldo ni de su propia sugerencia. Cuando el usuario renuncia a las estimaciones para el resto de la conversación, el asistente avisa una sola vez de que las generaciones posteriores se enviarán sin preguntar; una conversación nueva, o pedir que se restablezcan las estimaciones, las recupera. La generación se envía incluso cuando su precio no se puede calcular o cuando un `pricing_quote` se rechaza por haber caducado, por un precio más alto o por un cambio en la entrada, y el resultado lo indica (`estimate_skipped`, `estimate_skip_reason`); la tarea se cobra según el uso real. Una entrada no válida se sigue rechazando, un `max_cost_usd` explícito se sigue aplicando (una solicitud que supere ese tope, o cuyo precio no se pueda comparar con él, no se envía) y activar la búsqueda web o la búsqueda de imágenes del modelo sigue necesitando la aprobación del usuario. Si una estimación falla o no tiene total y el usuario no ha renunciado a las estimaciones, el asistente pregunta una sola vez si debe generar de todos modos al costo del uso real.
+
+<span id="batches" />
+
+**Lotes.** Para varias tareas de un mismo modelo, pasa `inputs` (1–50 elementos, cada uno como `input`) a `estimate_cost` y después, con su `pricing_quote`, a la herramienta de generación: una estimación, una aprobación del total y una sola llamada que envía todos los elementos (hasta 10 simultáneos) y devuelve, sin esperar, el `task_id` o el error de cada elemento. Si algún elemento no es válido, no se envía nada. `max_cost_usd` se aplica al total del lote; `media_seconds` y `pricing_parameters` se aplican a cada elemento. Recoge los resultados con `list_tasks` (`task_ids`, hasta 50 por llamada). Envía las tareas de modelos distintos una por llamada, con `wait_seconds: 0`. No dependas de `n` para la cantidad de imágenes: algunos modelos, como GPT Image, suelen devolver menos imágenes que `n`, así que usa un elemento por imagen.
+
+Ningún elemento empieza más de 25 segundos después del inicio de la llamada, y un envío ya empezado nunca se interrumpe; los elementos que no han empezado aparecen como no enviados. Para completar un lote, vuelve a llamar con el mismo `client_request_id` y exactamente los mismos `inputs` dentro de las 24 horas posteriores al primer envío: se envían los elementos que el resultado indica que faltan por completar, y los elementos aceptados devuelven sus tareas originales sin un nuevo cargo. Si para entonces el `pricing_quote` ha caducado, vuelve a estimar las mismas entradas y pasa el nuevo. Para un elemento de resultado desconocido, vuelve a llamar más tarde de ese mismo modo o comprueba `list_tasks`. Dentro de esas 24 horas, nunca vuelvas a enviar con un `client_request_id` nuevo los elementos aceptados, los no enviados ni los de resultado desconocido: eso crea tareas nuevas y las cobra. Pasado ese plazo, el mismo `client_request_id` ya no impide un segundo cargo: comprueba primero `list_tasks` y después envía solo los elementos cuyo envío no se completó, como un lote nuevo con una estimación y un `client_request_id` nuevos. Un elemento cuya entrada difiere de la que ese `client_request_id` envió antes se rechaza (`idempotency_conflict`); es una tarea nueva que necesita su propia estimación, su propia aprobación y su propio `client_request_id`.
+
+### get_task
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| task_id | string | Sí | Identificador de tarea original y admitido; 4–128 caracteres |
+| wait_seconds | integer | No | 0–45; predeterminado: 30; limita toda la llamada, incluidos los reintentos. 0 lee una sola vez sin esperar a la tarea; esa lectura puede tardar igualmente hasta 15 s |
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+Devuelve el estado, el progreso, los resultados, el costo informado o el error. Sigue consultando el mismo identificador mientras la tarea esté en ejecución. Una tarea fallida devuelve su código de error (`error.code`), la explicación que también devuelve la API (`error.message`) y un `billing_note`: la tarea no se cobra y los créditos reservados al enviarla se devuelven automáticamente. Los resultados originales suelen conservarse 24 horas. Que se muestre la vista previa depende del cliente host.
+
+### list_tasks
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| task_ids | string[] | No | 1–50 identificadores; modo por lotes |
+| status | string | No | processing/completed/failed/cancelled |
+| type | string | No | image/video/audio |
+| model | string | No | ID exacto del modelo; 1–128 caracteres |
+| page | integer | No | 1–100000; predeterminado: 1 |
+| since / until | string | No | ISO 8601, segundos Unix o 30m/2h/1d; hasta 40 caracteres |
+| limit | integer | No | 1–50; predeterminado: 20 |
+
+```json
+{"name":"list_tasks","arguments":{"type":"video","since":"2h","page":1,"limit":20}}
+```
+
+```json
+{"name":"list_tasks","arguments":{"task_ids":["TASK_ID_ONE","TASK_ID_TWO"]}}
+```
+
+task_ids no se puede combinar con status/type/model/page/since/until. El modo por lotes devuelve tasks y missing; el historial devuelve total/page/page_size/next_page/last_page. Si no se pueden leer los enlaces de resultados o los códigos de error de las filas terminadas, se conserva la página base: details_status, un details_reason por fila (read_failed, invalid o not_returned) y details_retry_task_ids indican qué falta y qué se puede reintentar gratis; comprueba las filas not_returned con get_task. processing incluye las tareas en cola. Los filtros por tiempo se aplican a la página seleccionada; total se cuenta antes del filtro por tiempo. El historial abarca toda la cuenta, no solo esta conversación. Una página vacía no demuestra que el envío no se haya producido nunca.
+
+### get_task_usage
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| since | string | No | Predeterminado: 30d; límite inferior de la hora de creación |
+| until | string | No | Predeterminado: la hora actual; límite inclusivo |
+| model | string | No | ID exacto; 1–128 caracteres |
+| type | string | No | image/video/audio |
+| max_pages | integer | No | 1–20; predeterminado: 5; 50 tareas por página |
+
+```json
+{"name":"get_task_usage","arguments":{"since":"7d","type":"video","max_pages":5}}
+```
+
+Devuelve totals, by_model, by_status, coverage y as_of. Revisa missing_cost_tasks, truncated, concurrent_change_detected y complete_for_retained_tasks. Resume los costos informados de las tareas completadas de la cuenta que se conservan. No es una factura completa, ni un registro de pagos o reembolsos, ni un informe de uso exclusivo de MCP, ni un límite de liquidación.
+
+### check_balance
+
+Sin argumentos:
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+Devuelve account_balance_credits/usd, spent_scope, spent_credits y los límites total y diario disponibles, con enlaces a la consola. El gasto de la clave de OAuth incluye la CLI de la cuenta y todas las sesiones de MCP con OAuth, no solo esta conversación.
+
+### upload_file
+
+| Parámetro | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| file_url | string | Se requiere una fuente | Archivo multimedia en una URL HTTPS pública; no se admiten URLs de redes privadas ni con credenciales |
+| base64_data | string | Se requiere una fuente | Como máximo 1 MiB una vez decodificado, en modo remoto |
+| mime_type | string | Condicional | Obligatorio para base64 sin formato; las URLs de tipo data ya incluyen el MIME |
+| file_name | string | No | Nombre de archivo simple, sin directorios |
+| upload_path | string | No | Directorio relativo, sin .. |
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+Sustituye la URL por la de un archivo multimedia real y accesible. Devuelve file_url, las propiedades del archivo y la información de caducidad. Las referencias suelen conservarse 72 horas. El MCP remoto no puede aceptar file_path. El stdio local puede usar en su lugar una ruta absoluta dentro de un directorio permitido; elige exactamente una fuente. Que la subida funcione no demuestra que el modelo elegido admita ese archivo multimedia.
+
+### prepare_upload
+
+`file_name` es obligatorio: una cadena con una extensión que se usa para determinar el tipo de contenido multimedia. `upload_path` es opcional: un directorio relativo.
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+Devuelve upload_id, upload_url, method:PUT, command, max_bytes y expires_at. La URL dura aproximadamente 15 minutos, es de un solo uso y acepta como máximo **95 MiB**. Ejecuta el comando devuelto donde el archivo se pueda leer realmente y después usa el file_url confirmado. Un archivo adjunto del navegador puede no ser accesible de este modo. La dirección contiene una autorización temporal; no la publiques ni le añadas una clave personal.
+
+### get_upload
+
+`upload_id` es obligatorio y procede del resultado original de prepare:
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
+
+Los estados incluyen waiting/uploading/done/failed/expired/outcome_unknown. Usa file_url solo después de un resultado done confirmado. El estado local del servidor dura aproximadamente una hora; los servicios de archivos compatibles pueden ofrecer comprobantes durante unas 72 horas. Los comprobantes no admitidos o no verificables pueden dar outcome_unknown. La consulta no vuelve a subir el archivo; conserva el identificador original y revisa primero el estado.
+
+### Resultados y errores
+
+Las herramientas devuelven texto legible y structuredContent; los fallos pueden incluir isError/error/next_step. El contenido multimedia completado puede incluir resource_link y, opcionalmente, una miniatura de imagen. Los hosts difieren en su compatibilidad con los bloques de contenido. La URL original sigue siendo la referencia para la entrega; las vistas previas no están garantizadas en todos los hosts.
+
+Comprueba los errores de las herramientas y los campos de negocio, como input_valid, el estado de la estimación y task.status. Un HTTP 200 por sí solo no demuestra que la generación haya funcionado. El tiempo de espera de un envío puede agotarse después de que la tarea se haya creado, y no es prueba de que no haya habido cargo. Que una consulta falle no prueba que la tarea original haya fallado.
+
+<span id="task-progress-and-results" />
+
+## Progreso y resultados de las tareas
+
+Usa las consultas de saldo y de modelos para verificar gratis la conexión. Usa get_task/list_tasks para las tareas existentes y después entrega las URLs originales y los costos reales informados. La [guía de flujos de trabajo](/es/mcp/overview#workflows) trata las referencias, la recuperación, el guardado y las vistas previas grises. Un problema de visualización no debe dar lugar a otra generación de pago.
+
+<span id="api" />
+## Protocolo MCP y APIs del backend
+
+| Modo | Ruta de ejecución | Autenticación e instalación |
+|---|---|---|
+| MCP remoto | Cliente → EvoLink MCP alojado → API de la plataforma | Streamable HTTP y OAuth en el navegador; no hace falta instalar un servidor local |
+| stdio local | Cliente → proceso MCP local → API de la plataforma | Node.js 20+, inicio con npx y una clave API personal |
+
+El endpoint remoto es `https://mcp.evolink.ai/mcp`. Passport proporciona OAuth; el servidor llama a https://api.evolink.ai y al servicio de archivos. Las URLs de MCP, las rutas /v1 de la plataforma, la documentación y llms.txt son puntos de entrada distintos.
+
+### Inicializa y llama a las herramientas
+
+Deja que el host o el SDK de MCP gestionen initialize, las versiones del protocolo, Accept, la autenticación, las sesiones y los bloques de contenido. Lee tools/list después de la inicialización y luego llama a tools/call:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_balance","arguments":{}}}
+```
+
+Los ejemplos que usan name / arguments describen la entrada de las herramientas, no cuerpos de solicitudes REST. Las herramientas pueden devolver texto, datos estructurados, enlaces a recursos y miniaturas; cómo se muestran depende del host. Comprueba los errores de las herramientas y el estado de la tarea, no solo que HTTP haya respondido correctamente.
+
+### Herramientas y operaciones del backend
+
+| Herramienta MCP | Operación del backend o implementación |
+|---|---|
+| search_models | `GET /v1/models`, más los alias, la disponibilidad y las referencias |
+| get_model, recommend_models, search_docs | Referencias versionadas y catálogo de la cuenta, no rutas REST con el mismo nombre |
+| estimate_cost | `GET /v1/catalog/models/{model_id}/pricing-rules?view=full` y las reglas de estimación del servidor (desde la 1.7.0) |
+| get_pricing_rules | `GET /v1/catalog/pricing-rules` y `GET /v1/catalog/models/{model_id}/pricing-rules` (view=full) |
+| generate_image | `POST /v1/images/generations` |
+| generate_video | `POST /v1/videos/generations` |
+| generate_audio | `POST /v1/audios/generations` |
+| get_task | `GET /v1/tasks/{task_id}` |
+| list_tasks con task_ids | `POST /v1/tasks/batch` |
+| list_tasks, get_task_usage | `GET /v1/tasks`, paginación y agregación acotada |
+| check_balance | `GET /v1/credits` |
+| Autorización de subida | `POST /v1/files/upload-token` |
+| upload_file | /url o /base64 del servicio de archivos; el stdio local puede leer los directorios permitidos |
+| prepare_upload, get_upload | URL PUT alojada de un solo uso y su estado; la recuperación de comprobantes depende de la compatibilidad del servicio de archivos |
+
+Los parámetros del modelo van en arguments.input, y el servidor los convierte en solicitudes REST. media_seconds es una indicación para la facturación; max_cost_usd solo comprueba las estimaciones antes del envío. La versión publicada 1.12.1 estima a partir de las reglas de precios públicas (tarifas de referencia, sin descuentos de cuenta) y sigue sin tener un tope de la liquidación final.
+
+### Subidas, recuperación y acceso
+
+Usa una URL PUT de prepare_upload solo en un entorno que pueda leer el archivo y después consulta get_upload. Un servidor remoto no puede leer rutas del escritorio, y los archivos adjuntos del chat pueden no dar acceso a los bytes originales. Consulta [Subida de referencias](/es/mcp/overview#files).
+
+En los envíos de pago, guarda el client_request_id, las entradas normalizadas, la identidad de la cuenta y el task_id devuelto. Cuando el resultado sea desconocido, consulta la tarea original y el historial; no cambies de identificador para volver a enviar. Los identificadores del cliente, por sí solos, no pueden garantizar una protección uniforme del backend frente a todos los cargos duplicados.
+
+OAuth da acceso a un conjunto limitado de operaciones multimedia, no a la gestión arbitraria de claves ni a las APIs administrativas. Actualmente no se ofrece ninguna herramienta de cancelación utilizable; dejar de esperar no cancela la tarea. Los comandos y la ejecución de la CLI se documentan por separado en la [referencia de la CLI](/es/cli/reference#api).
+
+<span id="cli-reference" />
+
+## Documentación de comandos de la CLI
+
+La referencia completa de la CLI está ahora en la [sección aparte de la CLI](/es/cli/reference#cli-reference). Esta página documenta las herramientas y el protocolo de MCP.

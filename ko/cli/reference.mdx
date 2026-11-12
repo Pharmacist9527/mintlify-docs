@@ -1,0 +1,202 @@
+---
+title: "CLI 명령 및 API 레퍼런스"
+description: "전체 명령, 옵션, JSON 출력, 복구, REST 실행 경로"
+---
+
+<span id="cli-reference" />
+## CLI 명령 레퍼런스
+
+정식 출시된 @evolinkai/cli **0.14.1** 기준입니다. 설치된 버전에 대해서는 evolink --help 또는 evolink COMMAND --help --json을 사용하세요. 비즈니스 명령은 --json을 지원합니다. MODEL_ID, QUOTE_ID, TASK_ID, UPLOAD_ID는 실제로 반환된 값으로 바꾸세요.
+
+### 인증, 진단, 스킬
+
+[설치](/ko/cli/setup#cli-install)를 참고하세요.
+
+| 명령 | 동작 |
+|---|---|
+| evolink --version | 버전 |
+| evolink setup --agent codex --json | 사전 준비 확인, 로그인, 스킬 동기화, 무료 연결 검증 |
+| evolink auth login [--no-browser] [--timeout SECONDS] | OAuth, 30–900초, 기본값 180 |
+| evolink auth status --json | 저장된 로그인과 액세스 토큰 만료 시각을 오프라인으로 보여 줍니다. 토큰은 자동으로 갱신되므로, 표시된 시각이 지났더라도 로그인이 만료되었다는 뜻이 아니며 네트워크 검증 결과도 아닙니다 |
+| evolink auth logout | 현재 CLI 세션을 폐기하고 로그아웃합니다 |
+| evolink doctor --agent codex --json | 환경, 저장소, 계정, 모델, 스킬을 검사하고 CLI 업데이트도 확인합니다. `--agent`가 없으면 설치된 스킬도 검사합니다(안내만 제공하며 `ok`는 바뀌지 않음) |
+| evolink skills install [--agent NAME] [--replace-modified] | 설치/동기화. 기본적으로 수정 사항을 유지합니다 |
+| evolink skills status [--agent NAME] --json | 스킬의 누락, 최신, 구버전, 수정됨, 충돌 상태 |
+
+agent 값: all/codex/claude-code/cursor/gemini/opencode/copilot/openclaw/hermes. 기본값은 all입니다. 스킬 인식 여부는 여전히 어시스턴트가 검증해야 합니다.
+
+`setup`, `doctor`, `auth login`의 출력에는 `update`(`status`, `update_available`, `latest_version`, `command`)가 포함됩니다. 다른 명령은 더 새로운 릴리스가 있을 때 하루에 한 번까지만 stderr로 알림을 출력합니다. 확인을 끄려면 `EVOLINK_CLI_UPDATE_CHECK=0`을 설정하세요. [새 버전이 나왔는지 확인하는 방법](/ko/cli/setup#update-check)을 참고하세요.
+
+### 모델, 입력, 문서
+
+```bash
+evolink models search --type image --query seedream --limit 5 --page 1 --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink models pricing --model MODEL_ID --json
+evolink models recommend --type video --query seedance --references image --limit 3 --json
+evolink docs search --type video --query "first frame" --limit 5 --json
+```
+
+| 명령 | 옵션과 출력 |
+|---|---|
+| models search | type은 image/video/audio/all, 기본값 all. limit은 1–50, 기본값 20. page는 1–100000. query는 최대 100자 |
+| models show MODEL_ID | 정식 ID, 별칭, 매개변수, 가격, 참조 입력, 문서 출처, 스키마 |
+| models schema MODEL_ID | 버전이 지정된 입력/제출 스키마. 사용할 수 없으면 명시적으로 실패합니다 |
+| models pricing | 공개 기본 가격 규칙입니다. 로그인 없이 읽을 수 있으며 작업 견적이 아닙니다. 선택 옵션: --model, --modality text/image/video/audio, --view summary/full(기본값 full), --product-id, --operation, --lifecycle active/preview/deprecated |
+| models recommend | type은 필수이며 image/video/audio. references는 쉼표로 구분한 image/video/audio. limit은 1–10 |
+| docs search | query는 필수이며 최대 100자. type은 search와 같음. limit은 1–20, 기본값 5 |
+
+docs search는 번들로 포함된 공식 모델 레퍼런스 색인을 사용하며, 웹사이트를 실시간으로 크롤링하지 않습니다. 추천은 문서화된 입력, 키워드, 플랫폼의 편집상 선호를 바탕으로 하며 인기 순위가 아닙니다. 단가는 작업 견적이 아닙니다.
+
+### 견적과 생성
+
+모델의 실제 매개변수로 input.json을 만든 뒤 무료 견적을 받으세요:
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+| 옵션 | 의미 |
+|---|---|
+| --model | 필수. 정식 ID 또는 지원되는 별칭 |
+| --input-file FILE / --input JSON | JSON 객체. 둘 중 하나를 선택합니다. 생략하면 빈 객체로 시작합니다 |
+| --inputs-file FILE | 단일 입력 대신, 한 모델에 대한 입력 1–50개를 담은 JSON 배열 또는 JSONL. 견적 하나가 배치 전체에 적용됩니다 |
+| --prompt TEXT | 프롬프트 단축 옵션. JSON의 prompt와 충돌하면 안 됩니다 |
+| --max-cost-usd NUMBER | 제출 시 예상 비용에 적용하는 양수 상한. 최대 USD10000 |
+| --media-seconds NUMBER | 가격 산정용 양수 힌트. 최대 3600초이며 모델 입력이 아닙니다 |
+| --pricing-parameters JSON | 가격 규칙에 필요한, 측정했거나 명시적으로 예상한 과금 사용량을 담은 JSON 객체. 예: `{"search_count":2}`. `missing_usage`에 명시된 값을 제공하고 값을 절대 지어내지 마세요 |
+| --pricing-source pricing_rules | 선택 사항. 예상 비용은 항상 공개된 가격 규칙을 사용합니다. 이전 값인 account와 public_reference는 별칭으로 허용됩니다 |
+| --refresh-quote QUOTE_ID | 저장되어 있고 아직 제출하지 않은 견적을 저장된 입력과 예산으로 다시 산정합니다. 위 옵션들과 함께 쓸 수 없습니다 |
+
+견적이 성공하면 quote_id를 반환하고, 예상 비용을 산정한 시점부터 **24시간** 동안 유효하며(`expires_at`), 로그인, 백엔드, 모델, 정확한 입력에 묶입니다. 생성 단계에서는 제출하기 전에 가격 규칙을 다시 읽습니다. 같은 입력이 승인된 가격 이하이면 제출하며, 이후에 규칙이 바뀐 경우에도 마찬가지입니다. 가격이 올랐으면 `price_changed`, 입력이 바뀌었으면 `quote_input_changed`, 견적이 만료되었으면 `quote_expired`로 실패합니다. 이런 경우에는 아무것도 보내지 않으며, 새 견적과 승인이 필요합니다. 실패했거나 상한 때문에 거부된 예상 비용 산정 결과는 사용할 수 있는 견적이 아닙니다. 과금 사용량이 빠진 예상 비용 산정은 빠진 값과 그 값을 제공하는 옵션을 하나씩 알려 주며 실패하고, 견적을 저장하지 않습니다. 사양, 범위, 경고를 보여 주고 명시적인 승인을 기다린 뒤 알맞은 명령을 선택하세요:
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
+evolink generate video --quote QUOTE_ID --confirm --json
+evolink generate audio --quote QUOTE_ID --confirm --json
+```
+
+이들은 서로 별개의 예시입니다. 견적 하나는 유형 하나/작업 하나에 적용됩니다. 생성 단계에서는 모델이나 입력을 바꿀 수 없습니다. 변경 사항이 있으면 견적을 다시 받고 승인받으세요. --confirm은 승인을 받았음을 선언할 뿐, 스스로 사용자에게 물어볼 수는 없습니다.
+
+<span id="refresh-quote" />
+
+제출하지 않은 견적을 갱신하려면(예: 견적이 만료되었거나 가격이 오른 뒤) 견적을 새로 고치세요:
+
+```bash
+evolink estimate --refresh-quote QUOTE_ID --json
+```
+
+새로 고친 견적은 새 quote_id를 가지며, 원래 요청 ID를 유지하고 이전 견적을 대체합니다. 사용자에게 보여 주고 다시 승인을 받은 뒤 가장 최신 견적만 제출하세요. 대체된 견적을 제출하거나 재개하면 `quote_superseded`로 실패하며, 이 오류는 현재 견적 또는 그 작업을 알려 줍니다. 제출이 이미 시작된 견적은 새로 고칠 수 없습니다(`submission_already_started`). 대신 해당 작업을 복구하세요. 다른 새로 고침이 같은 견적을 대체하는 도중에 실행된 새로 고침은 `quote_refresh_conflict`를 반환합니다.
+
+`--inputs-file`로 만든 견적은 배치 전체에 적용됩니다. `generate --quote QUOTE_ID --confirm`은 모든 입력을 한꺼번에 제출하고(동시에 최대 10개씩), 기다리지 않고 입력별 작업 ID 또는 오류를 반환합니다. `--wait`는 작업 하나에만 사용합니다. 결과는 `tasks batch --ids`로 수집하세요.
+
+사용자가 예상 비용 산정이나 확인을 하지 말라고 명시적으로 말한 경우에만 사용하세요:
+
+```bash
+evolink generate image --model MODEL_ID --input-file input.json --skip-estimate --json
+```
+
+`--skip-estimate`는 견적 없이 제출하며, `--inputs-file`과도 함께 쓸 수 있습니다. 가격을 확인하지 않고, 작업 요금은 실제 사용량에 따라 부과되며, 결과에 그 사실이 표시됩니다(`estimate_skipped`). 유효하지 않은 입력은 여전히 거부되며, 명시적인 `--max-cost-usd`도 그대로 적용됩니다. 이 값을 넘는 요청이나, 가격을 이 값과 대조해 확인할 수 없는 요청은 제출되지 않습니다. `--skip-estimate`는 `--quote` 또는 `--confirm`과 함께 쓸 수 없습니다. 이 명령은 자체 요청 ID가 담긴 기록을 저장하고 `tasks resume`에 쓸 quote_id를 반환합니다.
+
+--wait는 기존 작업을 기다립니다. timeout은 1–86400초이고 기본값은 1800입니다. 시간 초과나 Ctrl-C로는 서버의 작업이 취소되지 않습니다. timeout에는 모든 읽기, 재시도, 일시 정지 시간이 포함됩니다. 제한에 도달하면 `wait_timeout`이 마지막으로 검증된 상태와 그 `read_at`을 보고하며, 최신 상태를 읽지 못한 경우에는 `status_check: unverified`를 보고합니다. 완전한 예상 비용은 제출 검사에 기본적으로 견적의 최댓값을 사용합니다. [예산의 한계](/ko/cli/billing)를 참고하세요.
+
+### 작업, 배치, 복구
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --type video --status processing --since 2h --limit 20 --page 1 --json
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+| 목록 옵션 | 규칙 |
+|---|---|
+| --status | processing/completed/failed/cancelled. processing에는 대기 중인 작업이 포함됩니다. 생략하면 전체 |
+| --type | image/video/audio. 생략하면 모든 미디어 |
+| --model | 정확한 정식 모델 ID |
+| --since / --until | 생성 시간: ISO 8601, Unix 초, 30m/2h/1d. until은 해당 시각을 포함합니다 |
+| --page / --limit | 페이지 1–100000. 크기 1–50, 기본값 20 |
+
+시간 필터는 선택한 페이지에만 적용됩니다. 기록은 이 채팅뿐 아니라 계정 전체를 포함합니다. 빈 페이지가 제출이 없었다는 증거는 될 수 없습니다. total은 로컬 시간 필터를 적용하기 전의 값입니다. 배치 ID는 쉼표로 구분한 값 1–50개입니다.
+
+작업 ID가 있으면 get/wait를 사용하세요. 제출 응답을 받지 못했다면 원래 요청 ID와 로그인을 유지한 채 원래 견적을 재개하세요. 배치의 경우 `tasks resume --quote QUOTE_ID`가 제출되지 않은 입력을 마저 제출하며, 이미 접수된 입력은 새로 과금되지 않고 원래 작업을 반환합니다. `tasks resume`은 첫 제출 후 23시간 이내에만 요청 ID로 다시 요청을 보냅니다(EvoLink는 요청 ID를 24시간 동안 보관합니다). 그 이후에는 `recovery_window_passed`로 거부합니다. 견적 규칙도 그대로 따릅니다. 견적이 만료되었거나(`quote_expired`) 가격이 올랐으면(`price_changed`) 아무것도 보내지 않습니다. 어느 경우든 `tasks batch` 또는 `tasks list`로 무엇이 접수되었는지 확인하고, 나머지만 새 생성 또는 새 배치로 예상 비용을 산정하세요. 기록이 없어졌거나 만료되었거나 계정이 바뀌었다면, 다시 유료 요청을 하기 전에 기록/콘솔을 확인하세요. CLI에는 취소 명령이 없습니다.
+
+### 잔액과 작업 사용량
+
+```bash
+evolink balance --json
+evolink usage --since 7d --until 1h --type video --max-pages 5 --json
+```
+
+balance는 계정 잔액과 적용되는 한도를 반환합니다. usage는 model/type/생성 시간을 받습니다. since의 기본값은 30d, max-pages는 1–20이고 기본값은 5이며, 페이지당 작업 50개입니다. 누락된 비용, 조회 범위, 잘림 여부를 확인하세요.
+
+usage는 계정 전체의 보관된 기록 중 제한된 범위에서 보고된 완료 작업 비용이며, 청구서, 환불 원장, CLI/MCP만의 사용량, 최종 예산이 아닙니다.
+
+### 업로드와 원본 다운로드
+
+```bash
+evolink upload ./reference.mp4 --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+evolink download TASK_ID --output ./result.mp4 --index 1 --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+CLI는 **1바이트에서 95 MiB**까지의 일반 파일을 받으며, 먼저 업로드 ID를 저장합니다. uploads get은 원래 접수 확인을 읽기만 합니다. 호환되는 백엔드 지원이 없으면 다시 보내지 않고 알 수 없음으로 보고할 수 있습니다. 참조 파일은 보통 72시간 동안 유지됩니다.
+
+다운로드 index는 1부터 시작하며 기본값은 1, 범위는 1–50입니다. 상위 디렉토리가 있어야 하며, 기존 파일은 덮어쓰지 않습니다. 결과 하나는 최대 1 GiB입니다. 유형/내용 검사를 통해 미디어로 위장한 HTML 오류 페이지를 거부합니다.
+
+배치 모드인 --all --output-dir DIR은 --template NAME과 --resume을 지원합니다. 재개할 때는 원래 배치 기록을 사용하며, 이름만 같은 임의의 파일은 신뢰하지 않습니다. 자세한 내용은 [작업 결과 전달](/ko/cli/workflows#tasks)에 있습니다.
+
+### JSON, 종료 코드, 설정
+
+--json은 schema_version:1과 ok가 포함된 JSON 한 줄을 stdout에 씁니다. 진행 상황은 stderr로 출력됩니다. 오류는 ok:false/error와 0이 아닌 종료 코드로 나타나며, Ctrl-C는 보통 코드 130으로 종료합니다. 작업의 status:failed는 조회 명령 호출 실패와 다릅니다. 먼저 명령의 ok를 확인한 다음 작업 상태를 확인하세요.
+
+로컬 기록은 ~/.evolink-media에 남으며, 자격 증명은 OS 보안 저장소를 사용합니다. 로그인을 옮기려고 이 디렉토리를 복사하거나, 불확실한 제출을 해결하려고 견적/복구 기록을 삭제하지 마세요.
+
+고급 옵션 --server는 OAuth 리소스/신원 바인딩을 선택합니다. 기본값: https://mcp.evolink.ai/mcp. 이 옵션은 REST 실행 방식을 바꾸지 않습니다. --api-url/--files-url은 프로덕션 기본값을 유지하세요. 임의의 외부 URL은 거부됩니다. --token-stdin은 명령 한 번에만 쓰는 OAuth 액세스 토큰이며, 플랫폼 API Key가 아니고 setup용도 아닙니다. 토큰을 명령 인수나 로그에 넣지 마세요.
+
+범용 run, 텍스트 채팅, 취소, 충전, 키 관리, 사용자 지정 별칭 파일을 위한 명령은 제공하지 않습니다. 필요하면 해당 콘솔/API를 사용하세요.
+
+<span id="api" />
+## CLI 실행 경로와 API
+
+CLI 0.8.0부터 미디어 요청은 **터미널 또는 에이전트 → EvoLink CLI → 플랫폼 REST API** 경로를 사용합니다. 입력 검사, 모델 레퍼런스 조회, 예상 비용 산정, 결과 정리는 로컬에서 실행되며, 비즈니스 실행은 원격 MCP의 tools/call을 호출하지 않습니다.
+
+| 서비스 | 주소와 역할 |
+|---|---|
+| 플랫폼 API | https://api.evolink.ai: 모델, 미디어, 작업, 잔액 |
+| Passport | https://passport.evolink.ai: 브라우저 인증과 토큰 갱신 |
+| 파일 | https://files-api.evolink.ai: 업로드와 호환 접수 확인 |
+| OAuth 리소스 | https://mcp.evolink.ai/mcp: 신원 바인딩용이며 미디어 실행 경로가 아닙니다 |
+| 생성된 원본 | 작업이 반환한 HTTPS URL: 플랫폼 토큰 없이 직접 다운로드 |
+
+### 명령과 백엔드 동작
+
+| CLI 기능 | 백엔드 동작 또는 구현 |
+|---|---|
+| models search | `GET /v1/models`. 별칭, 레퍼런스, 사용 가능 여부와 결합합니다 |
+| models show/schema, models recommend, docs search | 공개된 번들 레퍼런스, 공유 규칙, 현재 계정의 모델 목록 |
+| estimate | `GET /web/api/models/pricing`과 클라이언트의 예상 비용 산정 규칙 |
+| generate image | `POST /v1/images/generations` |
+| generate video | `POST /v1/videos/generations` |
+| generate audio | `POST /v1/audios/generations` |
+| tasks get/wait | `GET /v1/tasks/{task_id}` |
+| tasks batch | `POST /v1/tasks/batch` |
+| tasks list, usage | `GET /v1/tasks`, 페이지 처리, 범위가 제한된 집계 |
+| balance | `GET /v1/credits` |
+| upload | `POST /v1/files/upload-token` 호출 후 파일 서비스로 직접 업로드 |
+| uploads get | 호환 파일 서비스의 `GET /api/v1/files/upload-receipts/{upload_id}` |
+| download | 작업 결과 직접 다운로드, 형식 검사, 결과 기록 |
+
+CLI의 quote_id, --confirm, 복구 파일은 클라이언트 측 작업 흐름을 구현한 것이며, 새로운 백엔드 필드가 아닙니다. 정식 출시된 CLI 0.14.1은 공개 가격 규칙으로 예상 비용을 산정합니다(참고 가격, 계정 할인 미포함). --max-cost-usd는 최종 정산 금액의 상한이 아닙니다.
+
+### 요청, 복구, 자동화
+
+제출하기 전에 견적과 요청 ID를 영구 저장하세요. REST는 기존 Idempotency-Key / X-Evo-Run-Id 식별자를 사용합니다. 응답을 받지 못했다면 원래 견적으로 복구하세요. 신원, 입력, 식별자를 바꿔서 다시 제출하지 마세요. 클라이언트 기록만으로는 모든 프로덕션 노드에서 백엔드 멱등성이 동일하게 보장된다고 증명할 수 없습니다.
+
+스크립트는 ok를 확인한 다음 작업 status, 그다음 결과와 비용 필드를 확인해야 합니다. 터미널의 마지막 줄에 의존하지 말고 quote_id, task_id, 다운로드 매니페스트를 저장하세요. 조회 오류, 작업 실패, 다운로드 실패는 각각 다르게 처리해야 합니다. 유료 제출을 무조건 재시도하지 마세요.
+
+CLI 세션과 네이티브 MCP 세션은 따로 관리되지만, 현재 계정 OAuth는 `EvoLink MCP (OAuth)`의 권한, 한도, 일시 중지 상태를 공유합니다. 네이티브 연결은 [별도의 MCP 문서](/ko/mcp/overview)를 이용하세요.

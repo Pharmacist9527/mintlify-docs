@@ -1,0 +1,164 @@
+---
+title: "MCP: autorización, aprobación y solución de problemas"
+description: "Alcance de los costos, acceso a la cuenta, conservación y solución de problemas paso a paso"
+---
+
+<span id="pricing" />
+
+## Costos y aprobación en MCP
+
+Esta página describe la versión publicada MCP 1.12.1. Llama a `estimate_cost` y después muestra el modelo, las entradas finales, la cantidad de resultados y el costo estimado. Llama a la herramienta de generación solo después de la aprobación explícita de esta tarea. Cuando el usuario dice explícitamente que no hace falta estimar ni confirmar, ya sea para esta tarea, para un lote o para el resto de la conversación, el asistente, en lugar de eso, envía con `skip_estimate: true`; consulta [Generar sin estimación](/es/mcp/tools#skip-estimate).
+
+Consulta [Modelos, costos y cuotas](/es/cli-mcp/models-and-billing#pricing) para conocer los estados de la estimación, las limitaciones de los precios públicos, la aprobación y los presupuestos. En las versiones publicadas, max_cost_usd solo se compara con las estimaciones previas al envío; no pone un tope a los cargos finales.
+
+estimate_cost no acepta max_cost_usd; las herramientas de generación sí lo aceptan.
+
+El MCP nativo no tiene el `quote_id` local ni el comando `--confirm` de la CLI, ni tampoco un botón de aprobación en el servidor para toda la sesión. El agente debe conservar el modelo, las entradas, la estimación y la aprobación de esta tarea; una entrada modificada, un precio más alto o una aprobación caducada requieren una nueva aprobación. Una aprobación (`pricing_quote`) es válida durante 24 horas desde la estimación, al precio aprobado o a uno inferior: la herramienta de generación vuelve a estimar y envía si el precio no ha cambiado o es inferior, también cuando las reglas de precios se hayan actualizado después. Un precio más alto devuelve `price_changed`; una entrada modificada, `quote_input_changed`; y una aprobación que ha superado su `expires_at`, `quote_expired`. El permiso de herramientas del host, la autorización de la cuenta y la aprobación de la compra no se sustituyen entre sí.
+
+Las consultas de modelos, saldo y tareas no envían ninguna generación. La generación se factura; los límites del servicio de archivos se aplican por separado. Una tarea fallida no se cobra, y los créditos reservados al enviarla se devuelven automáticamente. Que se agote el tiempo de espera o cerrar el chat no demuestra que no haya habido cargo ni que se haya completado un reembolso. Las consultas de uso no son comprobantes completos de la liquidación.
+
+Consulta las [reglas comunes de acceso](/es/cli-mcp/models-and-billing#authorization); esta página mantiene las acciones de inicio y cierre de sesión propias de esta vía.
+
+<span id="authorization" />
+
+## Autorización, permisos y cuotas
+
+El MCP remoto usa el OAuth de Passport en el navegador. El host guarda las credenciales de la conexión, y el servicio usa la clave existente vinculada a OAuth. El MCP remoto y la CLI pueden compartir el acceso a la cuenta, las cuotas de la clave y los permisos. Pausar una clave compartida afecta a todo lo que la usa; cerrar la sesión del host es una operación distinta.
+
+El stdio local usa la clave API personal que se proporciona a su proceso MCP y sigue los permisos y las cuotas de esa clave. No pegues claves en el chat ni uses el inicio de sesión de la CLI como prueba de que el MCP nativo está autorizado.
+
+Desconecta o cierra sesión desde la configuración de MCP o de conectores del host. Cuando haga falta, revoca la autorización de la cuenta desde la gestión de autorizaciones de la cuenta. Cerrar una ventana no revoca necesariamente el acceso. Resuelve la falta de saldo, las cuotas diaria y total o los permisos de modelos desde la configuración de la cuenta.
+
+<span id="retention" />
+
+## Almacenamiento y caducidad
+
+Los plazos de validez predeterminados de las cotizaciones, las referencias, las autorizaciones de subida y las URLs originales se mantienen en [Tareas, referencias y resultados](/es/cli-mcp/tasks-and-files#retention). Prevalecen los valores que se devuelven realmente; la disponibilidad de comprobantes depende del despliegue del servicio de archivos.
+
+<span id="faq" />
+
+## Solución de problemas de MCP: identifica tu conexión
+
+El MCP remoto usa `https://mcp.evolink.ai/mcp`, Streamable HTTP y el inicio de sesión OAuth del host. El stdio local usa el proceso `@evolinkai/mcp` configurado en el host y una clave de la plataforma. Comprueba las credenciales y la detección de herramientas de la conexión que usas realmente.
+
+| Síntoma | Sección de solución de problemas |
+|---|---|
+| La autorización en el navegador falla o se repite | [Inicio de sesión](#login) |
+| La habilidad está presente, pero faltan las herramientas reales | [Habilidades y permisos](#skills-discovery) |
+| Falta MCP, las respuestas son solo texto o se deniegan las herramientas | [Conexión y detección de herramientas](#mcp-connection) |
+| Falta el modelo, las entradas no son válidas o el precio está incompleto | [Modelos y precios](#models-and-pricing) |
+| Se agotó el tiempo de espera de la generación o el resultado es desconocido | [Tareas y recuperación](#tasks-and-recovery) |
+| El archivo adjunto no se puede leer o la subida falló | [Subidas](#uploads) |
+| Error 403 en el archivo original, vista previa gris o resultado que solo muestra un enlace | [Descargas](#download) |
+| El problema continúa | [Información para soporte](#support) |
+
+Comprueba que esta conexión del host está activada y autorizada y que las herramientas son visibles, y después llama de verdad a `check_balance`. El MCP remoto ofrece 16 herramientas; el stdio local ofrece 14. Que la CLI funcione no demuestra el acceso al MCP nativo, y la solución de problemas de MCP no requiere instalar la CLI.
+
+<span id="login" />
+
+### Inicio de sesión y autorización en el navegador
+
+<Steps>
+  <Step title="Inicia la autorización desde el host">
+    Usa la opción de inicio de sesión o de autorización de esta entrada de MCP o del conector. Busca el comando o el menú del host en su guía específica. Iniciar sesión en una CLI aparte no autoriza esta conexión.
+  </Step>
+  <Step title="Completa la autorización de la cuenta en el navegador">
+    Inicia sesión en la cuenta de EvoLink correcta, comprueba los ámbitos y autoriza. Deja en espera el flujo de autorización del host. No compartas las URLs de autorización completas ni los parámetros del callback. Si el flujo falla, reinícialo desde el host original.
+  </Step>
+  <Step title="Vuelve al host y verifica">
+    Vuelve a cargar las herramientas de la conexión, comprueba que aparecen `check_balance` y `search_models`, y consulta de verdad el saldo. Tras un 401, vuelve a autorizar. Con un 403, comprueba además los permisos de la cuenta, el estado de la clave y los permisos de herramientas del host.
+  </Step>
+</Steps>
+
+El stdio local no usa este flujo en el navegador. Comprueba la clave de la plataforma que recibe el proceso, el entorno de inicio y stderr. No mezcles el OAuth remoto con claves personales. Consulta [Otros clientes](/es/mcp/other-clients).
+
+<span id="skills-discovery" />
+
+### La habilidad está instalada, pero las herramientas no están disponibles
+
+1. Lee las instrucciones de herramientas de `evolink-mcp`. El MCP nativo no puede ejecutar los comandos de terminal de la habilidad de la CLI.
+2. Comprueba en el host la configuración real del servidor y las herramientas. Leer una habilidad no registra ningún servidor, y la instalación de un plugin no completa OAuth automáticamente.
+3. Vuelve a cargar la sesión o el plugin y comprueba los permisos de las herramientas. Unas instrucciones sin una llamada a herramienta registrada no demuestran el acceso.
+4. Si las herramientas aparecen en la lista pero las llamadas fallan, revisa el error de la herramienta y la conexión original. No uses una generación de pago como prueba de conexión.
+
+<span id="mcp-connection" />
+### Conexión y acceso a MCP: faltan herramientas, falla la conexión, 401/403
+
+1. Comprueba el tipo de conexión. La remota usa `https://mcp.evolink.ai/mcp`, Streamable HTTP y OAuth; el stdio local usa un comando de inicio y una clave personal. Una página de la documentación, `llms.txt` o un endpoint REST no son un servidor MCP.
+2. Activa EvoLink, completa la autorización en el navegador de este host y después vuelve a cargar la sesión o abre una nueva. Haz una copia de seguridad de la configuración existente y fusiona solo EvoLink. Comprueba las comillas y las comas en JSON, los espacios en YAML y el ámbito de la configuración, sin sobrescribir otros servicios.
+3. Llama a `check_balance` y `search_models`. Si las herramientas aparecen en la lista pero las llamadas fallan, revisa la autorización. Si el saldo funciona pero faltan las herramientas de generación, comprueba los interruptores de herramientas y las políticas del espacio de trabajo.
+
+| Síntoma | Acción |
+|---|---|
+| Nombre de servidor duplicado | Revisa la entrada existente y elige una sola fuente; evita duplicados entre la configuración manual y el plugin |
+| 401 / autorización caducada | Vuelve a autorizar desde el host afectado y conserva los identificadores de las tareas |
+| 403 / herramienta denegada | Distingue entre la política del host, los límites de la cuenta o de la clave y un rechazo de la red; anota la etapa que falló en lugar de suponer que cambiar el UA arregla todos los 403 |
+| El proceso local no se inicia | Comprueba Node 20+, la ruta de npx, el entorno del host y los errores de inicio; vuelve a cargar y verifica |
+| Clave local no válida o no autorizada | Revisa su estado y su alcance en la consola y actualiza la configuración de secretos del host, no el chat |
+| Un cambio de configuración no surte efecto | Vuelve a cargar el proceso al que pertenece la conexión; un Gateway remoto no se vuelve a cargar desde la terminal de tu portátil |
+
+Páginas de configuración: [ChatGPT](/es/mcp/chatgpt), [Claude](/es/mcp/claude), [Claude Code](/es/mcp/claude-code), [Codex](/es/mcp/codex), [Cursor](/es/mcp/cursor), [OpenClaw](/es/mcp/openclaw), [Hermes](/es/mcp/hermes-agent), [otros clientes](/es/mcp/other-clients).
+
+<span id="models-and-pricing" />
+### Modelos y precios: búsqueda vacía, parámetros no válidos y estimación incompleta
+
+1. Busca los modelos disponibles en ese momento y usa el ID canónico devuelto. Una familia, un nombre para mostrar o un alias pueden no ser un ID válido para enviar. Amplía los términos de búsqueda sin descartar las capacidades de referencia necesarias.
+2. Revisa `get_model` de MCP para este modelo. Comprueba los campos obligatorios, la ortografía, los valores enumerados, los límites numéricos y las referencias mutuamente excluyentes. No copies los campos `duration`, `size` o `quality` de otro modelo.
+3. Vuelve a estimar y revisa `input_valid`, `problems`, `estimate.status`, `basis` y `warnings`. Un cambio en la entrada o en la identidad, un precio más alto o una aprobación caducada requieren una nueva estimación y una nueva aprobación.
+
+Con `needs_input`, proporciona la entrada o el uso facturable que indican `missing_usage` y `usage_help`, mediante `media_seconds` o `pricing_parameters`; `no_price` no se puede usar y `partial` no es un total. Una duración o unos multiplicadores de referencia desconocidos no se pueden rellenar con un precio inicial. Mantén el presupuesto; no elimines topes, no cambies de clave ni reduzcas las especificaciones sin avisar para eludir un rechazo.
+
+Si ningún modelo de `search_models`, `get_model` o `recommend_models` tiene precio y `pricing_warning` dice `Public pricing rules are unavailable or invalid`, el servidor es el 1.8.1 o uno anterior: esas versiones descartan todos los precios cuando una regla por tramos no tiene `multiplier`. El MCP remoto ejecuta una versión más reciente, así que vuelve a llamar a la herramienta. El stdio local configurado con `npx -y @evolinkai/mcp@latest` toma la versión nueva cuando el cliente se reinicia. A partir de la 1.8.2, un modelo cuyas reglas no se pueden leer se omite y se indica en `pricing_warning`; los demás modelos conservan sus precios.
+
+Si `estimate_cost` o `get_pricing_rules` devuelven `rate_limited` (`pricing_calls_per_minute`) con un número de segundos, espera ese tiempo y vuelve a llamar. El servicio alojado permite que cada cuenta con sesión iniciada lea las reglas de precios 30 veces por minuto con cada una de estas dos herramientas; las respuestas que usan reglas leídas instantes antes no cuentan. Estima varias entradas de un mismo modelo en una sola llamada con `inputs`, en lugar de hacer una llamada por entrada. Cuando es la propia plataforma la que limita las lecturas de precios, la estimación usa reglas leídas en los últimos 10 minutos e indica cuándo se leyeron. El stdio local no tiene este límite.
+
+Las estimaciones de las versiones publicadas, basadas en los precios públicos predeterminados, no son cotizaciones definitivas específicas de la cuenta, y `max_cost_usd` no es un tope de la liquidación final. Consulta [costos](/es/mcp/billing) y la [referencia de comandos y herramientas](/es/mcp/tools).
+
+<span id="tasks-and-recovery" />
+
+### Tiempo de espera agotado, tareas en ejecución o resultados desconocidos
+
+<Steps>
+  <Step title="Conserva y consulta la tarea original">
+    Llama a `get_task` para un `task_id` existente; define `wait_seconds` en 0–45 para una espera acotada. Usa `list_tasks` para varios identificadores. Cuando se agota el tiempo de espera, solo termina esa espera, no la generación. Si una lectura devuelve `status_check: unverified` (`task_response_invalid`, `task_identity_mismatch`, `task_status_unknown` o `task_query_timeout`, o bien un `last_known_status` cuando falló una lectura posterior durante la espera), vuelve a consultar la misma tarea; no es un fallo. Un resultado de generación con `submission_state: accepted` ya tiene un `task_id`.
+  </Step>
+  <Step title="Recupera un envío de resultado desconocido con su identificador original">
+    Conserva el `client_request_id`, las entradas, la identidad y el error cuando no se devuelva ningún identificador de tarea. Recupera el envío con la misma herramienta y el mismo identificador; no cambies de cuenta ni de identificador para volver a generar. EvoLink conserva un identificador de solicitud durante 24 horas: dentro de ese plazo, el mismo identificador con las mismas entradas devuelve la tarea original sin un nuevo cargo, y un lote envía solo los elementos que su resultado indica que faltan por completar. Si para entonces la aprobación ha caducado, vuelve a estimar las mismas entradas y pasa el nuevo `pricing_quote` con el mismo identificador. Pasadas 24 horas, el identificador ya no impide que se cree una segunda tarea: comprueba primero `list_tasks` y después envía solo lo que no llegó a completarse, con una estimación nueva y un identificador nuevo. `list_tasks` solo acepta sus parámetros documentados, no filtros inventados.
+  </Step>
+  <Step title="Determina por separado el fallo y el resultado en la cuenta">
+    Anota los errores y las horas reales, y consulta la tarea original y el uso de la cuenta. Una tarea fallida no se cobra, y los créditos reservados al enviarla se devuelven automáticamente; un envío de resultado desconocido no es un fallo ni demuestra que no haya habido cargo. No existe ninguna herramienta pública utilizable para cancelar tareas en cola. Desconectar MCP o cerrar una página no cancela la tarea.
+  </Step>
+</Steps>
+
+En las tareas aún no enviadas, una entrada modificada, un precio más alto o una aprobación caducada requieren una nueva estimación y una nueva aprobación. Recupera primero las solicitudes enviadas o de resultado desconocido. Consulta [Herramientas de tareas](/es/mcp/tools#task-progress-and-results) para ver los parámetros y los ejemplos.
+
+<span id="uploads" />
+
+### Archivos adjuntos ilegibles, subidas fallidas o resultados desconocidos
+
+1. Confirma que el host puede leer el archivo proporcionado. El MCP remoto no puede leer directamente una ruta del escritorio, y los archivos adjuntos del chat no se convierten automáticamente en URLs para el modelo.
+2. Usa `upload_file.file_url` para las URLs accesibles. En remoto, base64 está limitado a 1 MiB. Para archivos más grandes, llama a `prepare_upload`, sube el archivo desde un entorno con acceso a archivos y después llama a `get_upload`. Las subidas de un solo uso admiten hasta 95 MiB; la autorización dura unos 15 minutos y el estado, aproximadamente una hora.
+3. El stdio local puede usar `upload_file.file_path` en el equipo donde se ejecuta el proceso MCP. Comprueba la ruta, los permisos, el formato, los límites del servicio de archivos y los límites del modelo; una ruta del escritorio no se puede leer automáticamente desde un servidor en la nube.
+4. Conserva el `upload_id` original y consúltalo. Desconocido no significa que no se haya subido nada, y la compatibilidad con los comprobantes depende del despliegue del servicio de archivos. Solicita una subida nueva tras un fallo confirmado o tras la caducidad. Las referencias suelen conservarse 72 horas; vuelve a subir las entradas caducadas.
+
+Consulta [Herramientas de subida](/es/mcp/tools) para los parámetros y el [flujo de trabajo con referencias](/es/mcp/overview#files) para ver todos los pasos. Usa una URL accesible cuando el host no tenga capacidades de archivos. No intentes diagnosticar los fallos de subida volviendo a generar.
+
+<span id="download" />
+
+### Descargas y vistas previas
+
+Consulta la tarea original, confirma que se ha completado y usa su URL original. Abre los originales en un navegador o guárdalos desde un entorno con acceso a archivos; consulta la [entrega en MCP](/es/mcp/overview#delivery).
+
+Las comprobaciones de HTTP y de formato, el ejemplo de User-Agent de producto en Python, los enlaces caducados y las vistas previas grises se mantienen en [Solución de problemas de descarga](/es/cli-mcp/tasks-and-files#download). Recupera las tareas de resultado desconocido en lugar de volver a generar o de editar las vistas previas.
+
+<span id="support" />
+
+### Información para soporte
+
+Sigue la [lista de comprobación para soporte](/es/cli-mcp/tasks-and-files#support) e incluye las versiones, la etapa que falló, los identificadores y los errores con los datos sensibles ocultos. Conserva los diagnósticos de esta vía; no compartas claves, tokens, URLs privadas ni volcados del entorno.
+
+<span id="cli-install" />
+
+### ¿Buscas la solución de problemas de instalación de la CLI?
+
+Los comandos de la CLI, el almacenamiento seguro, los callbacks por SSH y la detección de habilidades están ahora en la [solución de problemas de la CLI](/es/cli/billing#cli-install) y en la [guía de configuración de la CLI](/es/cli/setup). Esta sección se mantiene por compatibilidad con los enlaces antiguos. Para configurar el MCP nativo, usa esta página y la guía de tu cliente.

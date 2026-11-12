@@ -1,0 +1,324 @@
+---
+title: "MCP-Werkzeug- und API-Referenz"
+description: "Parameter, Beispiele, Ergebnisse, Protokoll und Backend-Zuordnung für 16 Werkzeuge"
+---
+
+<span id="mcp-tools" />
+## MCP-Werkzeugreferenz
+
+Diese Seite beschreibt die 16 Werkzeuge der Version **1.12.1** des Remote-MCP mit OAuth. Maßgeblich ist `tools/list` des verbundenen Servers. Lokales stdio stellt `prepare_upload` und `get_upload` nicht bereit; sein `upload_file` akzeptiert zusätzlich Pfade in ausdrücklich erlaubten Verzeichnissen.
+
+Die Beispiele mit `name` und `arguments` beschreiben MCP-Werkzeugaufrufe, keine REST-Anfragekörper. Ein Beispiel berechtigt nicht zu einer kostenpflichtigen Generierung.
+
+| Werkzeug | Zweck | Kosten für die Generierung |
+|---|---|---|
+| search_models | Verfügbare Modelle und Aliase suchen | Keine |
+| recommend_models | Modelle vergleichen, die zu Anfrage und Referenztypen passen | Keine |
+| search_docs | Den versionierten Index der offiziellen Modellreferenzen durchsuchen | Keine |
+| get_model | Parameter, Schema, Referenzen und Preise prüfen | Keine |
+| estimate_cost | Eingaben prüfen und Kosten schätzen | Keine |
+| get_pricing_rules | Öffentliche Standard-Preisregeln lesen (Referenzpreise, kein Preisangebot) | Keine |
+| generate_image | Bilder generieren oder bearbeiten | Kostenpflichtig |
+| generate_video | Videos generieren, bearbeiten oder verlängern | Kostenpflichtig |
+| generate_audio | Musik, Songs oder Sprache generieren | Kostenpflichtig |
+| get_task | Einen Auftrag, Ergebnisse und gemeldete Kosten prüfen | Keine |
+| list_tasks | Kennungen oder den seitenweisen Kontoverlauf abfragen | Keine |
+| get_task_usage | Gemeldete Kosten innerhalb eines begrenzten Suchlaufs zusammenfassen | Keine |
+| check_balance | Kontoguthaben und gemeinsame Limits prüfen | Keine |
+| upload_file | Eine Referenz per URL oder base64 hochladen | Keine Kosten für die Generierung; es gelten Dateikontingente |
+| prepare_upload | Einen einmaligen Upload für eine lokale Datei vorbereiten | Keine Kosten für die Generierung; es gelten Dateikontingente |
+| get_upload | Status und URL eines vorhandenen Uploads erneut abrufen | Keine |
+
+### search_models
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| type | string | Nein | image/video/audio/all; Standard all |
+| query | string | Nein | Suchbegriffe, bis zu 100 Zeichen |
+| limit | integer | Nein | 1–50; Standard 20 |
+| page | integer | Nein | 1–100000; Standard 1 |
+
+```json
+{"name":"search_models","arguments":{"type":"image","query":"seedream","limit":5,"page":1}}
+```
+
+Liefert models, total_matches, page, page_size und next_page. Die Einträge enthalten kanonische IDs, Aliase, Referenzen, Abdeckung durch die Dokumentation und Einstiegspreise. Die Sortierung berücksichtigt zuerst die Relevanz der Stichwörter, dann die Verfügbarkeit von Preisen, die redaktionelle Präferenz und die ID. Sie ist keine Rangliste nach Qualität oder Beliebtheit. Einstiegspreise sind keine Gesamtsummen für einen Auftrag, und die Verfügbarkeit kann sich zwischen den Seiten ändern.
+
+### recommend_models
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| type | string | Ja | image/video/audio |
+| query | string | Nein | Bis zu 100 Zeichen; alle Suchbegriffe müssen übereinstimmen |
+| references | string[] | Nein | image/video/audio; höchstens 3 Einträge; Standard leer |
+| limit | integer | Nein | 1–10; Standard 3 |
+
+```json
+{"name":"recommend_models","arguments":{"type":"video","query":"seedance","references":["image"],"limit":3}}
+```
+
+Liefert dokumentierte Kandidaten mit reasons, reference_inputs, selection_basis und Preisen pro Einheit. Erforderliche Referenztypen müssen dokumentierte Eingabefelder haben. Passt kein Modell, passen Sie die Anfrage transparent an, statt eine notwendige Referenz wegzulassen. Redaktionelle Präferenzen sind keine Live-Statistiken zu Beliebtheit oder Veröffentlichungsdatum.
+
+### search_docs
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| query | string | Ja | 1–100 Zeichen nach dem Trimmen |
+| type | string | Nein | image/video/audio/all; Standard all |
+| limit | integer | Nein | 1–20; Standard 5 |
+
+```json
+{"name":"search_docs","arguments":{"query":"first frame","type":"video","limit":5}}
+```
+
+Liefert documents, total_matches, scope und die Version der Quelle. Durchsucht werden die mitgelieferten offiziellen Modelltitel, IDs und Parameterbeschreibungen der verfügbaren Modelle. Die Live-Dokumentationsseite wird nicht gecrawlt, und Konto- und Abrechnungsdokumentation wird nicht durchsucht.
+
+### get_model
+
+Erforderlich ist `model`: ein String mit 1–128 Zeichen, der eine zurückgegebene kanonische ID oder einen unterstützten Alias verwendet.
+
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
+
+Liefert das kanonische Modell, Anforderungen, Beispiele, öffentliche Preise, reference_inputs, parameters_source und, sofern verfügbar, input_schema mit dessen Quelle. Parameterreferenzen sind versioniert; die Verfügbarkeit für das Konto wird live abgefragt. Folgen Sie Warnungen zu fehlenden Informationen, statt Standardwerte zu erfinden.
+
+### estimate_cost
+
+| Parameter | Typ | Erforderlich | Beschreibung |
+|---|---|---|---|
+| model | string | Ja | 1–128 Zeichen |
+| input | object | Nein | Geplante Modellparameter; Standard ist ein leeres Objekt |
+| inputs | object[] | Nein | 1–50 Eingaben eines Modells anstelle von input, in der Reihenfolge, in der sie abgesendet werden |
+| pricing_parameters | object | Nein | Gemessene oder ausdrücklich erwartete abrechnungsrelevante Nutzung, die die Preisregeln benötigen, etwa `{"search_count":2}`; bis zu 100 Einträge. Wird nicht für Token-Angaben von GPT Image, Gemini Omni Flash oder Qwen TTS verwendet. Erfinden Sie keine Werte |
+| pricing_source | string | Nein | Standard ist pricing_rules, die veröffentlichten Preisregeln; die älteren Werte account und public_reference werden als Aliase akzeptiert |
+| media_seconds | number | Nein | Größer als 0 und höchstens 3600; nur ein Hinweis für die Kostenschätzung |
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+Liefert input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced und, sofern verfügbar, Guthaben und Limits. Der Status der Kostenschätzung kann estimated, partial, token_billed, needs_input oder no_price sein; token_billed enthält einen Referenzpreis, abgerechnet wird nach tatsächlichen Tokens. Hängt der Preis von einer Nutzung ab, die aus der Eingabe nicht hervorgeht, hat die Kostenschätzung keinen Betrag und kein `pricing_quote`: `total_known` ist false, `missing_usage` nennt jeden fehlenden Wert, und `usage_help` beschreibt, wie er anzugeben ist. Siehe [Abrechnung](/de/mcp/billing). Eine erfolgreiche Abfrage beweist weder eine gültige Eingabe noch ein vollständiges Preisangebot.
+
+Eine Kostenschätzung, der zugestimmt werden kann, liefert zusätzlich `pricing_quote`, den Zustimmungsnachweis für genau diese Eingabe. Übergeben Sie diesen Nachweis, nachdem der Benutzer zugestimmt hat, zusammen mit derselben Eingabe an das Generierungswerkzeug. Er gilt 24 Stunden ab der Kostenschätzung (`expires_at`), zum genehmigten Preis oder darunter: Das Generierungswerkzeug schätzt erneut und sendet ab, wenn der Preis unverändert oder niedriger ist, auch unter später geänderten Preisregeln. Ein höherer Preis wird mit `price_changed` abgelehnt, eine geänderte Eingabe mit `quote_input_changed` und ein abgelaufenes `pricing_quote` mit `quote_expired`; jeder dieser Fälle erfordert eine neue Kostenschätzung und Zustimmung. Mit `inputs` listet das Ergebnis die Kostenschätzung jeder Eingabe und die Gesamtsumme auf, und ein `pricing_quote` gilt als Zustimmung für genau diese Eingaben in dieser Reihenfolge. Es gilt nie als Zustimmung für eine einzelne Eingabe, und das `pricing_quote` einer einzelnen Eingabe gilt nie als Zustimmung für einen Batch.
+
+Dieses Werkzeug hat kein Argument `max_cost_usd` und liefert nicht die lokale quote_id der CLI. Budgetprüfungen von MCP gehören zu den Generierungswerkzeugen. media_seconds legt weder die Ausgabedauer fest noch füllt es unbekannte Multiplikatoren für Referenzvideos auf.
+
+### get_pricing_rules
+
+| Parameter | Typ | Erforderlich | Beschreibung |
+|---|---|---|---|
+| model | string | Nein | Eine Modell-ID, bis zu 100 Zeichen |
+| product_id | string | Nein | Nach Produktfamilie filtern |
+| operation | string | Nein | Nach Vorgang filtern, etwa `text_to_video` |
+| modality | string | Nein | `text`, `image`, `video` oder `audio` |
+| lifecycle | string | Nein | `active`, `preview` oder `deprecated` |
+| view | string | Nein | `summary` oder `full`; Standard `full` |
+
+```json
+{"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
+```
+
+Liefert die öffentlichen Standard-Preisregeln: den Preis pro Einheit für jede Abrechnungskomponente (Dezimalzeichenfolgen), die Mindestgebühr, Staffeln und vollständige Ausdrücke sowie price_scope und price_selection. Das sind Referenzpreise ohne Kontorabatte, kein Preisangebot für einen Auftrag, keine Rechnung und keine endgültige Ausgabenobergrenze; rechnen Sie Preise pro Einheit nicht zu einer Rechnung hoch. Verwenden Sie `estimate_cost` für die erwarteten Kosten einer bestimmten Generierung; es wertet dieselben Regeln für die tatsächliche Eingabe aus. Ein leeres Ergebnis bedeutet, dass keine passenden öffentlichen Regeln vorliegen, nicht, dass ein Modell kostenlos ist. In einer Liste wird ein Modell, dessen Regeln nicht gelesen werden können oder unvollständig sind, ausgelassen, in `rejected_models` aufgeführt und in `warnings` genannt; die anderen Modelle werden wie gewohnt zurückgegeben, und ein ausgelassenes Modell ist nicht kostenlos. Die Abfrage eines einzelnen Modells schlägt weiterhin fehl, wenn dessen Regeln nicht gelesen werden können.
+
+### generate_image, generate_video, generate_audio
+
+Wählen Sie das Werkzeug, das zum Ausgabetyp passt. Sie teilen sich diese Argumente der obersten Ebene:
+
+| Parameter | Typ | Erforderlich | Beschreibung |
+|---|---|---|---|
+| model | string | Ja | 1–128 Zeichen; muss zum Medientyp passen |
+| input | object | Nein | Parameter aus get_model; model und callback_url nicht aufnehmen |
+| inputs | object[] | Nein | 1–50 Eingaben eines Modells anstelle von input, in einem Aufruf abgesendet; siehe [Batches](#batches) |
+| prompt | string | Nein | Kurzform für input.prompt; bis zu 20000 Zeichen, vorbehaltlich der Grenzen des Modells |
+| client_request_id | string | Nein | 16–96 Zeichen: Buchstaben, Ziffern, . _ -; bei der Wiederaufnahme derselben Anfrage wiederverwenden; mit inputs höchstens 93, da jedes Element .NN anhängt |
+| pricing_quote | object | Nein | Zustimmungsnachweis aus estimate_cost für genau diese Eingabe oder diesen Batch, gültig bis zu seinem expires_at; wird vor dem Absenden mit den aktuellen Regeln abgeglichen |
+| pricing_parameters | object | Nein | Dieselbe abrechnungsrelevante Nutzung, die an estimate_cost übergeben wurde |
+| max_cost_usd | number | Nein | Größer als 0 und höchstens 10000; Prüfung gegen die Kostenschätzung beim Absenden |
+| media_seconds | number | Nein | Größer als 0 und höchstens 3600; nur ein Hinweis für die Kostenschätzung |
+| wait_seconds | integer | Nein | 0–40; wie lange nach dem Absenden auf das Ergebnis gewartet wird. Standard für Bilder ist 40, für Video und Audio 0; 0 gibt die task_id sofort zurück. Ein Batch akzeptiert nur 0 |
+| skip_estimate | boolean | Nein | Nur wenn der Benutzer ausdrücklich gesagt hat, dass nicht geschätzt oder bestätigt werden soll; sendet ohne genehmigte Kostenschätzung ab. Siehe [Generieren ohne Kostenschätzung](#skip-estimate) |
+
+Prüfen Sie Modell und Eingaben, schätzen Sie die Kosten der vollständigen Anfrage, legen Sie Einschränkungen offen und holen Sie vor dem Aufruf die ausdrückliche Kostenzustimmung ein, außer der Benutzer hat auf Kostenschätzungen verzichtet (siehe unten). Dies ist eine beispielhafte Aufrufform:
+
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
+```
+
+Die Bildgenerierung wartet bis zu etwa 40 Sekunden und liefert Ergebnisse, wenn sie fertig sind, andernfalls eine task_id. Video und Audio liefern nach dem Absenden eine task_id; fahren Sie mit get_task fort. `wait_seconds` ändert diese Wartezeit für jedes der drei Werkzeuge. Beim Absenden kann eine Vorabreservierung gemeldet werden; sie ist von den Kosten des abgeschlossenen Auftrags zu unterscheiden.
+
+Fragen Sie einen laufenden Auftrag ab, statt die Generierung erneut aufzurufen, um den Fortschritt zu prüfen. Geht die Antwort verloren, behalten Sie die ursprüngliche Kennung, das Konto, die Eingaben und die Anfragekennung bei. Eine andere Anfragekennung erstellt eine neue kostenpflichtige Anfrage. Die Schutzmechanismen des Clients für die Wiederaufnahme beweisen keine identischen Idempotenzgarantien des Backends über alle Produktionsknoten hinweg.
+
+<span id="skip-estimate" />
+
+**Generieren ohne Kostenschätzung.** Sagt der Benutzer ausdrücklich, dass nicht geschätzt oder bestätigt werden soll (zum Beispiel „direkt generieren“ oder „ab jetzt einfach generieren“), überspringt der Assistent `estimate_cost` und die Bestätigung und übergibt `skip_estimate: true`, in dem Umfang, den der Benutzer genannt hat: dieser Auftrag, dieser Batch oder der Rest der Unterhaltung. Er leitet dies nie aus Schweigen, aus dem Guthaben oder aus seinem eigenen Vorschlag ab. Verzichtet der Benutzer für den Rest der Unterhaltung darauf, sagt der Assistent einmal, dass spätere Generierungen ohne Rückfrage abgesendet werden; eine neue Unterhaltung oder die Bitte, Kostenschätzungen wieder einzuschalten, bringt sie zurück. Die Generierung wird auch dann abgesendet, wenn ihr Preis nicht berechnet werden kann oder ein `pricing_quote` als abgelaufen, teurer oder geändert abgelehnt wird, und das Ergebnis weist darauf hin (`estimate_skipped`, `estimate_skip_reason`); der Auftrag wird nach tatsächlicher Nutzung abgerechnet. Ungültige Eingaben werden weiterhin abgelehnt, ein ausdrückliches `max_cost_usd` gilt weiterhin (eine Anfrage, die darüber liegt oder deren Preis sich nicht dagegen prüfen lässt, wird nicht abgesendet), und das Einschalten der Web- oder Bildsuche des Modells braucht weiterhin die Zustimmung des Benutzers. Schlägt eine Kostenschätzung fehl oder hat sie keine Gesamtsumme und hat der Benutzer nicht darauf verzichtet, fragt der Assistent einmal, ob trotzdem nach tatsächlicher Nutzung generiert werden soll.
+
+<span id="batches" />
+
+**Batches.** Übergeben Sie für mehrere Aufträge mit einem Modell `inputs` (1–50 Elemente, jedes wie `input`) an `estimate_cost` und dann zusammen mit dessen `pricing_quote` an das Generierungswerkzeug: eine Kostenschätzung, eine Zustimmung zur Gesamtsumme und ein Aufruf, der alle Elemente absendet (bis zu 10 gleichzeitig) und für jedes Element die `task_id` oder den Fehler liefert, ohne zu warten. Ist ein Element ungültig, wird nichts abgesendet. `max_cost_usd` gilt für die Gesamtsumme des Batches; `media_seconds` und `pricing_parameters` gelten für jedes Element. Holen Sie die Ergebnisse mit `list_tasks` ab (`task_ids`, bis zu 50 pro Aufruf). Senden Sie Aufträge mit unterschiedlichen Modellen einzeln pro Aufruf mit `wait_seconds: 0` ab. Verlassen Sie sich für die Bildanzahl nicht auf `n`: Manche Modelle, etwa GPT Image, liefern oft weniger Bilder als `n`; verwenden Sie daher ein Element pro Bild.
+
+Kein Element startet später als 25 Sekunden nach Beginn des Aufrufs, und eine begonnene Übermittlung wird nie abgebrochen; nicht gestartete Elemente werden als nicht abgesendet aufgeführt. Um einen Batch abzuschließen, rufen Sie innerhalb von 24 Stunden nach dem ersten Absenden erneut mit derselben `client_request_id` und genau denselben `inputs` auf: Die Elemente, die das Ergebnis als noch abzuschließen aufführt, werden abgesendet, und angenommene Elemente liefern ihre ursprünglichen Aufträge ohne erneute Abbuchung zurück. Ist das `pricing_quote` bis dahin abgelaufen, schätzen Sie dieselben Eingaben erneut und übergeben Sie das neue. Bei einem Element mit unbekanntem Ausgang versuchen Sie es später auf dieselbe Weise erneut oder prüfen Sie `list_tasks`. Senden Sie innerhalb dieser 24 Stunden angenommene Elemente, nicht abgesendete Elemente oder Elemente mit unbekanntem Ausgang nie unter einer neuen `client_request_id` erneut ab: Dadurch entstehen neue Aufträge, die zusätzlich berechnet werden. Nach Ablauf dieser Frist verhindert dieselbe `client_request_id` keine zweite Abbuchung mehr: Prüfen Sie zuerst `list_tasks` und senden Sie dann nur die Elemente, die nicht durchgegangen sind, als neuen Batch mit neuer Kostenschätzung und neuer `client_request_id` ab. Ein Element, dessen Eingabe von dem abweicht, was diese `client_request_id` zuvor abgesendet hat, wird abgelehnt (`idempotency_conflict`); es ist ein neuer Auftrag, der eine eigene Kostenschätzung, Zustimmung und `client_request_id` braucht.
+
+### get_task
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| task_id | string | Ja | Ursprüngliche unterstützte Auftragskennung; 4–128 Zeichen |
+| wait_seconds | integer | Nein | 0–45; Standard 30; begrenzt den gesamten Aufruf einschließlich Wiederholungen. 0 liest einmal, ohne auf den Auftrag zu warten; dieser Lesevorgang kann dennoch bis zu 15 s dauern |
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+Liefert Status, Fortschritt, Ergebnisse, gemeldete Kosten oder Fehler. Fragen Sie dieselbe Kennung weiter ab, solange der Auftrag läuft. Ein fehlgeschlagener Auftrag liefert seinen Fehlercode (`error.code`), die Erläuterung, die auch die API zurückgibt (`error.message`), und eine `billing_note`: Der Auftrag wird nicht berechnet, und die beim Absenden reservierten Credits werden automatisch wieder gutgeschrieben. Originalergebnisse werden in der Regel 24 Stunden aufbewahrt. Die Darstellung von Vorschauen hängt vom Host-Client ab.
+
+### list_tasks
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| task_ids | string[] | Nein | 1–50 Kennungen; Batch-Modus |
+| status | string | Nein | processing/completed/failed/cancelled |
+| type | string | Nein | image/video/audio |
+| model | string | Nein | Genaue Modell-ID; 1–128 Zeichen |
+| page | integer | Nein | 1–100000; Standard 1 |
+| since / until | string | Nein | ISO 8601, Unix-Sekunden oder 30m/2h/1d; bis zu 40 Zeichen |
+| limit | integer | Nein | 1–50; Standard 20 |
+
+```json
+{"name":"list_tasks","arguments":{"type":"video","since":"2h","page":1,"limit":20}}
+```
+
+```json
+{"name":"list_tasks","arguments":{"task_ids":["TASK_ID_ONE","TASK_ID_TWO"]}}
+```
+
+task_ids lässt sich nicht mit status/type/model/page/since/until kombinieren. Der Batch-Modus liefert tasks und missing; der Verlauf liefert total/page/page_size/next_page/last_page. Können für abgeschlossene Zeilen Ergebnislinks oder Fehlercodes nicht gelesen werden, bleibt die Basisseite erhalten: details_status, ein details_reason pro Zeile (read_failed, invalid oder not_returned) und details_retry_task_ids geben an, was fehlt und was sich kostenlos erneut versuchen lässt; prüfen Sie Zeilen mit not_returned über get_task. processing schließt Aufträge in der Warteschlange ein. Zeitfilter gelten für die ausgewählte Seite; total wird vor der Zeitfilterung gezählt. Der Verlauf gilt kontoweit und ist nicht auf diese Unterhaltung beschränkt. Eine leere Seite beweist nicht, dass nie etwas abgesendet wurde.
+
+### get_task_usage
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| since | string | Nein | Standard 30d; untere Grenze der Erstellungszeit |
+| until | string | Nein | Standard ist die aktuelle Zeit; Grenze einschließlich |
+| model | string | Nein | Genaue ID; 1–128 Zeichen |
+| type | string | Nein | image/video/audio |
+| max_pages | integer | Nein | 1–20; Standard 5; 50 Aufträge pro Seite |
+
+```json
+{"name":"get_task_usage","arguments":{"since":"7d","type":"video","max_pages":5}}
+```
+
+Liefert totals, by_model, by_status, coverage und as_of. Prüfen Sie missing_cost_tasks, truncated, concurrent_change_detected und complete_for_retained_tasks. Das Werkzeug fasst die gemeldeten Kosten der aufbewahrten abgeschlossenen Aufträge des Kontos zusammen. Es ist keine vollständige Rechnung, keine Übersicht über Zahlungen oder Erstattungen, kein Nutzungsbericht nur für MCP und kein Limit für die Abrechnung.
+
+### check_balance
+
+Keine Argumente:
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+Liefert account_balance_credits/usd, spent_scope, spent_credits und die verfügbaren Gesamt- und Tageslimits mit Links zur Konsole. Die Ausgaben des OAuth-Keys umfassen die CLI des Kontos und alle OAuth-MCP-Sitzungen, nicht nur diese Unterhaltung.
+
+### upload_file
+
+| Parameter | Typ | Erforderlich | Beschreibung |
+|---|---|---|---|
+| file_url | string | Eine Quelle erforderlich | Öffentliche HTTPS-Medien; keine URLs aus privaten Netzwerken oder mit Anmeldedaten |
+| base64_data | string | Eine Quelle erforderlich | Im Remote-Modus höchstens 1 MiB dekodiert |
+| mime_type | string | Bedingt | Erforderlich für rohes base64; Data-URLs enthalten den MIME-Typ |
+| file_name | string | Nein | Reiner Dateiname ohne Verzeichnisse |
+| upload_path | string | Nein | Relatives Verzeichnis ohne .. |
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+Ersetzen Sie die URL durch tatsächlich erreichbare Medien. Liefert file_url, Dateieigenschaften und Angaben zur Gültigkeitsdauer. Referenzen werden in der Regel 72 Stunden aufbewahrt. Remote-MCP kann file_path nicht annehmen. Lokales stdio kann stattdessen einen absoluten Pfad in einem erlaubten Verzeichnis verwenden; wählen Sie genau eine Quelle. Ein erfolgreicher Upload beweist nicht, dass das gewählte Modell die Medien unterstützt.
+
+### prepare_upload
+
+Erforderlich ist `file_name`: ein String mit einer Dateiendung, aus der der Medientyp bestimmt wird. Optional ist `upload_path`: ein relatives Verzeichnis.
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+Liefert upload_id, upload_url, method:PUT, command, max_bytes und expires_at. Die URL gilt etwa 15 Minuten, ist einmalig verwendbar und akzeptiert höchstens **95 MiB**. Führen Sie den zurückgegebenen Befehl dort aus, wo die Datei tatsächlich gelesen werden kann, und verwenden Sie dann die bestätigte file_url. Ein Anhang im Browser ist auf diesem Weg möglicherweise nicht zugänglich. Die Adresse enthält eine temporäre Autorisierung; veröffentlichen Sie sie nicht und hängen Sie keinen persönlichen Key an.
+
+### get_upload
+
+Erforderlich ist `upload_id` aus dem ursprünglichen Ergebnis von prepare:
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
+
+Zu den Status gehören waiting/uploading/done/failed/expired/outcome_unknown. Verwenden Sie file_url erst nach einem bestätigten Ergebnis done. Der serverlokale Status bleibt etwa eine Stunde erhalten; kompatible Dateidienste können Belege etwa 72 Stunden lang bereitstellen. Nicht unterstützte oder nicht verifizierbare Belege können outcome_unknown ergeben. Die Abfrage lädt die Datei nicht erneut hoch; behalten Sie die ursprüngliche Kennung und prüfen Sie zuerst den Status.
+
+### Ergebnisse und Fehler
+
+Werkzeuge liefern lesbaren Text und structuredContent; Fehlschläge können isError/error/next_step enthalten. Abgeschlossene Medien können resource_link und ein optionales Vorschaubild enthalten. Hosts unterstützen Inhaltsblöcke unterschiedlich. Die Original-URL bleibt die Grundlage der Übergabe; Vorschauen sind nicht in jedem Host garantiert.
+
+Prüfen Sie Werkzeugfehler und fachliche Felder wie input_valid, den Status der Kostenschätzung und task.status. HTTP 200 allein belegt keinen Erfolg der Generierung. Eine Zeitüberschreitung beim Absenden kann eintreten, nachdem der Auftrag bereits erstellt wurde, und ist kein Beweis dafür, dass nichts abgebucht wurde. Eine fehlgeschlagene Abfrage ist kein Beweis dafür, dass der ursprüngliche Auftrag fehlgeschlagen ist.
+
+<span id="task-progress-and-results" />
+
+## Auftragsfortschritt und Ergebnisse
+
+Nutzen Sie Guthaben- und Modellabfragen für die kostenlose Verbindungsprüfung. Verwenden Sie get_task/list_tasks für vorhandene Aufträge und übergeben Sie dann Original-URLs und die gemeldeten tatsächlichen Kosten. Die [Anleitung zum Ablauf](/de/mcp/overview#workflows) behandelt Referenzen, Wiederaufnahme, Speichern und graue Vorschauen. Ein Anzeigeproblem darf keine weitere kostenpflichtige Generierung auslösen.
+
+<span id="api" />
+## MCP-Protokoll und Backend-APIs
+
+| Modus | Ausführungspfad | Authentifizierung und Installation |
+|---|---|---|
+| Remote-MCP | Client → gehostetes EvoLink MCP → Plattform-API | Streamable HTTP und Browser-OAuth; keine lokale Serverinstallation |
+| Lokales stdio | Client → lokaler MCP-Prozess → Plattform-API | Node.js 20+, Start über npx und ein persönlicher API Key |
+
+Der Remote-Endpunkt ist `https://mcp.evolink.ai/mcp`. Passport stellt OAuth bereit; der Server ruft https://api.evolink.ai und den Dateidienst auf. MCP-URLs, die /v1-Routen der Plattform, die Dokumentation und llms.txt sind getrennte Einstiegspunkte.
+
+### Initialisieren und Werkzeuge aufrufen
+
+Überlassen Sie initialize, Protokollversionen, Accept, Authentifizierung, Sitzungen und Inhaltsblöcke dem Host oder dem MCP-SDK. Lesen Sie nach der Initialisierung tools/list und rufen Sie dann tools/call auf:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_balance","arguments":{}}}
+```
+
+Beispiele mit name / arguments beschreiben Werkzeugeingaben, keine REST-Anfragekörper. Werkzeuge können Text, strukturierte Daten, Ressourcenlinks und Vorschaubilder liefern; die Anzeige hängt vom Host ab. Prüfen Sie Werkzeugfehler und den Auftragsstatus, nicht nur den HTTP-Erfolg.
+
+### Werkzeuge und Backend-Vorgänge
+
+| MCP-Werkzeug | Backend-Vorgang oder Umsetzung |
+|---|---|
+| search_models | `GET /v1/models` sowie Aliase, Verfügbarkeit und Referenzen |
+| get_model, recommend_models, search_docs | Versionierte Referenzen und Katalog des Kontos, keine gleichnamigen REST-Routen |
+| estimate_cost | `GET /v1/catalog/models/{model_id}/pricing-rules?view=full` und serverseitige Schätzregeln (seit 1.7.0) |
+| get_pricing_rules | `GET /v1/catalog/pricing-rules` und `GET /v1/catalog/models/{model_id}/pricing-rules` (view=full) |
+| generate_image | `POST /v1/images/generations` |
+| generate_video | `POST /v1/videos/generations` |
+| generate_audio | `POST /v1/audios/generations` |
+| get_task | `GET /v1/tasks/{task_id}` |
+| list_tasks mit task_ids | `POST /v1/tasks/batch` |
+| list_tasks, get_task_usage | `GET /v1/tasks`, Paginierung und begrenzte Aggregation |
+| check_balance | `GET /v1/credits` |
+| Upload-Autorisierung | `POST /v1/files/upload-token` |
+| upload_file | Dateidienst /url oder /base64; lokales stdio kann erlaubte Verzeichnisse lesen |
+| prepare_upload, get_upload | Gehostete einmalige PUT-URL und Status; die Wiederaufnahme über Belege hängt von der Unterstützung durch den Dateidienst ab |
+
+Modellparameter gehören in arguments.input und werden vom Server in REST-Anfragen umgewandelt. media_seconds ist ein Hinweis für die Abrechnung; max_cost_usd prüft nur Kostenschätzungen vor dem Absenden. Die veröffentlichte Version 1.12.1 schätzt anhand der öffentlichen Preisregeln (Referenzpreise, ohne Kontorabatte) und hat weiterhin keine Obergrenze für die endgültige Abrechnung.
+
+### Uploads, Wiederaufnahme und Zugriff
+
+Verwenden Sie eine PUT-URL von prepare_upload nur in einer Umgebung, die die Datei lesen kann, und fragen Sie dann get_upload ab. Ein Remote-Server kann keine Desktop-Pfade lesen, und Chat-Anhänge stellen die Originalbytes möglicherweise nicht bereit. Siehe [Upload von Referenzen](/de/mcp/overview#files).
+
+Speichern Sie bei kostenpflichtigen Übermittlungen client_request_id, die normalisierten Eingaben, die Kontoidentität und die zurückgegebene task_id. Fragen Sie bei unbekanntem Ausgang den ursprünglichen Auftrag und den Verlauf ab; ändern Sie keine Kennungen, um erneut abzusenden. Kennungen des Clients allein können keinen einheitlichen Schutz des Backends gegen jede doppelte Abbuchung garantieren.
+
+OAuth stellt begrenzte Medienvorgänge bereit, keine beliebige Key-Verwaltung und keine administrativen APIs. Derzeit gibt es kein nutzbares Werkzeug zum Abbrechen; das Beenden des Wartens bricht den Auftrag nicht ab. CLI-Befehle und ihre Ausführung sind gesondert in der [CLI-Referenz](/de/cli/reference#api) dokumentiert.
+
+<span id="cli-reference" />
+
+## Dokumentation der CLI-Befehle
+
+Die vollständige CLI-Referenz steht jetzt im [separaten CLI-Bereich](/de/cli/reference#cli-reference). Diese Seite dokumentiert MCP-Werkzeuge und das Protokoll.

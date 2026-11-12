@@ -1,0 +1,152 @@
+---
+title: "CLI: Medien, Referenzen und Aufträge"
+description: "Modellauswahl, Zustimmung, Mediengenerierung, Uploads, Auftragswiederaufnahme und Download der Originale"
+---
+
+<span id="workflows" />
+## Einen Auftrag vollständig durchführen
+
+Folgen Sie nach der Anmeldung und der Skill-Erkennung dieser Reihenfolge: Anforderungen → Modellparameter → Referenzen → kostenlose Kostenschätzung → Zustimmung → einmaliges Absenden → Abfrage des ursprünglichen Auftrags → Download des Originals. Die Befehle unten veranschaulichen die Schritte und sind keine Erlaubnis zum Generieren.
+
+<span id="models" />
+## Schritt 1: Modell wählen und Eingaben prüfen
+
+```bash
+evolink models search --type image --query seedream --limit 5 --json
+evolink models recommend --type image --query "coffee advertisement" --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink docs search --query "reference images" --json
+```
+
+Ersetzen Sie MODEL_ID durch eine kanonische ID aus den Suchergebnissen. Prüfen Sie reference_inputs, Pflichtfelder, Enum-Werte, Wertebereiche und sich ausschließende Optionen. Dass ein Modell an erster Stelle steht, günstig, neu oder beta ist, belegt nicht, dass es geeignet ist.
+
+Auswahlreihenfolge, neuere Familien und Kostenregeln stehen unter [Modelle, Kosten und Kontingente](/de/cli-mcp/models-and-billing#models). Prüfen Sie die Verfügbarkeit gewünschter Modelle; Beispiele sind keine Standardempfehlungen.
+
+<span id="files" />
+## Schritt 2: Referenzen vorbereiten und hochladen
+
+Die CLI liest Dateien auf dem Rechner, auf dem sie ausgeführt wird. Prüfen Sie vor dem Hochladen Pfad, Berechtigungen, Format, Größe und die Anforderungen des Modells:
+
+```bash
+evolink upload ./reference.png --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+```
+
+Reguläre lokale Dateien müssen zwischen 1 Byte und 95 MiB groß sein. Für Bild, Video und Audio gelten zusätzlich modellspezifische Grenzen für Format, Anzahl, Abmessungen und Dauer. Verwenden Sie die zurückgegebene file_url in unterstützten Feldern wie image_url oder image_urls, keinen Desktop-Pfad.
+
+Referenzen bleiben in der Regel 72 Stunden erhalten. Bewahren Sie die upload_id auf und prüfen Sie nach einer verlorenen Antwort den ursprünglichen Beleg. Melden Sie den Ausgang als unbekannt, wenn der Dateidienst keine kompatible Wiederaufnahme bietet; wiederholen Sie Uploads nicht allein wegen einer Zeitüberschreitung. Prüfen Sie, ob eine öffentliche HTTPS-Referenz direkt akzeptiert wird.
+
+<span id="images" />
+## Schritt 3: Eingabe vorbereiten und kostenlos schätzen
+
+Dieses Bildbeispiel prüft zuerst, ob z-image-turbo verfügbar ist. Es zeigt den Ablauf und ist keine Standardempfehlung:
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+Erstellen Sie input.json im Arbeitsverzeichnis:
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft morning light"}
+```
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+Lesen Sie input_valid, problems, estimate.status, basis, warnings und quote_id. Zeigen Sie Modell, Ausgabe, Referenzen, Anzahl, Kostenspanne und nicht abgedeckte Posten und warten Sie dann auf die Zustimmung. partial und no_price dürfen nicht als garantierte Gesamtsummen bezeichnet werden; token_billed ist ein Referenzpreis, abgerechnet wird nach tatsächlichen Tokens. Siehe [CLI-Kosten](/de/cli/billing).
+
+## Schritt 4: nach der Zustimmung einmal absenden
+
+Nachdem der Benutzer diesem Plan zugestimmt hat, senden Sie das Bild mit dem zugehörigen Preisangebot ab:
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+--confirm erklärt, dass die Zustimmung bereits vorliegt. Die Generierung nimmt kein neues Modell und keine neue Eingabe an. Ein Preisangebot gilt 24 Stunden ab der Kostenschätzung: Dieselbe Eingabe wird abgesendet, wenn ihr Preis dem genehmigten Preis entspricht oder darunter liegt. Schätzen Sie erneut und holen Sie die Zustimmung ein, wenn sich Spezifikation oder Konto ändern, der Preis steigt (`price_changed`) oder das Preisangebot abläuft (`quote_expired`). Senden Sie nicht ein und dasselbe Preisangebot als Bild, Video und Audio ab.
+
+<span id="batch" />
+## Mehrere Bilder oder Aufträge mit einem Modell
+
+Schreiben Sie die Eingaben (1–50, jede wie eine einzelne Eingabe) in ein JSON-Array oder eine JSONL-Datei, schätzen Sie sie gemeinsam und warten Sie auf eine Zustimmung zur Gesamtsumme des Batches:
+
+```bash
+evolink estimate --model z-image-turbo --inputs-file inputs.jsonl --json
+evolink generate image --quote QUOTE_ID --confirm --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+```
+
+`generate` sendet alle Eingaben auf einmal ab und liefert für jede Eingabe die Auftragskennung oder den Fehler, ohne zu warten. Wurden einige Eingaben nicht abgesendet, schließen Sie den Batch innerhalb von 23 Stunden nach dem ersten Absenden mit `tasks resume --quote QUOTE_ID` ab: Angenommene Eingaben liefern ihre ursprünglichen Aufträge ohne erneute Abbuchung zurück. Senden Sie die Eingaben dieses Batches innerhalb dieses Zeitfensters nie mit einer neuen Kostenschätzung oder einem neuen generate-Befehl erneut ab. Ist das Preisangebot abgelaufen oder der Preis gestiegen, sendet `tasks resume` nichts: Prüfen Sie mit `tasks batch` oder `tasks list`, welche Eingaben durchgegangen sind, und schätzen Sie dann nur den Rest als neuen Batch. Manche Modelle, etwa GPT Image, liefern oft weniger Bilder als `n`; verwenden Sie daher eine Eingabe pro Bild.
+
+Sagt der Benutzer ausdrücklich, dass nicht geschätzt oder bestätigt werden soll, ergänzen Sie `generate` um `--skip-estimate` zusammen mit `--model` und `--input-file` oder `--inputs-file` und lassen Sie das Preisangebot weg; siehe die [CLI-Referenz](/de/cli/reference).
+
+<span id="video" />
+## Videoaufträge
+
+Erstellen Sie video-input.json anhand des tatsächlichen Modell-Schemas. Prüfen Sie Prompt, Dauer, Seitenverhältnis, Qualität, Ton und Referenzen. Bild-zu-Video, Referenzvideo, Bearbeitung und Verlängerung können unterschiedliche Modelle und Eingaben verwenden.
+
+```bash
+evolink estimate --model VIDEO_MODEL_ID --input-file video-input.json --json
+```
+
+Zeigen Sie, was die Kostenschätzung abdeckt, warten Sie auf die Zustimmung zu diesem Auftrag und führen Sie dann aus:
+
+```bash
+evolink generate video --quote VIDEO_QUOTE_ID --confirm --json
+```
+
+Speichern Sie die task_id und fragen Sie sie ab; generieren Sie nicht erneut, während Sie warten. Dauer der Referenz, Qualität und Ton können die Kosten beeinflussen, und die Kostenschätzung der veröffentlichten Version deckt nicht jeden Multiplikator ab. Übergeben Sie zuerst das Originalvideo, ohne automatischen lokalen Schnitt, Zwischenbildberechnung oder Untertitel.
+
+<span id="audio" />
+## Musik, Songs und Sprache
+
+Wählen Sie Musikmodelle und Sprachsynthese-Modelle getrennt aus. Erstellen Sie audio-input.json gemäß dem Schema, einschließlich der unterstützten Angaben zu Liedtext oder Beschreibung, Sprache, Stimme, Instrumentalmodus, Referenzen und sich ausschließenden Optionen.
+
+```bash
+evolink estimate --model AUDIO_MODEL_ID --input-file audio-input.json --json
+```
+
+Nach der Zustimmung zu diesem Preisangebot:
+
+```bash
+evolink generate audio --quote AUDIO_QUOTE_ID --confirm --json
+```
+
+Zwingen Sie einem Modell, das keine Dauer unterstützt, keine Dauer auf. media_seconds ist ein Hinweis für die Abrechnung und steuert nicht die Länge der Ausgabe. Erläutern Sie eine unbekannte Ausgabedauer oder Nutzung und behalten Sie alle Audioergebnisse.
+
+<span id="tasks" />
+## Schritt 5: abfragen, warten und wiederaufnehmen
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --status processing --page 1 --limit 20 --json
+```
+
+processing schließt das Warten in der Warteschlange ein; completed, failed und cancelled sind Endzustände. Fehlgeschlagene Aufträge sind etwas anderes als fehlgeschlagene Abfragebefehle. Die Zeitfilterung gilt für die aktuelle Seite; eine leere Seite beweist nicht, dass nichts abgesendet wurde. Zeitüberschreitung, Ctrl-C und das Schließen eines Fensters brechen Aufträge nicht ab. Die CLI hat derzeit keinen Befehl zum Abbrechen in der Warteschlange.
+
+Behalten Sie nach einer verlorenen Antwort auf das Absenden das ursprüngliche Konto und die Datensätze des Preisangebots bei:
+
+```bash
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+outcome_unknown bedeutet nicht, dass nichts abgebucht wurde. Löschen Sie keine Datensätze, wechseln Sie weder Keys noch den Weg und erstellen Sie kein Ersatz-Preisangebot, um erneut abzusenden; führen Sie zuerst die Wiederaufnahme durch. `tasks resume` wiederholt die Anfrage mit der ursprünglichen Anfragekennung innerhalb von 23 Stunden nach dem ersten Absenden, solange das Preisangebot nicht abgelaufen und der Preis nicht gestiegen ist. Nach 23 Stunden lehnt der Befehl mit `recovery_window_passed` ab; bei abgelaufenem Preisangebot oder höherem Preis lehnt er mit `quote_expired` oder `price_changed` ab. In jedem dieser Fälle wird nichts gesendet, und Sie prüfen die letzten Aufträge, bevor Sie erneut schätzen. Ein fehlgeschlagener Auftrag wird nicht berechnet, und seine reservierten Credits werden automatisch wieder gutgeschrieben; sagen Sie ohne Abrechnungsnachweis nicht, dass die Erstattung eingegangen ist.
+
+<span id="delivery" />
+## Schritt 6: Originale herunterladen und übergeben
+
+```bash
+evolink download TASK_ID --output ./coffee-cup.png --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+Wählen Sie den Modus für ein einzelnes Ergebnis oder für alle Ergebnisse. Legen Sie übergeordnete Verzeichnisse vorher an; Dateien werden nicht überschrieben. Originale sind auf jeweils 1 GiB begrenzt und werden auf Typ und Inhalt geprüft. Das Fortsetzen eines Batches nutzt dessen ursprüngliche Datensätze, nicht beliebige Dateien mit passendem Namen. Indizes beginnen bei 1; Dateiendungen müssen zum tatsächlichen Format passen.
+
+Original-URLs bleiben in der Regel 24 Stunden gültig. Speichern Sie zügig und übergeben Sie Speicherort, Original-Link, Modell, Spezifikationen und die gemeldeten tatsächlichen Kosten. balance/usage sind keine vollständige Rechnung. Prüfen Sie bei grauen Vorschaubildern die Originale, statt neu zu generieren. Siehe [CLI-Referenz](/de/cli/reference) und [Fehlerbehebung beim Download](/de/cli/billing#download).

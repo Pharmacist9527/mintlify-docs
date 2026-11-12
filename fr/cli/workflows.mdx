@@ -1,0 +1,152 @@
+---
+title: "CLI : médias, références et tâches"
+description: "Choix du modèle, accord, génération de médias, importations, reprise des tâches et téléchargement des originaux"
+---
+
+<span id="workflows" />
+## Mener une tâche à bien
+
+Une fois la connexion effectuée et la compétence détectée, suivez ce parcours : besoins → paramètres du modèle → références → estimation gratuite → accord → une seule soumission → consultation de la tâche initiale → téléchargement de l’original. Les commandes ci-dessous illustrent les étapes ; elles ne valent pas permission de générer.
+
+<span id="models" />
+## Étape 1 : choisir un modèle et examiner les entrées
+
+```bash
+evolink models search --type image --query seedream --limit 5 --json
+evolink models recommend --type image --query "coffee advertisement" --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink docs search --query "reference images" --json
+```
+
+Remplacez MODEL_ID par un identifiant canonique renvoyé par la recherche. Vérifiez reference_inputs, les champs obligatoires, les énumérations, les plages et les options exclusives. Qu’un modèle soit le premier de la liste, bon marché, récent ou en bêta ne prouve pas qu’il convient.
+
+L’ordre de sélection, les familles récentes et les règles de coût sont tenus à jour dans [Modèles, coûts et quotas](/fr/cli-mcp/models-and-billing#models). Vérifiez la disponibilité des modèles demandés ; les exemples ne sont pas des recommandations par défaut.
+
+<span id="files" />
+## Étape 2 : préparer et importer les références
+
+La CLI lit les fichiers sur la machine où elle s’exécute. Vérifiez le chemin, les permissions, le format, la taille et les exigences du modèle avant d’importer :
+
+```bash
+evolink upload ./reference.png --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+```
+
+Les fichiers locaux ordinaires doivent faire de 1 octet à 95 MiB. Les images, les vidéos et l’audio restent soumis aux limites de format, de nombre, de dimensions et de durée propres au modèle. Utilisez le file_url renvoyé dans les champs pris en charge, comme image_url ou image_urls, et non un chemin de votre ordinateur.
+
+Les références sont généralement conservées 72 heures. Conservez l’upload_id et consultez le reçu d’origine après une réponse perdue. Indiquez que l’issue est inconnue si la reprise par un service de fichiers compatible n’est pas disponible ; ne répétez pas une importation simplement à cause d’une expiration de délai. Vérifiez si une référence HTTPS publique est acceptée directement.
+
+<span id="images" />
+## Étape 3 : préparer l’entrée et estimer gratuitement
+
+Cet exemple pour une image vérifie d’abord la disponibilité de z-image-turbo. Il illustre le déroulement et ne constitue pas une recommandation par défaut :
+
+```bash
+evolink models search --type image --query z-image --limit 5 --json
+evolink models show z-image-turbo --json
+```
+
+Créez input.json dans le répertoire de travail :
+
+```json
+{"prompt":"A cream ceramic coffee cup on a white background, soft morning light"}
+```
+
+```bash
+evolink estimate --model z-image-turbo --input-file input.json --json
+```
+
+Lisez input_valid, problems, estimate.status, basis, warnings et quote_id. Présentez le modèle, la sortie, les références, le nombre, la fourchette de coût et les éléments non couverts, puis attendez l’accord. partial et no_price ne peuvent pas être présentés comme des totaux garantis ; token_billed est un prix de référence, réglé aux tokens réels. Consultez [Coûts dans la CLI](/fr/cli/billing).
+
+## Étape 4 : soumettre une seule fois après l’accord
+
+Une fois ce plan approuvé par l’utilisateur, soumettez l’image à l’aide de son devis :
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --json
+```
+
+--confirm déclare que l’accord a déjà été obtenu. La génération n’accepte ni nouveau modèle ni nouvelle entrée. Un devis reste valable 24 heures à compter de l’estimation : la même entrée est soumise si le prix est égal ou inférieur au prix approuvé. Refaites l’estimation et obtenez un nouvel accord lorsque les spécifications ou le compte changent, que le prix augmente (`price_changed`) ou que le devis expire (`quote_expired`). Ne soumettez pas un même devis à la fois comme image, vidéo et audio.
+
+<span id="batch" />
+## Plusieurs images ou tâches d’un même modèle
+
+Écrivez les entrées (de 1 à 50, chacune comme une entrée unique) dans un tableau JSON ou un fichier JSONL, estimez-les ensemble et attendez un accord unique sur le total du lot :
+
+```bash
+evolink estimate --model z-image-turbo --inputs-file inputs.jsonl --json
+evolink generate image --quote QUOTE_ID --confirm --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+```
+
+`generate` soumet toutes les entrées en une fois et renvoie, sans attendre, l’identifiant de tâche ou l’erreur de chaque entrée. Si certaines entrées n’ont pas été soumises, terminez avec `tasks resume --quote QUOTE_ID` dans les 23 heures suivant la première soumission : les entrées acceptées renvoient leurs tâches initiales sans nouvelle facturation. Pendant ce délai, ne les soumettez jamais à nouveau avec une nouvelle commande d’estimation ou de génération. Si le devis a expiré ou si le prix a augmenté, `tasks resume` n’envoie rien : vérifiez avec `tasks batch` ou `tasks list` quelles entrées ont abouti, puis n’estimez que le reste, dans un nouveau lot. Certains modèles, comme GPT Image, renvoient souvent moins d’images que `n` ; utilisez donc une entrée par image.
+
+Si l’utilisateur demande explicitement de ne pas estimer ni confirmer, ajoutez `--skip-estimate` à `generate` avec `--model` et `--input-file` ou `--inputs-file`, et passez-vous du devis ; voir la [référence CLI](/fr/cli/reference).
+
+<span id="video" />
+## Tâches vidéo
+
+Préparez video-input.json à partir du schéma réel du modèle. Vérifiez le prompt, la durée, le rapport d’aspect, la qualité, l’audio et les références. L’image-vers-vidéo, la vidéo de référence, l’édition et l’extension peuvent utiliser des modèles et des entrées différents.
+
+```bash
+evolink estimate --model VIDEO_MODEL_ID --input-file video-input.json --json
+```
+
+Présentez ce que couvre l’estimation, attendez l’accord pour cette tâche, puis :
+
+```bash
+evolink generate video --quote VIDEO_QUOTE_ID --confirm --json
+```
+
+Enregistrez le task_id et interrogez-le ; ne générez pas à nouveau pour attendre. La durée de la référence, la qualité et l’audio peuvent influer sur le coût, et l’estimation publiée ne couvre pas tous les multiplicateurs. Livrez d’abord la vidéo originale, sans montage local automatique, interpolation ni sous-titres.
+
+<span id="audio" />
+## Musique, chansons et voix
+
+Choisissez séparément les modèles de musique et les modèles vocaux. Préparez audio-input.json conformément au schéma, y compris les paroles ou la description, la langue, la voix, le mode instrumental, les références et les options exclusives pris en charge.
+
+```bash
+evolink estimate --model AUDIO_MODEL_ID --input-file audio-input.json --json
+```
+
+Après l’accord pour ce devis :
+
+```bash
+evolink generate audio --quote AUDIO_QUOTE_ID --confirm --json
+```
+
+N’imposez pas duration à un modèle qui ne le prend pas en charge. media_seconds est une indication pour la facturation, et non un moyen de contrôler la durée de la sortie. Expliquez qu’une durée de sortie ou un usage est inconnu et conservez tous les résultats audio.
+
+<span id="tasks" />
+## Étape 5 : interroger, attendre et reprendre
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --status processing --page 1 --limit 20 --json
+```
+
+processing inclut la mise en file d’attente ; completed, failed et cancelled sont des états terminaux. Une tâche échouée est différente d’une commande de consultation en échec. Le filtrage temporel s’applique à la page en cours ; une page vide ne prouve pas l’absence de soumission. L’expiration du délai, Ctrl-C et la fermeture d’une fenêtre n’annulent pas les tâches. La CLI n’a actuellement aucune commande d’annulation de file d’attente.
+
+Après la perte d’une réponse à la soumission, conservez le compte et les enregistrements de devis d’origine :
+
+```bash
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+outcome_unknown ne signifie pas l’absence de facturation. Ne supprimez pas d’enregistrements, ne changez ni de clé ni de voie et ne créez pas de devis de remplacement pour soumettre à nouveau ; commencez par la reprise. `tasks resume` rejoue l’identifiant de requête d’origine dans les 23 heures suivant la première soumission, tant que le devis n’a pas expiré et que le prix n’a pas augmenté. Après 23 heures, la commande refuse avec `recovery_window_passed` ; avec un devis expiré ou un prix plus élevé, elle refuse avec `quote_expired` ou `price_changed`. Dans chacun de ces cas, rien n’est envoyé ; vérifiez les tâches récentes avant d’estimer à nouveau. Une tâche échouée n’est pas facturée et ses crédits réservés sont restitués automatiquement ; sans preuve comptable, n’affirmez pas que le remboursement est arrivé.
+
+<span id="delivery" />
+## Étape 6 : télécharger et livrer les originaux
+
+```bash
+evolink download TASK_ID --output ./coffee-cup.png --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+Choisissez le mode à résultat unique ou le mode tous les résultats. Préparez les répertoires parents ; les fichiers ne sont pas écrasés. Chaque original est limité à 1 GiB, et son type et son contenu sont vérifiés. La reprise par lot utilise ses enregistrements d’origine, et non des fichiers quelconques dont le nom correspond. Les index commencent à 1 ; les extensions doivent correspondre aux formats réels.
+
+Les URL d’origine restent généralement valables 24 heures. Enregistrez rapidement les fichiers et communiquez leur emplacement, le lien d’origine, le modèle, les spécifications et le coût réel indiqué. balance/usage ne constituent pas une facture complète. En cas de vignettes grises, vérifiez les originaux au lieu de générer à nouveau. Consultez la [référence CLI](/fr/cli/reference) et le [dépannage des téléchargements](/fr/cli/billing#download).
