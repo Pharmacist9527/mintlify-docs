@@ -11,20 +11,20 @@ openapi: '/ko/api-manual/language-series/gemini/native-api/native-api-reference.
 **BaseURL**: 기본 BaseURL은 `https://direct.evolink.ai`이며, 텍스트 모델 지원이 더 우수하고 장시간 연결을 지원합니다. `https://api.evolink.ai`는 멀티모달 서비스의 주력 엔드포인트이며, 텍스트 모델에 대해서는 대체 주소로 사용됩니다.
 </Note>
 
-## 긴 출력 이어 생성하기(Gemini 4 Argon / Carbon)
+## 긴 출력 이어 생성하기(Gemini 4 Argon / Carbon / Hydrogen)
 
-`gemini-4-argon` / `gemini-4-carbon`은 요청 한 번에 스트리밍으로 최대 65,536토큰, 비스트리밍으로 최대 32,768토큰을 반환하며, 두 상한 모두 사고와 답변 토큰을 포함합니다. 더 긴 출력은 이어 생성 요청으로 나누어 받습니다. 입력·사고·답변은 1,048,576토큰의 컨텍스트를 공유하므로, 누적 사고와 답변에는 입력을 제외한 나머지 공간만 사용할 수 있습니다. 이어 생성은 네이티브 API에서만 지원하며 OpenAI 호환 형식은 지원하지 않습니다.
+`gemini-4-argon` / `gemini-4-carbon`은 요청 한 번에 스트리밍으로 최대 65,536토큰, 비스트리밍으로 최대 32,768토큰을 반환합니다. `gemini-4-hydrogen`은 두 방식 모두 최대 65,536토큰이며, 모든 상한은 사고와 답변 토큰을 포함합니다. 더 긴 출력은 이어 생성 요청으로 나누어 받습니다. 입력·사고·답변은 1,048,576토큰의 컨텍스트를 공유하므로, 누적 사고와 답변에는 입력을 제외한 나머지 공간만 사용할 수 있습니다. 이어 생성은 네이티브 API에서만 지원하며 OpenAI 호환 형식은 지원하지 않습니다.
 
 | | 스트리밍 `streamGenerateContent` | 비스트리밍 `generateContent` |
 |---|---|---|
-| 요청당 최대 출력 | 65,536 | 32,768 |
+| 요청당 최대 출력 | 65,536 | 32,768(`gemini-4-hydrogen`은 65,536) |
 | 종료 시 이어 생성 토큰 위치 | 마지막 청크의 `candidates[0].continuationToken` | `candidates[0].continuationToken` |
 
 긴 응답을 기다릴 때는 클라이언트 읽기 타임아웃을 1,200초(20분)로 설정하는 것이 좋습니다. 이는 클라이언트 설정 권장값이며 서버의 요청 지속 시간을 보장하지 않습니다.
 
 절차:
 
-1. `generationConfig.maxOutputTokens`를 요청당 상한보다 크게 설정합니다(스트리밍 65,536 초과, 비스트리밍 32,768 초과). 파라미터는 최대 1,048,576까지 받지만 실제 출력은 공유 컨텍스트의 제한을 받습니다. 이 값은 모든 이어 생성 요청에 걸친 사고와 답변의 누적 예산입니다.
+1. `generationConfig.maxOutputTokens`를 요청당 상한보다 크게 설정합니다(스트리밍 65,536 초과, 비스트리밍 32,768 초과, `gemini-4-hydrogen`의 비스트리밍은 65,536 초과). 파라미터는 최대 1,048,576까지 받지만 실제 출력은 공유 컨텍스트의 제한을 받습니다. 이 값은 모든 이어 생성 요청에 걸친 사고와 답변의 누적 예산입니다.
 2. `candidates[0].finishReason`이 `CONTINUATION`이면 생성이 끝나지 않은 상태이며, 같은 후보에 `continuationToken`이 반환됩니다.
 3. 원래 요청의 `contents`, `systemInstruction`, `tools`, `generationConfig`를 그대로 유지하여 다시 보냅니다. 최상위에 `continuationToken`만 추가하고 가장 최근 응답의 토큰을 그대로 넣습니다.
 4. `finishReason`이 `CONTINUATION`일 때만 3단계를 반복하고 다른 종료 사유에서는 멈춥니다. `STOP`은 정상 완료, `MAX_TOKENS`는 누적 예산 소진을 뜻합니다. 각 응답에는 새로 생성된 내용만 있으므로 순서대로 연결합니다.
@@ -38,7 +38,7 @@ openapi: '/ko/api-manual/language-series/gemini/native-api/native-api-reference.
 
 ### 예제
 
-아래 예제는 `gemini-4-argon`을 사용합니다. `gemini-4-carbon`을 사용하려면 URL 경로의 모델 이름만 바꾸세요.
+아래 예제는 `gemini-4-argon`을 사용합니다. `gemini-4-carbon` 또는 `gemini-4-hydrogen`을 사용하려면 URL 경로의 모델 이름만 바꾸세요.
 
 첫 번째 요청:
 

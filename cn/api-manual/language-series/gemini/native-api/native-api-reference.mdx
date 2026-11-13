@@ -11,20 +11,20 @@ openapi: '/cn/api-manual/language-series/gemini/native-api/native-api-reference.
 **BaseURL 说明**：默认 BaseURL 为 `https://direct.evolink.ai`，对文本模型支持更好、支持长连接；`https://api.evolink.ai` 为备用地址。
 </Note>
 
-## 长输出续写（Gemini 4 Argon / Carbon）
+## 长输出续写（Gemini 4 Argon / Carbon / Hydrogen）
 
-`gemini-4-argon` 与 `gemini-4-carbon` 单次流式请求最多输出 65,536 个 token，非流式最多 32,768 个 token，均包含思考与回答。需要更长的输出时，用续写分多次取。输入、思考与回答共用 1,048,576 个 token 的上下文，累计思考与回答最多使用扣除输入后的剩余空间。只有原生 API 支持续写，OpenAI 兼容格式不支持。
+`gemini-4-argon` 与 `gemini-4-carbon` 单次流式请求最多输出 65,536 个 token，非流式最多 32,768 个 token；`gemini-4-hydrogen` 流式与非流式单次都最多 65,536 个 token；均包含思考与回答。需要更长的输出时，用续写分多次取。输入、思考与回答共用 1,048,576 个 token 的上下文，累计思考与回答最多使用扣除输入后的剩余空间。只有原生 API 支持续写，OpenAI 兼容格式不支持。
 
 | | 流式 `streamGenerateContent` | 非流式 `generateContent` |
 |---|---|---|
-| 每次请求最多输出 | 65,536 | 32,768 |
+| 每次请求最多输出 | 65,536 | 32,768（`gemini-4-hydrogen` 为 65,536） |
 | 结束时续写令牌的位置 | 最后一块的 `candidates[0].continuationToken` | `candidates[0].continuationToken` |
 
 建议将客户端读取超时设为 1,200 秒（20 分钟），用于等待长响应；这是客户端配置建议，不是服务端请求时长保证。
 
 做法：
 
-1. 把 `generationConfig.maxOutputTokens` 设为大于单次上限的值（流式大于 65,536，非流式大于 32,768，参数最大可设为 1,048,576，实际输出仍受共享上下文限制）。这个值是所有续写请求共用的累计思考与回答预算。
+1. 把 `generationConfig.maxOutputTokens` 设为大于单次上限的值（流式大于 65,536，非流式大于 32,768，`gemini-4-hydrogen` 非流式大于 65,536，参数最大可设为 1,048,576，实际输出仍受共享上下文限制）。这个值是所有续写请求共用的累计思考与回答预算。
 2. 响应的 `candidates[0].finishReason` 为 `CONTINUATION` 时，说明回答还没写完，同一位置会带回 `continuationToken`。
 3. 把上一次的请求体原样再发一次（`contents`、`systemInstruction`、`tools`、`generationConfig` 都不变），只在请求体顶层加上 `continuationToken`，值用最近一次响应返回的令牌。
 4. 仅在 `finishReason` 为 `CONTINUATION` 时重复第 3 步，其他结束原因停止循环。`STOP` 表示正常完成，`MAX_TOKENS` 表示累计预算耗尽。每次响应只包含本次新生成的内容，按顺序拼接即可。
@@ -38,7 +38,7 @@ openapi: '/cn/api-manual/language-series/gemini/native-api/native-api-reference.
 
 ### 示例
 
-下面以 `gemini-4-argon` 为例，换成 `gemini-4-carbon` 时只改路径里的模型名。
+下面以 `gemini-4-argon` 为例，换成 `gemini-4-carbon` 或 `gemini-4-hydrogen` 时只改路径里的模型名。
 
 第 1 次请求：
 
