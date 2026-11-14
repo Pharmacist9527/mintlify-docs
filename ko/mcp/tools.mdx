@@ -1,0 +1,324 @@
+---
+title: "MCP 도구 및 API 레퍼런스"
+description: "도구 16개의 매개변수, 예시, 결과, 프로토콜, 백엔드 매핑"
+---
+
+<span id="mcp-tools" />
+## MCP 도구 레퍼런스
+
+이 페이지는 OAuth 원격 MCP **1.12.1** 릴리스의 도구 16개를 설명합니다. 연결된 서버의 `tools/list`가 기준입니다. 로컬 stdio는 `prepare_upload`와 `get_upload`를 제공하지 않으며, 로컬 stdio의 `upload_file`은 명시적으로 허용된 디렉토리 안의 경로도 받습니다.
+
+`name`과 `arguments`로 된 예시는 MCP 도구 호출을 나타내며, REST 요청 본문이 아닙니다. 예시가 있다고 해서 유료 생성이 승인되는 것은 아닙니다.
+
+| 도구 | 용도 | 생성 요금 |
+|---|---|---|
+| search_models | 사용 가능한 모델과 별칭 검색 | 없음 |
+| recommend_models | 요청과 참조 유형에 맞는 모델 비교 | 없음 |
+| search_docs | 버전이 지정된 공식 모델 레퍼런스 색인 검색 | 없음 |
+| get_model | 매개변수, 스키마, 참조 입력, 가격 확인 | 없음 |
+| estimate_cost | 입력을 검증하고 예상 비용 산정 | 없음 |
+| get_pricing_rules | 공개 기본 가격 규칙 읽기(참고 가격이며 견적이 아님) | 없음 |
+| generate_image | 이미지 생성 또는 편집 | 유료 |
+| generate_video | 영상 생성, 편집 또는 연장 | 유료 |
+| generate_audio | 음악, 노래 또는 음성 생성 | 유료 |
+| get_task | 작업, 결과, 보고된 비용 확인 | 없음 |
+| list_tasks | ID로 조회하거나 계정 기록을 페이지 단위로 조회 | 없음 |
+| get_task_usage | 제한된 조회 범위 안에서 보고된 비용 요약 | 없음 |
+| check_balance | 계정 잔액과 공유 한도 확인 | 없음 |
+| upload_file | URL 또는 base64 참조 파일 업로드 | 생성 요금 없음. 파일 할당량이 적용됩니다 |
+| prepare_upload | 로컬 파일을 위한 일회용 업로드 준비 | 생성 요금 없음. 파일 할당량이 적용됩니다 |
+| get_upload | 기존 업로드의 상태와 URL 다시 확인 | 없음 |
+
+### search_models
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| type | string | 아니요 | image/video/audio/all. 기본값 all |
+| query | string | 아니요 | 검색 키워드. 최대 100자 |
+| limit | integer | 아니요 | 1–50. 기본값 20 |
+| page | integer | 아니요 | 1–100000. 기본값 1 |
+
+```json
+{"name":"search_models","arguments":{"type":"image","query":"seedream","limit":5,"page":1}}
+```
+
+models, total_matches, page, page_size, next_page를 반환합니다. 각 항목에는 정식 ID, 별칭, 참조 입력, 문서 제공 범위, 시작 가격이 포함됩니다. 정렬은 키워드 관련성을 먼저 고려하고, 그다음 가격 정보 유무, 편집상 선호, ID 순으로 고려합니다. 품질 순위나 인기 순위가 아닙니다. 시작 가격은 작업의 합계가 아니며, 사용 가능 여부는 페이지를 넘기는 사이에 바뀔 수 있습니다.
+
+### recommend_models
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| type | string | 예 | image/video/audio |
+| query | string | 아니요 | 최대 100자. 모든 검색어가 일치해야 합니다 |
+| references | string[] | 아니요 | image/video/audio. 최대 3개. 기본값은 비어 있음 |
+| limit | integer | 아니요 | 1–10. 기본값 3 |
+
+```json
+{"name":"recommend_models","arguments":{"type":"video","query":"seedance","references":["image"],"limit":3}}
+```
+
+문서화된 후보를 reasons, reference_inputs, selection_basis, 단가와 함께 반환합니다. 필요한 참조 유형에는 문서화된 입력 필드가 있어야 합니다. 일치하는 모델이 없으면 필요한 참조 파일을 빼지 말고, 요청을 어떻게 조정했는지 밝히면서 조정하세요. 편집상 선호는 실시간 인기도나 출시일 통계가 아닙니다.
+
+### search_docs
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| query | string | 예 | 앞뒤 공백을 제거한 뒤 1–100자 |
+| type | string | 아니요 | image/video/audio/all. 기본값 all |
+| limit | integer | 아니요 | 1–20. 기본값 5 |
+
+```json
+{"name":"search_docs","arguments":{"query":"first frame","type":"video","limit":5}}
+```
+
+documents, total_matches, scope, 소스 버전을 반환합니다. 사용 가능한 모델에 대해 번들로 포함된 공식 모델 제목, ID, 매개변수 설명을 검색합니다. 문서 사이트를 실시간으로 크롤링하거나 계정 및 과금 문서를 검색하지는 않습니다.
+
+### get_model
+
+필수 `model`: 1–128자의 문자열이며, 반환된 정식 ID 또는 지원되는 별칭을 사용합니다.
+
+```json
+{"name":"get_model","arguments":{"model":"z-image-turbo"}}
+```
+
+정식 모델, 요건, 예시, 공개 가격, reference_inputs, parameters_source를 반환하며, 제공되는 경우 input_schema와 그 출처도 반환합니다. 매개변수 레퍼런스는 버전이 지정되어 있고, 계정에서의 사용 가능 여부는 실시간으로 조회합니다. 정보가 빠져 있다는 경고가 나오면 기본값을 지어내지 말고 경고를 따르세요.
+
+### estimate_cost
+
+| 매개변수 | 유형 | 필수 | 설명 |
+|---|---|---|---|
+| model | string | 예 | 1–128자 |
+| input | object | 아니요 | 사용할 모델 매개변수. 기본값은 빈 객체 |
+| inputs | object[] | 아니요 | input 대신 사용하는, 한 모델에 대한 입력 1–50개. 제출될 순서대로 나열합니다 |
+| pricing_parameters | object | 아니요 | 가격 규칙에 필요한, 측정했거나 명시적으로 예상한 과금 사용량. 예: `{"search_count":2}`. 최대 100개. GPT Image, Gemini Omni Flash, Qwen TTS의 토큰 수에는 사용하지 않습니다. 값을 지어내지 마세요 |
+| pricing_source | string | 아니요 | 기본값은 공개된 가격 규칙인 pricing_rules입니다. 이전 값인 account와 public_reference는 별칭으로 허용됩니다 |
+| media_seconds | number | 아니요 | 0보다 크고 3600 이하. 예상 비용 산정용 힌트일 뿐입니다 |
+
+```json
+{"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
+```
+
+input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced를 반환하며, 제공되는 경우 잔액/한도도 반환합니다. 예상 비용 상태는 estimated, partial, token_billed, needs_input, no_price 중 하나입니다. token_billed에는 참고 가격이 담기며 과금은 실제 토큰 수를 기준으로 합니다. 가격이 입력에 없는 사용량에 따라 달라지는 경우, 예상 비용에는 금액도 `pricing_quote`도 없습니다. `total_known`은 false이고, `missing_usage`에는 빠진 값이 하나씩 나열되며, `usage_help`는 그 값을 제공하는 방법을 알려 줍니다. [과금](/ko/mcp/billing)을 참고하세요. 조회가 성공했다고 해서 입력이 유효하다거나 견적이 완전하다는 뜻은 아닙니다.
+
+승인할 수 있는 예상 비용은 `pricing_quote`도 함께 반환합니다. 이는 정확히 이 입력에 대한 승인 기록입니다. 사용자가 승인하면 같은 입력과 함께 생성 도구에 전달하세요. 이 기록은 예상 비용을 산정한 시점부터 24시간 동안(`expires_at`), 승인된 가격 이하일 때 유효합니다. 생성 도구는 예상 비용을 다시 산정하고 가격이 그대로이거나 더 낮으면 제출하며, 이후에 가격 규칙이 바뀐 경우에도 마찬가지입니다. 가격이 올랐으면 `price_changed`, 입력이 바뀌었으면 `quote_input_changed`, `pricing_quote`가 만료되었으면 `quote_expired`로 거부되며, 각각 예상 비용을 새로 산정하고 다시 승인받아야 합니다. `inputs`를 사용하면 결과에 입력별 예상 비용과 합계가 나열되고, `pricing_quote` 하나가 정확히 그 입력들을 그 순서대로 승인합니다. 이 배치용 승인 기록으로는 단일 입력을 승인할 수 없으며, 단일 입력의 `pricing_quote`로 배치를 승인할 수도 없습니다.
+
+이 도구에는 `max_cost_usd` 인수가 없으며, CLI의 로컬 quote_id를 만들지도 않습니다. MCP의 예산 검사는 생성 도구에서 이루어집니다. media_seconds는 출력 길이를 설정하지 않으며, 알 수 없는 참조 영상 배율을 채워 주지도 않습니다.
+
+### get_pricing_rules
+
+| 매개변수 | 유형 | 필수 | 설명 |
+|---|---|---|---|
+| model | string | 아니요 | 모델 ID 하나. 최대 100자 |
+| product_id | string | 아니요 | 제품 계열로 필터링 |
+| operation | string | 아니요 | 동작으로 필터링. 예: `text_to_video` |
+| modality | string | 아니요 | `text`, `image`, `video` 또는 `audio` |
+| lifecycle | string | 아니요 | `active`, `preview` 또는 `deprecated` |
+| view | string | 아니요 | `summary` 또는 `full`. 기본값 `full` |
+
+```json
+{"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
+```
+
+공개 기본 가격 규칙을 반환합니다. 과금 구성 요소별 단가(십진수 문자열), 최소 요금, 구간, 전체 계산식과 함께 price_scope와 price_selection이 포함됩니다. 이는 계정 할인이 반영되지 않은 참고 가격이며, 작업 견적도, 청구서도, 최종 지출 상한도 아닙니다. 단가를 곱해서 청구액을 계산하지 마세요. 특정 생성의 예상 비용은 실제 입력에 같은 규칙을 적용해 계산하는 `estimate_cost`를 사용하세요. 결과가 비어 있다면 일치하는 공개 규칙이 없다는 뜻이지, 모델이 무료라는 뜻이 아닙니다. 목록 조회에서는 규칙을 읽을 수 없거나 규칙이 불완전한 모델이 제외되어 `rejected_models`에 나열되고 `warnings`에 표시됩니다. 다른 모델은 평소대로 반환되며, 제외된 모델이 무료인 것은 아닙니다. 단일 모델 조회는 규칙을 읽을 수 없으면 여전히 실패합니다.
+
+### generate_image, generate_video, generate_audio
+
+출력 유형에 맞는 도구를 선택하세요. 이 도구들은 다음 최상위 인수를 공유합니다:
+
+| 매개변수 | 유형 | 필수 | 설명 |
+|---|---|---|---|
+| model | string | 예 | 1–128자. 미디어 유형과 일치해야 합니다 |
+| input | object | 아니요 | get_model에서 확인한 매개변수. model이나 callback_url은 넣지 마세요 |
+| inputs | object[] | 아니요 | input 대신 사용하는, 한 모델에 대한 입력 1–50개. 호출 한 번으로 제출됩니다. [배치](#batches) 참고 |
+| prompt | string | 아니요 | input.prompt의 단축 인수. 최대 20000자이며 모델 제한이 적용됩니다 |
+| client_request_id | string | 아니요 | 16–96자: 영문자, 숫자, . _ -. 같은 요청을 복구할 때는 같은 값을 다시 사용하세요. inputs를 쓸 때는 항목마다 .NN이 붙으므로 최대 93자 |
+| pricing_quote | object | 아니요 | estimate_cost가 반환한, 정확히 이 입력 또는 배치에 대한 승인 기록. expires_at까지 유효하며, 제출 전에 현재 규칙과 대조해 확인합니다 |
+| pricing_parameters | object | 아니요 | estimate_cost에 전달한 것과 같은 과금 사용량 |
+| max_cost_usd | number | 아니요 | 0보다 크고 10000 이하. 제출 시점의 예상 비용 검사에 사용됩니다 |
+| media_seconds | number | 아니요 | 0보다 크고 3600 이하. 예상 비용 산정용 힌트일 뿐입니다 |
+| wait_seconds | integer | 아니요 | 0–40. 제출한 뒤 결과를 기다리는 시간입니다. 이미지는 기본값 40, 영상과 오디오는 기본값 0입니다. 0이면 task_id를 바로 반환합니다. 배치는 0만 받습니다 |
+| skip_estimate | boolean | 아니요 | 사용자가 예상 비용 산정이나 확인을 하지 말라고 명시적으로 말한 경우에만 사용합니다. 승인된 예상 비용 없이 제출합니다. [예상 비용 산정 없이 생성하기](#skip-estimate) 참고 |
+
+호출하기 전에 모델과 입력을 확인하고, 요청 전체의 예상 비용을 산정하고, 제한 사항을 알리고, 비용에 대한 명시적인 승인을 받으세요. 단, 사용자가 예상 비용 산정을 생략하기로 한 경우(아래 참고)는 예외입니다. 아래는 호출 형식을 보여 주는 예시입니다:
+
+```json
+{"name":"generate_image","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"},"client_request_id":"coffee-image-demo-001"}}
+```
+
+이미지 생성은 최대 약 40초까지 기다렸다가, 결과가 준비되었으면 결과를, 그렇지 않으면 task_id를 반환합니다. 영상과 오디오는 제출한 뒤 task_id를 반환하므로 get_task로 이어서 조회하세요. `wait_seconds`로 세 도구 각각의 대기 시간을 바꿀 수 있습니다. 제출 시 선차감 금액이 보고될 수 있는데, 이는 완료된 작업의 비용과 구분해야 합니다.
+
+진행 상황을 확인하려고 생성을 다시 호출하지 말고, 실행 중인 작업을 조회하세요. 응답을 받지 못했다면 원래 ID, 계정, 입력, 요청 ID를 그대로 유지하세요. 요청 ID가 달라지면 새로운 유료 요청이 만들어집니다. 클라이언트의 복구 보호 장치가 있다고 해서 모든 프로덕션 노드에서 백엔드 멱등성이 동일하게 보장된다는 증거는 아닙니다.
+
+<span id="skip-estimate" />
+
+**예상 비용 산정 없이 생성하기**. 사용자가 예상 비용 산정이나 확인을 하지 말라고 명시적으로 말하면(예: "바로 생성해 주세요" 또는 "이제부터는 그냥 생성해 주세요"), 어시스턴트는 사용자가 정한 범위 안에서 `estimate_cost`와 확인 절차를 건너뛰고 `skip_estimate: true`를 전달합니다. 범위는 이번 작업, 이번 배치, 또는 대화의 남은 부분입니다. 어시스턴트는 사용자의 침묵, 잔액, 자신의 제안을 근거로 이를 추론해서는 안 됩니다. 사용자가 대화의 남은 부분 전체에 대해 생략하기로 하면, 어시스턴트는 이후 생성은 묻지 않고 제출된다는 점을 한 번 알립니다. 새 대화를 시작하거나 예상 비용 산정을 다시 해 달라고 요청하면 원래대로 돌아갑니다. 예상 비용 산정을 생략한 생성은 가격을 계산할 수 없거나 `pricing_quote`가 만료, 가격 인상, 입력 변경을 이유로 거부되더라도 제출되며, 결과에 그 사실이 표시됩니다(`estimate_skipped`, `estimate_skip_reason`). 작업 요금은 실제 사용량에 따라 부과됩니다. 유효하지 않은 입력은 여전히 거부되고, 명시적인 `max_cost_usd`도 그대로 적용되며(이 값을 넘는 요청이나, 가격을 이 값과 대조해 확인할 수 없는 요청은 제출되지 않습니다), 모델의 웹 검색이나 이미지 검색을 켜려면 여전히 사용자의 승인이 필요합니다. 예상 비용 산정이 실패했거나 합계가 없는데 사용자가 생략을 선택하지 않은 경우, 어시스턴트는 실제 사용량 기준 요금으로 그래도 생성할지 한 번 묻습니다.
+
+<span id="batches" />
+
+**배치**. 한 모델로 여러 작업을 만들 때는 `inputs`(1–50개 항목, 각각 `input`과 같은 형식)를 `estimate_cost`에 전달한 다음, 반환된 `pricing_quote`와 함께 생성 도구에 전달하세요. 예상 비용 산정 한 번, 합계에 대한 승인 한 번, 그리고 호출 한 번으로 모든 항목을 제출하며(동시에 최대 10개씩), 기다리지 않고 항목별 `task_id` 또는 오류를 반환합니다. 유효하지 않은 항목이 하나라도 있으면 아무것도 제출되지 않습니다. `max_cost_usd`는 배치 합계에 적용되고, `media_seconds`와 `pricing_parameters`는 모든 항목에 적용됩니다. 결과는 `list_tasks`(`task_ids`, 호출당 최대 50개)로 수집하세요. 서로 다른 모델의 작업은 `wait_seconds: 0`을 지정해 호출 한 번에 하나씩 제출하세요. 이미지 수를 `n`에 의존하지 마세요. GPT Image 같은 일부 모델은 `n`보다 적은 수의 이미지를 반환하는 경우가 많으므로, 이미지 한 장마다 항목을 하나씩 사용하세요.
+
+호출이 시작된 지 25초가 지난 뒤에는 어떤 항목도 새로 시작되지 않으며, 이미 시작된 제출은 중간에 끊기지 않습니다. 시작되지 않은 항목은 제출되지 않은 것으로 나열됩니다. 배치를 마무리하려면 첫 제출 후 24시간 이내에 같은 `client_request_id`와 완전히 같은 `inputs`로 다시 호출하세요. 결과에 마저 제출해야 한다고 나열된 항목이 제출되고, 이미 접수된 항목은 새로 과금되지 않고 원래 작업을 반환합니다. 그때까지 `pricing_quote`가 만료되었다면 같은 입력으로 예상 비용을 다시 산정하고 새 값을 전달하세요. 결과를 알 수 없는 항목은 나중에 같은 방법으로 재시도하거나 `list_tasks`를 확인하세요. 이 24시간 안에는 접수된 항목, 제출되지 않은 항목, 결과를 알 수 없는 항목을 새 `client_request_id`로 다시 제출해서는 안 됩니다. 그렇게 하면 새 작업이 만들어지고 요금이 부과됩니다. 그 기간이 지나면 같은 `client_request_id`로도 두 번째 과금을 막을 수 없습니다. 먼저 `list_tasks`를 확인한 뒤, 접수되지 않은 항목만 새 예상 비용과 새 `client_request_id`를 사용해 새 배치로 제출하세요. 그 `client_request_id`로 이전에 제출한 것과 입력이 다른 항목은 거부됩니다(`idempotency_conflict`). 그런 항목은 별도의 예상 비용, 승인, `client_request_id`가 필요한 새 작업입니다.
+
+### get_task
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| task_id | string | 예 | 지원되는 원래 작업 ID. 4–128자 |
+| wait_seconds | integer | 아니요 | 0–45. 기본값 30. 재시도를 포함한 호출 전체의 시간을 제한합니다. 0이면 작업을 기다리지 않고 한 번만 읽습니다. 이 읽기에도 최대 15초가 걸릴 수 있습니다 |
+
+```json
+{"name":"get_task","arguments":{"task_id":"TASK_ID_FROM_RESPONSE","wait_seconds":30}}
+```
+
+상태, 진행률, 결과, 보고된 비용 또는 오류를 반환합니다. 작업이 실행 중인 동안에는 같은 ID를 계속 조회하세요. 실패한 작업은 오류 코드(`error.code`), API도 반환하는 설명(`error.message`), 그리고 `billing_note`를 반환합니다. 이 작업에는 요금이 부과되지 않으며, 제출 시 선차감된 크레딧은 자동으로 반환됩니다. 원본 결과는 보통 24시간 동안 보관됩니다. 미리보기 표시 여부는 호스트 클라이언트에 따라 다릅니다.
+
+### list_tasks
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| task_ids | string[] | 아니요 | ID 1–50개. 일괄 조회 모드 |
+| status | string | 아니요 | processing/completed/failed/cancelled |
+| type | string | 아니요 | image/video/audio |
+| model | string | 아니요 | 정확한 모델 ID. 1–128자 |
+| page | integer | 아니요 | 1–100000. 기본값 1 |
+| since / until | string | 아니요 | ISO 8601, Unix 초 또는 30m/2h/1d. 최대 40자 |
+| limit | integer | 아니요 | 1–50. 기본값 20 |
+
+```json
+{"name":"list_tasks","arguments":{"type":"video","since":"2h","page":1,"limit":20}}
+```
+
+```json
+{"name":"list_tasks","arguments":{"task_ids":["TASK_ID_ONE","TASK_ID_TWO"]}}
+```
+
+task_ids는 status/type/model/page/since/until과 함께 쓸 수 없습니다. 일괄 조회 모드는 tasks와 missing을 반환하고, 기록 조회는 total/page/page_size/next_page/last_page를 반환합니다. 종료된 행의 결과 링크나 오류 코드를 읽을 수 없는 경우에도 기본 페이지는 유지됩니다. details_status, 행별 details_reason(read_failed, invalid 또는 not_returned), details_retry_task_ids가 무엇이 빠졌는지와 무엇을 무료로 다시 조회할지 알려 줍니다. not_returned 행은 get_task로 확인하세요. processing에는 대기 중인 작업이 포함됩니다. 시간 필터는 선택한 페이지에 적용되며, total은 시간 필터를 적용하기 전에 집계됩니다. 기록은 이 대화에 한정되지 않고 계정 전체를 포함합니다. 빈 페이지가 제출이 전혀 없었다는 증거는 아닙니다.
+
+### get_task_usage
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| since | string | 아니요 | 기본값 30d. 생성 시간의 하한 |
+| until | string | 아니요 | 기본값은 현재 시각. 해당 시각을 포함합니다 |
+| model | string | 아니요 | 정확한 ID. 1–128자 |
+| type | string | 아니요 | image/video/audio |
+| max_pages | integer | 아니요 | 1–20. 기본값 5. 페이지당 작업 50개 |
+
+```json
+{"name":"get_task_usage","arguments":{"since":"7d","type":"video","max_pages":5}}
+```
+
+totals, by_model, by_status, coverage, as_of를 반환합니다. missing_cost_tasks, truncated, concurrent_change_detected, complete_for_retained_tasks를 확인하세요. 계정에 보관된 완료 작업의 보고된 비용을 요약합니다. 완전한 청구서, 결제/환불 원장, MCP만의 사용량 보고서, 정산 한도가 아닙니다.
+
+### check_balance
+
+인수가 없습니다:
+
+```json
+{"name":"check_balance","arguments":{}}
+```
+
+account_balance_credits/usd, spent_scope, spent_credits를 반환하며, 제공되는 경우 총/일일 한도와 콘솔 링크도 반환합니다. OAuth 키 지출에는 이 대화만이 아니라 해당 계정의 CLI와 모든 OAuth MCP 세션이 포함됩니다.
+
+### upload_file
+
+| 매개변수 | 유형 | 필수 | 설명 |
+|---|---|---|---|
+| file_url | string | 소스 하나 필수 | 공개 HTTPS 미디어. 사설 네트워크 URL이나 자격 증명이 포함된 URL은 사용할 수 없습니다 |
+| base64_data | string | 소스 하나 필수 | 원격 모드에서는 디코딩 기준 최대 1 MiB |
+| mime_type | string | 조건부 | 원시 base64에는 필수. data URL에는 MIME이 들어 있습니다 |
+| file_name | string | 아니요 | 디렉토리가 없는 단순 파일 이름 |
+| upload_path | string | 아니요 | 상대 디렉토리. .. 은 사용할 수 없습니다 |
+
+```json
+{"name":"upload_file","arguments":{"file_url":"https://example.com/reference.png","file_name":"reference.png"}}
+```
+
+URL을 실제로 접근할 수 있는 미디어로 바꾸세요. file_url, 파일 속성, 만료 정보를 반환합니다. 참조 파일은 보통 72시간 동안 보관됩니다. 원격 MCP는 file_path를 받을 수 없습니다. 로컬 stdio에서는 그 대신 허용된 디렉토리 안의 절대 경로를 사용할 수 있습니다. 소스는 정확히 하나만 선택하세요. 업로드에 성공했다고 해서 선택한 모델이 그 미디어를 지원한다는 증거는 아닙니다.
+
+### prepare_upload
+
+필수 `file_name`: 미디어 유형을 판별하는 데 쓰이는 확장자가 포함된 문자열. 선택 `upload_path`: 상대 디렉토리.
+
+```json
+{"name":"prepare_upload","arguments":{"file_name":"reference.mp4"}}
+```
+
+upload_id, upload_url, method:PUT, command, max_bytes, expires_at을 반환합니다. 이 URL은 약 15분 동안 유효하고, 한 번만 쓸 수 있으며, 최대 **95 MiB**까지 받습니다. 파일을 실제로 읽을 수 있는 곳에서 반환된 명령을 실행한 뒤, 확인된 file_url을 사용하세요. 브라우저 첨부 파일은 이 방법으로 접근하지 못할 수 있습니다. 이 주소에는 임시 권한 정보가 들어 있으므로 공개하거나 개인 키를 덧붙이지 마세요.
+
+### get_upload
+
+필수 `upload_id`: 원래 prepare 결과에서 받은 값입니다:
+
+```json
+{"name":"get_upload","arguments":{"upload_id":"UPLOAD_ID_FROM_RESPONSE"}}
+```
+
+상태에는 waiting/uploading/done/failed/expired/outcome_unknown이 있습니다. file_url은 done 결과가 확인된 뒤에만 사용하세요. 서버에 저장된 상태는 약 한 시간 동안 유지되며, 호환되는 파일 서비스는 약 72시간 동안 접수 확인을 제공할 수 있습니다. 접수 확인이 지원되지 않거나 검증할 수 없으면 outcome_unknown이 나올 수 있습니다. 조회한다고 파일이 다시 업로드되지는 않습니다. 원래 ID를 보관하고 먼저 상태를 확인하세요.
+
+### 결과와 오류
+
+도구는 읽을 수 있는 텍스트와 structuredContent를 반환하며, 실패한 경우 isError/error/next_step이 포함될 수 있습니다. 완료된 미디어에는 resource_link와 선택적인 이미지 썸네일이 포함될 수 있습니다. 콘텐츠 블록 지원 범위는 호스트마다 다릅니다. 전달의 기준은 여전히 원본 URL이며, 모든 호스트에서 미리보기가 보장되지는 않습니다.
+
+도구 오류와 함께 input_valid, 예상 비용 상태, task.status 같은 비즈니스 필드를 확인하세요. HTTP 200만으로는 생성에 성공했다고 볼 수 없습니다. 제출 시간 초과는 작업이 생성된 뒤에 발생할 수도 있으므로, 요금이 부과되지 않았다는 증거가 아닙니다. 조회가 실패했다고 해서 원래 작업이 실패했다는 증거는 아닙니다.
+
+<span id="task-progress-and-results" />
+
+## 작업 진행 상황과 결과
+
+무료 연결 검증에는 잔액 조회와 모델 조회를 사용하세요. 기존 작업에는 get_task/list_tasks를 사용한 뒤 원본 URL과 보고된 실제 비용을 전달하세요. 참조 파일, 복구, 저장, 회색 미리보기는 [작업 흐름 가이드](/ko/mcp/overview#workflows)에서 다룹니다. 표시 문제 때문에 유료 생성을 다시 해서는 안 됩니다.
+
+<span id="api" />
+## MCP 프로토콜과 백엔드 API
+
+| 모드 | 실행 경로 | 인증과 설치 |
+|---|---|---|
+| 원격 MCP | 클라이언트 → 호스팅형 EvoLink MCP → 플랫폼 API | Streamable HTTP와 브라우저 OAuth. 로컬 서버 설치가 필요 없습니다 |
+| 로컬 stdio | 클라이언트 → 로컬 MCP 프로세스 → 플랫폼 API | Node.js 20+, npx 실행, 개인 API Key |
+
+원격 엔드포인트는 `https://mcp.evolink.ai/mcp`입니다. OAuth는 Passport가 제공하며, 서버는 https://api.evolink.ai 및 파일 서비스에 요청을 보냅니다. MCP URL, 플랫폼 /v1 경로, 문서, llms.txt는 서로 다른 진입점입니다.
+
+### 초기화와 도구 호출
+
+initialize, 프로토콜 버전, Accept, 인증, 세션, 콘텐츠 블록은 호스트나 MCP SDK가 처리하게 하세요. 초기화가 끝난 뒤 tools/list를 읽고 tools/call을 호출하세요:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_balance","arguments":{}}}
+```
+
+name / arguments를 사용한 예시는 도구 입력을 나타내며, REST 요청 본문이 아닙니다. 도구는 텍스트, 구조화된 데이터, 리소스 링크, 썸네일을 반환할 수 있으며, 표시 방식은 호스트에 따라 다릅니다. HTTP 성공 여부만 보지 말고 도구 오류와 작업 상태를 확인하세요.
+
+### 도구와 백엔드 동작
+
+| MCP 도구 | 백엔드 동작 또는 구현 |
+|---|---|
+| search_models | `GET /v1/models`에 별칭, 사용 가능 여부, 레퍼런스를 더한 것 |
+| get_model, recommend_models, search_docs | 버전이 지정된 레퍼런스와 계정의 모델 목록. 같은 이름의 REST 경로가 아닙니다 |
+| estimate_cost | `GET /v1/catalog/models/{model_id}/pricing-rules?view=full`과 서버 측 예상 비용 산정 규칙(1.7.0부터) |
+| get_pricing_rules | `GET /v1/catalog/pricing-rules`와 `GET /v1/catalog/models/{model_id}/pricing-rules`(view=full) |
+| generate_image | `POST /v1/images/generations` |
+| generate_video | `POST /v1/videos/generations` |
+| generate_audio | `POST /v1/audios/generations` |
+| get_task | `GET /v1/tasks/{task_id}` |
+| task_ids를 지정한 list_tasks | `POST /v1/tasks/batch` |
+| list_tasks, get_task_usage | `GET /v1/tasks`, 페이지 처리, 범위가 제한된 집계 |
+| check_balance | `GET /v1/credits` |
+| 업로드 권한 | `POST /v1/files/upload-token` |
+| upload_file | 파일 서비스의 /url 또는 /base64. 로컬 stdio는 허용된 디렉토리를 읽을 수 있습니다 |
+| prepare_upload, get_upload | 호스팅형 일회용 PUT URL과 상태. 접수 확인을 통한 복구는 파일 서비스의 지원 여부에 따라 다릅니다 |
+
+모델 매개변수는 arguments.input에 넣으며, 서버가 REST 요청으로 변환합니다. media_seconds는 과금 계산용 힌트이고, max_cost_usd는 제출 전에 예상 비용만 검사합니다. 정식 출시된 1.12.1은 공개 가격 규칙으로 예상 비용을 산정하며(참고 가격, 계정 할인 미포함), 여전히 최종 정산 금액의 상한은 없습니다.
+
+### 업로드, 복구, 접근 권한
+
+prepare_upload의 PUT URL은 파일을 읽을 수 있는 환경에서만 사용하고, 그다음 get_upload로 조회하세요. 원격 서버는 데스크톱 경로를 읽을 수 없으며, 채팅 첨부 파일은 원본 데이터를 전달하지 않을 수 있습니다. [참조 파일 업로드](/ko/mcp/overview#files)를 참고하세요.
+
+유료 제출의 경우 client_request_id, 정규화된 입력, 계정 신원, 반환된 task_id를 저장하세요. 결과를 알 수 없을 때는 원래 작업과 기록을 조회하고, 식별자를 바꿔서 다시 제출하지 마세요. 클라이언트 식별자만으로는 백엔드가 모든 중복 과금을 일관되게 막아 준다고 보장할 수 없습니다.
+
+OAuth로는 제한된 미디어 동작만 사용할 수 있으며, 임의의 키 관리나 관리자 API는 사용할 수 없습니다. 현재 사용할 수 있는 취소 도구는 제공되지 않으며, 대기를 멈춰도 작업은 취소되지 않습니다. CLI 명령과 실행 방식은 [CLI 레퍼런스](/ko/cli/reference#api)에 따로 정리되어 있습니다.
+
+<span id="cli-reference" />
+
+## CLI 명령 문서
+
+전체 CLI 레퍼런스는 이제 [별도의 CLI 섹션](/ko/cli/reference#cli-reference)에 있습니다. 이 페이지는 MCP 도구와 프로토콜을 다룹니다.

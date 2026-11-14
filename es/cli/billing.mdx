@@ -1,0 +1,241 @@
+---
+title: "CLI: inicio de sesión, aprobación y solución de problemas"
+description: "Alcance de los costos, acceso a la cuenta, conservación y solución de problemas paso a paso"
+---
+
+<span id="pricing" />
+
+## Costos y aprobación en la CLI
+
+Esta página describe la versión publicada CLI 0.14.1. La CLI llama directamente a las APIs de la plataforma y gestiona en local los comandos y las estimaciones guardadas; el inicio de sesión usa Passport. Empieza por el [flujo de trabajo completo](/es/cli/workflows).
+
+1. Ejecuta `evolink estimate` con el modelo y las entradas finales, y muestra el costo estimado.
+2. Tras la aprobación de este modelo, estos parámetros y este costo, genera con el `quote_id` guardado y `--confirm`.
+3. Vuelve a estimar y obtén la aprobación si cambian la entrada o el inicio de sesión, si el precio sube o si la cotización caduca. No reutilices una cotización distinta. Si el usuario dice explícitamente que no hace falta estimar ni confirmar, usa `generate --skip-estimate` en lugar de los pasos 1–2.
+4. Consulta la tarea original y el uso de la cuenta. Una estimación no demuestra que haya habido un cargo ni un reembolso reales.
+
+Consulta [Modelos, costos y cuotas](/es/cli-mcp/models-and-billing#pricing) para conocer los estados de la estimación, las limitaciones de los precios públicos, la aprobación y los presupuestos. En las versiones publicadas, max_cost_usd solo se compara con las estimaciones previas al envío; no pone un tope a los cargos finales.
+
+Las cotizaciones son válidas durante 24 horas desde la estimación y quedan vinculadas a la identidad, al modelo y a las entradas originales. La generación vuelve a estimar antes de enviar: la misma entrada se envía si el precio es el aprobado o uno inferior, también cuando las reglas de precios se hayan actualizado después, mientras que con un precio más alto (`price_changed`), una entrada modificada (`quote_input_changed`) o una cotización caducada (`quote_expired`) no se envía nada y hacen falta una nueva estimación y una nueva aprobación. Las cotizaciones no son comprobantes de pago. `--confirm` expresa la aprobación de esta tarea; no sustituye al inicio de sesión ni al permiso de ejecución del host. Las consultas de modelos, saldo y tareas no envían ninguna generación. La generación se factura; los límites de tamaño y de conservación del servicio de archivos se aplican por separado. La conversión de referencia es de unos 68 créditos por $1; guíate por los valores que se devuelven realmente y por los registros de la cuenta.
+
+Consulta las [reglas comunes de acceso](/es/cli-mcp/models-and-billing#authorization); esta página mantiene las acciones de inicio y cierre de sesión propias de esta vía.
+
+<span id="authorization" />
+
+## Inicio de sesión, permisos y cuotas
+
+Passport se encarga del inicio de sesión en el navegador, y el almacén seguro del sistema guarda las credenciales de la CLI. Las solicitudes de negocio usan la clave existente vinculada a OAuth. La CLI y el MCP remoto pueden compartir el acceso a la cuenta, las cuotas de la clave y los permisos. Pausar o cambiar una clave compartida afecta a todo lo que la usa; cada sesión de OAuth se cierra por separado.
+
+```bash
+evolink auth status --json
+```
+
+Para cerrar sesión en esta CLI local, ejecuta por separado:
+
+```bash
+evolink auth logout
+```
+
+Un MCP local configurado con una clave API personal usa los permisos de esa clave; el inicio de sesión de la CLI no autoriza un proceso MCP aparte. El saldo, las cuotas diaria y total, el acceso a los modelos y los permisos de las herramientas pueden impedir el envío. Una tarea fallida no se cobra, y los créditos reservados al enviarla se devuelven automáticamente; una desconexión o un cierre de sesión no demuestran que un reembolso se haya completado.
+
+<span id="retention" />
+
+## Almacenamiento y caducidad
+
+Los plazos de validez predeterminados de las cotizaciones, las referencias, las autorizaciones de subida y las URLs originales se mantienen en [Tareas, referencias y resultados](/es/cli-mcp/tasks-and-files#retention). Prevalecen los valores que se devuelven realmente; la disponibilidad de comprobantes depende del despliegue del servicio de archivos.
+
+<span id="faq" />
+
+## Solución de problemas de la CLI: localiza la etapa que falló
+
+Comprueba la versión y el acceso en el mismo equipo, con el mismo usuario del sistema operativo y en la misma terminal que ejecuta la CLI. Estas consultas no envían ninguna generación:
+
+```bash
+evolink --version
+evolink auth status --json
+evolink doctor --json
+```
+
+| Síntoma | Sección de solución de problemas |
+|---|---|
+| Falta `node`, `npm` o `evolink` | [Entorno e instalación](#cli-install) |
+| Fallo del inicio de sesión, del callback por SSH o del almacén seguro | [Inicio de sesión](#login) |
+| La habilidad está instalada, pero el agente no puede usarla | [Detección de habilidades](#skills-discovery) |
+| Falta el modelo, se rechazan las entradas o el precio está incompleto | [Modelos y precios](#models-and-pricing) |
+| Se agotó el tiempo de espera de la generación; no se sabe si se envió | [Tareas y recuperación](#tasks-and-recovery) |
+| La subida falló o su resultado es desconocido | [Subidas](#uploads) |
+| Error 403 en la descarga, vista previa gris o resultado que solo muestra un enlace | [Descargas](#download) |
+| El problema continúa después de estas comprobaciones | [Información para soporte](#support) |
+
+Resuelve la etapa actual antes de continuar. La verificación de la conexión no requiere ninguna generación de pago; no generes repetidamente para probar la instalación.
+
+<span id="cli-install" />
+### Entorno e instalación: comandos que faltan, permisos y tiempos de espera agotados
+
+**Paso 1: comprueba el entorno de ejecución real.** Ejecuta en la terminal que usa tu agente:
+
+```bash
+node --version
+npm --version
+```
+
+La CLI requiere Node.js 22+. Si aparece `command not found` o Windows no reconoce el comando, instala [Node.js](https://nodejs.org/en/download) y vuelve a abrir la terminal. Instalar en tu equipo de escritorio no instala la CLI en SSH, WSL ni en un contenedor.
+
+**Paso 2: comprueba la ubicación de instalación de npm.**
+
+```bash
+npm config get prefix
+```
+
+| Síntoma | Acción |
+|---|---|
+| npm terminó correctamente, pero falta evolink | Abre una terminal nueva, confirma que es el mismo entorno de Node/npm y comprueba que su directorio global de comandos está en PATH |
+| EACCES / permission denied | Usa un entorno de Node/npm en el que el usuario pueda escribir, siguiendo la [guía de permisos de npm](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally/), vuelve a instalar la CLI y comprueba su ruta y su versión |
+| Tiempo de espera agotado o error de DNS, de certificado o de proxy | Comprueba el acceso al registro oficial de npm y la configuración del proxy; conserva el error y mantén activada la verificación de certificados |
+| PowerShell bloquea los scripts | Usa el Símbolo del sistema en el mismo entorno de Windows, o sigue la política de dispositivos de tu organización |
+| Comandos evolink antiguos o duplicados | Localiza el comando que usa el agente y actualiza el entorno de Node correspondiente |
+
+Elige los comandos de comprobación de rutas para tu sistema:
+
+<Tabs>
+  <Tab title="macOS / Linux">
+
+```bash
+command -v node
+command -v npm
+command -v evolink
+```
+
+  </Tab>
+  <Tab title="Windows PowerShell">
+
+```powershell
+Get-Command node
+Get-Command npm
+Get-Command evolink
+```
+
+  </Tab>
+</Tabs>
+
+**Paso 3: verifica de nuevo.** Después de corregir el problema concreto, instala o actualiza y ejecuta `evolink --version`. Continúa con el inicio de sesión solo cuando el comando funcione. Consulta la [instalación completa](/es/cli/setup#cli-install).
+
+<span id="login" />
+### Inicio de sesión y callbacks: el navegador no se abre o el inicio de sesión no se completa
+
+1. Mantén `evolink auth login` o `setup` en ejecución. Si no se abre ningún navegador, abre manualmente el enlace de este intento, revisa la cuenta y autoriza.
+2. Vuelve a la terminal original y espera a que termine. Tras la autorización, el navegador llega a la página de EvoLink MCP con un aviso de "autorización recibida"; eso solo significa que llegó el callback, no que la conexión con la cuenta esté verificada. No interrumpas el comando antes de tiempo.
+3. Comprueba por separado la autenticación guardada y el acceso real a la cuenta:
+
+```bash
+evolink auth status --json
+evolink balance --json
+```
+
+Deben aparecer `authenticated: true` y datos reales del saldo, respectivamente. Si se agota el tiempo de espera, empieza un nuevo intento con un enlace nuevo en lugar de reutilizar un código de autorización. Para una espera más larga:
+
+```bash
+evolink auth login --timeout 600
+```
+
+| Síntoma | Acción |
+|---|---|
+| El callback de 127.0.0.1 / localhost no puede conectarse | Comprueba que el inicio de sesión sigue en ejecución y dónde se ejecutan el navegador y la CLI; en remoto, usa el [reenvío del callback por SSH](/es/cli/setup#ssh-login) |
+| credential_store_unavailable | En Linux, comprueba D-Bus, Secret Service y el estado de desbloqueo para el mismo usuario; configura primero el almacenamiento seguro |
+| Falta el inicio de sesión tras cambiar de usuario, de contenedor o de servidor | La sesión pertenece al entorno original; autoriza el nuevo sin copiar archivos de credenciales |
+| Clave en pausa, caducada o por encima del límite | Revisa la clave compartida en la consola; volver a autorizar no le quita la pausa ni aumenta los límites |
+| El agente dice que el token de inicio de sesión ha caducado, o ya ha pasado la hora de `access_token_expires_at` en `auth status` | Eso es solo la caducidad del token de acceso de corta duración; la CLI lo renueva antes del siguiente comando, así que no hace falta volver a iniciar sesión. Verifica con `evolink balance --json`; vuelve a ejecutar `auth login` solo si aparece `login_required` o `login_expired` |
+| Tras la autorización, el navegador se queda en una página bilingüe de 127.0.0.1 en lugar de volver al sitio web | La CLI instalada es anterior a la 0.9.1. Actualiza con `npm install -g @evolinkai/cli@latest` y después ejecuta `evolink skills install`; a partir de la 0.10.0, la propia CLI avisa de las versiones nuevas; consulta [Cómo saber si hay una versión nueva](/es/cli/setup#update-check) |
+| La salida muestra `EvoLink CLI X is available` | Es un aviso de versión nueva, no un error; el comando en sí se completó. Actualiza como se indica y ejecuta `evolink skills install`; define `EVOLINK_CLI_UPDATE_CHECK=0` para desactivar las comprobaciones |
+
+`--no-browser` sigue requiriendo un callback del navegador. No es una autenticación con código de dispositivo ni sin navegador. No introduzcas una clave API como token de OAuth remoto.
+
+<span id="skills-discovery" />
+### Habilidades y permisos: el agente no usa los archivos instalados
+
+1. Comprueba el directorio del usuario que ejecuta el agente. Usa el `--agent` correspondiente; para Codex:
+
+```bash
+evolink skills status --agent codex --json
+```
+
+2. `current: true` significa que los archivos instalados coinciden con la CLI. Si faltan archivos o están desactualizados, usa `evolink skills install --agent codex`. Con `modified`, conserva los cambios locales; con `conflict`, resuelve la habilidad en conflicto o los metadatos no válidos en lugar de borrar todo el directorio de habilidades.
+3. Pide al agente que confirme que detecta y lee `evolink-cli`. Vuelve a cargar las habilidades o abre una conversación nueva cuando haga falta. Revisa en el host los permisos de comandos necesarios; las restricciones de la organización deben gestionarse en su propia configuración.
+
+`assistant_discovery: not_checked` significa que la carga en el host sigue sin verificarse. Que exista un archivo `SKILL.md` o que se haya leído una página de la documentación no demuestra que el agente pueda ejecutar la CLI.
+
+Sincroniza las habilidades después de actualizar la CLI. Usa `--replace-modified` solo cuando hayas decidido sustituir los cambios locales; las copias de seguridad están en `~/.evolink-media/skill-backups/`. Los directorios y el contenido se detallan en [Recursos legibles para agentes](/es/cli/skills#skills).
+
+<span id="models-and-pricing" />
+### Modelos y precios: búsqueda vacía, parámetros no válidos y estimación incompleta
+
+1. Busca los modelos disponibles en ese momento y usa el ID canónico devuelto. Una familia, un nombre para mostrar o un alias pueden no ser un ID válido para enviar. Amplía los términos de búsqueda sin descartar las capacidades de referencia necesarias.
+2. Revisa `models show` / `models schema` de este modelo. Comprueba los campos obligatorios, la ortografía, los valores enumerados, los límites numéricos y las referencias mutuamente excluyentes. No copies los campos `duration`, `size` o `quality` de otro modelo.
+3. Vuelve a estimar y revisa `input_valid`, `problems`, `estimate.status`, `basis` y `warnings`. Un cambio en la entrada o en la identidad, un precio más alto o una cotización caducada requieren una nueva estimación y una nueva aprobación.
+
+Con `needs_input`, proporciona la entrada o el uso facturable que indican `missing_usage` y `usage_help`, mediante `--media-seconds` o `--pricing-parameters`; `no_price` no se puede usar y `partial` no es un total. Una duración o unos multiplicadores de referencia desconocidos no se pueden rellenar con un precio inicial. Mantén el presupuesto; no elimines topes, no cambies de clave ni reduzcas las especificaciones sin avisar para eludir un rechazo.
+
+Si ningún modelo de la búsqueda, de `models show` o de `models recommend` tiene precio y `pricing_warning` dice `Public pricing rules are unavailable or invalid`, la CLI es la 0.10.1 o una anterior: esas versiones descartan todos los precios cuando el catálogo contiene una regla por tramos sin `multiplier`, algo que se publica desde el 12 de octubre. Actualiza con `npm install -g @evolinkai/cli@latest` a la 0.10.2 o a una posterior y después ejecuta `evolink skills install`. A partir de la 0.10.2, un modelo cuyas reglas no se pueden leer se omite y se indica en `pricing_warning`; los demás modelos conservan sus precios.
+
+Las estimaciones de las versiones publicadas, basadas en los precios públicos predeterminados, no son cotizaciones definitivas específicas de la cuenta, y `max_cost_usd` no es un tope de la liquidación final. Consulta [costos](/es/cli/billing) y la [referencia de comandos](/es/cli/reference).
+
+<span id="tasks-and-recovery" />
+
+### Tiempo de espera de la generación agotado, tareas en ejecución o envíos de resultado desconocido
+
+<Steps>
+  <Step title="Consulta la tarea original cuando exista un identificador">
+    ```bash
+    evolink tasks get TASK_ID --json
+    evolink tasks wait TASK_ID --timeout 600 --json
+    ```
+    Que se agote el tiempo de espera no cancela la generación. Usa batch o list para varias tareas y descarga los originales cuando se completen. Si una consulta devuelve `status_check: unverified` (`task_response_invalid`, `task_identity_mismatch` o `task_status_unknown`), no se pudo verificar el estado más reciente: vuelve a consultar la misma tarea en lugar de generar. Un resultado de `generate` con `submission_state: accepted` ya tiene un identificador de tarea, aunque falte su estado.
+  </Step>
+  <Step title="Recupera la cotización original si no se devolvió ningún identificador de tarea">
+    ```bash
+    evolink tasks resume --quote QUOTE_ID --json
+    ```
+    Conserva la identidad, la cotización y el identificador de solicitud originales. No cambies de cuenta, de cotización ni de identificador para volver a generar. Un resultado desconocido no significa que no se haya enviado ni cobrado nada.
+  </Step>
+  <Step title="Conserva las pruebas antes de gestionar el fallo">
+    Anota el identificador de la tarea original, el código de error y la hora. Una tarea cuyo fallo está confirmado no se cobra, y los créditos reservados al enviarla se devuelven automáticamente. No existe ningún comando público utilizable para cancelar. Cerrar la terminal o dejar de esperar no cancela la tarea en el servidor.
+  </Step>
+</Steps>
+
+Si una cotización no se ha enviado y ha caducado, o si su entrada ha cambiado o su precio ha subido, vuelve a estimar y a obtener la aprobación. Recupera primero las tareas existentes o los envíos de resultado desconocido. Consulta la [referencia de comandos de tareas](/es/cli/reference#cli-reference).
+
+<span id="uploads" />
+
+### Subidas fallidas, demasiado grandes o de resultado desconocido
+
+1. Comprueba la ruta absoluta, los permisos y el formato real en el equipo que ejecuta el agente. Un equipo remoto o un contenedor no pueden leer directamente una ruta de tu escritorio.
+2. Las subidas locales con la CLI están limitadas a 95 MiB; los modelos pueden imponer límites más estrictos de formato, cantidad o tamaño. Comprueba primero la documentación del modelo. Los archivos adjuntos del chat deben convertirse en archivos legibles o en URLs accesibles.
+3. Tras un resultado desconocido, conserva el `upload_id` original y consúltalo:
+
+```bash
+evolink uploads get UPLOAD_ID --json
+```
+
+4. Las consultas de comprobantes dependen del despliegue del servicio de archivos. `outcome_unknown` no demuestra que no se haya subido nada. Solicita una subida nueva solo tras un fallo confirmado o tras la caducidad. Las referencias suelen conservarse 72 horas; vuelve a subir las entradas caducadas, actualiza la solicitud y vuelve a estimar y a obtener la aprobación antes de generar.
+
+Consulta los [flujos de trabajo con referencias](/es/cli/workflows#files) para los métodos de subida y la [referencia de comandos](/es/cli/reference) para los campos del comprobante. No compartas en el chat URLs de subida de un solo uso, URLs privadas firmadas ni claves.
+
+<span id="download" />
+
+### Descargas y vistas previas
+
+Consulta la tarea original, confirma que se ha completado y usa su URL original. Es preferible usar download de la CLI; consulta la [referencia de la CLI](/es/cli/reference). Las descargas ya usan un UA de producto.
+
+Las comprobaciones de HTTP y de formato, el ejemplo de User-Agent de producto en Python, los enlaces caducados y las vistas previas grises se mantienen en [Solución de problemas de descarga](/es/cli-mcp/tasks-and-files#download). Recupera las tareas de resultado desconocido en lugar de volver a generar o de editar las vistas previas.
+
+<span id="support" />
+
+### Información para soporte
+
+Sigue la [lista de comprobación para soporte](/es/cli-mcp/tasks-and-files#support) e incluye las versiones, la etapa que falló, los identificadores y los errores con los datos sensibles ocultos. Conserva los diagnósticos de esta vía; no compartas claves, tokens, URLs privadas ni volcados del entorno.
+
+<span id="mcp-connection" />
+
+### Solución de problemas de una conexión MCP nativa
+
+La CLI y MCP son puntos de entrada independientes. Consulta la [solución de problemas de MCP](/es/mcp/billing#mcp-connection) para OAuth nativo, la detección de herramientas y el stdio local. Que la CLI se haya instalado correctamente no valida el acceso a MCP. Esta sección se mantiene por compatibilidad con los enlaces antiguos; los comandos, el inicio de sesión y las habilidades de la CLI se tratan más arriba.

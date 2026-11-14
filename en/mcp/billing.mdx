@@ -7,13 +7,13 @@ description: "Cost boundaries, account access, retention, and step-by-step troub
 
 ## MCP costs and approval
 
-This page describes released MCP 1.8.2. Call `estimate_cost`, then show the model, final inputs, output count, and estimated cost. Call the generation tool only after explicit approval of this task.
+This page describes released MCP 1.12.1. Call `estimate_cost`, then show the model, final inputs, output count, and estimated cost. Call the generation tool only after explicit approval of this task. When the user explicitly says not to estimate or confirm, for this task, a batch or the rest of the conversation, the assistant submits with `skip_estimate: true` instead; see [generating without an estimate](/en/mcp/tools#skip-estimate).
 
 See [models, costs, and quotas](/en/cli-mcp/models-and-billing#pricing) for estimate states, public-pricing limitations, approval, and budgets. Released max_cost_usd only compares pre-submission estimates; it does not cap final charges.
 
 estimate_cost does not accept max_cost_usd; generation tools accept it.
 
-Native MCP has neither a CLI local `quote_id` and `--confirm` command nor a session-level server approval button. The agent must retain the model, inputs, estimate, and approval for this task; changed inputs or prices require renewed approval. Host tool permission, account authorization, and purchase approval do not replace one another.
+Native MCP has neither a CLI local `quote_id` and `--confirm` command nor a session-level server approval button. The agent must retain the model, inputs, estimate, and approval for this task; a changed input, a higher price or an expired approval requires renewed approval. An approval (`pricing_quote`) holds for 24 hours from the estimate, at the approved price or lower: the generation tool estimates again and submits when the price is unchanged or lower, also under later pricing rules. A higher price returns `price_changed`, a changed input `quote_input_changed`, and an approval past its `expires_at` `quote_expired`. Host tool permission, account authorization, and purchase approval do not replace one another.
 
 Model, balance, and task queries do not submit generation. Generation is billed; file-service limits apply separately. A failed task is not charged, and the credits reserved at submission are returned automatically. Timeout or closing chat does not establish that no charge occurred or that a refund completed. Usage queries are not complete settlement receipts.
 
@@ -93,7 +93,7 @@ Local stdio does not use this browser flow. Check the platform Key received by t
 | Duplicate server name | Inspect the existing entry and choose one source; avoid manual/plugin duplicates |
 | 401 / expired authorization | Reauthorize through the affected host, preserving task IDs |
 | 403 / denied tool | Distinguish host policy, account/Key limits, and network rejection; record the failed stage rather than assuming a UA change fixes all 403s |
-| Local process cannot start | Check Node 18+, npx path, host environment, and launch errors; reload and verify |
+| Local process cannot start | Check Node 20+, npx path, host environment, and launch errors; reload and verify |
 | Invalid/unauthorized local Key | Inspect its status and scope in the dashboard and update host secret settings, not chat |
 | Configuration change has no effect | Refresh the process that owns the connection; a remote Gateway does not refresh with your laptop terminal |
 
@@ -104,11 +104,13 @@ Setup pages: [ChatGPT](/en/mcp/chatgpt), [Claude](/en/mcp/claude), [Claude Code]
 
 1. Search live models and use the returned canonical ID. A family, display name, or alias may not be a valid submission ID. Broaden search wording without discarding required reference capabilities.
 2. Inspect MCP `get_model` for this model. Check required fields, spelling, enums, numeric limits, and mutually exclusive references. Do not copy another model’s `duration`, `size`, or `quality` fields.
-3. Re-estimate and inspect `input_valid`, `problems`, `estimate.status`, `basis`, and `warnings`. Input, price, or identity changes require a new estimate and approval.
+3. Re-estimate and inspect `input_valid`, `problems`, `estimate.status`, `basis`, and `warnings`. A changed input or identity, a higher price, or an expired approval requires a new estimate and approval.
 
-Supply missing input for `needs_input`; `no_price` is unusable and `partial` is not a total. Unknown duration or reference multipliers cannot be filled with a starting price. Preserve the budget; do not silently remove caps, switch Keys, or reduce specifications to bypass a rejection.
+For `needs_input`, supply the input or the billing usage that `missing_usage` and `usage_help` name, through `media_seconds` or `pricing_parameters`; `no_price` is unusable and `partial` is not a total. Unknown duration or reference multipliers cannot be filled with a starting price. Preserve the budget; do not silently remove caps, switch Keys, or reduce specifications to bypass a rejection.
 
-If every model from `search_models`, `get_model`, or `recommend_models` has no price and `pricing_warning` reads `Public pricing rules are unavailable or invalid`, the server is 1.8.1 or older: those versions drop all prices when a tiered rule has no `multiplier`. Remote MCP runs 1.8.2, so call the tool again. Local stdio configured with `npx -y @evolinkai/mcp@latest` picks up the new version when the client restarts. From 1.8.2, a model whose rules cannot be read is left out and named in `pricing_warning`; other models keep their prices.
+If every model from `search_models`, `get_model`, or `recommend_models` has no price and `pricing_warning` reads `Public pricing rules are unavailable or invalid`, the server is 1.8.1 or older: those versions drop all prices when a tiered rule has no `multiplier`. Remote MCP runs a newer version, so call the tool again. Local stdio configured with `npx -y @evolinkai/mcp@latest` picks up the new version when the client restarts. From 1.8.2, a model whose rules cannot be read is left out and named in `pricing_warning`; other models keep their prices.
+
+If `estimate_cost` or `get_pricing_rules` returns `rate_limited` (`pricing_calls_per_minute`) with a number of seconds, wait that long and call again. The hosted service lets each signed-in account read the pricing rules 30 times per minute for each of these two tools; answers from rules read moments earlier are not counted. Estimate several inputs of one model in one call with `inputs` instead of one call per input. When the platform itself limits pricing reads, an estimate uses rules read in the last 10 minutes and says when they were read. Local stdio is not limited this way.
 
 Published public-default estimates are not account-specific authoritative Quotes, and `max_cost_usd` is not a final settlement cap. See [costs](/en/mcp/billing) and [command/tool reference](/en/mcp/tools).
 
@@ -121,14 +123,14 @@ Published public-default estimates are not account-specific authoritative Quotes
     Call `get_task` for an existing `task_id`; set `wait_seconds` to 0–45 for a bounded wait. Use `list_tasks` for multiple IDs. Timeout ends that wait only, not generation. If a read returns `status_check: unverified` (`task_response_invalid`, `task_identity_mismatch`, `task_status_unknown` or `task_query_timeout`, or a `last_known_status` when a later read in the wait failed), query the same task again; this is not a failure. A generate result with `submission_state: accepted` already has a `task_id`.
   </Step>
   <Step title="Recover an unknown submission with its original identifier">
-    Preserve `client_request_id`, inputs, identity, and error when no task ID returns. Recover through the same tool and identifier; do not change accounts or identifiers and generate again. `list_tasks` accepts only its documented parameters, not invented filters.
+    Preserve `client_request_id`, inputs, identity, and error when no task ID returns. Recover through the same tool and identifier; do not change accounts or identifiers and generate again. EvoLink keeps a request identifier for 24 hours: within that time the same identifier and inputs return the original task without a new charge, and a batch submits only the items its result lists to finish. If the approval has expired by then, estimate the same inputs again and pass the new `pricing_quote` with the same identifier. After 24 hours the identifier no longer prevents a second task: check `list_tasks` first, then submit only what did not go through, with a new estimate and a new identifier. `list_tasks` accepts only its documented parameters, not invented filters.
   </Step>
   <Step title="Establish failure and account outcomes separately">
     Record actual errors and times, and query the original task and account usage. A failed task is not charged, and the credits reserved at submission are returned automatically; an unknown submission is not a failure and does not prove no charge. There is no usable public queue-cancellation tool. Disconnecting MCP or closing a page does not cancel the task.
   </Step>
 </Steps>
 
-Changed inputs or prices require new approval for unsubmitted tasks. Recover submitted or unknown requests first. See [task tools](/en/mcp/tools#task-progress-and-results) for parameters and examples.
+A changed input, a higher price or an expired approval requires a new estimate and approval for unsubmitted tasks. Recover submitted or unknown requests first. See [task tools](/en/mcp/tools#task-progress-and-results) for parameters and examples.
 
 <span id="uploads" />
 

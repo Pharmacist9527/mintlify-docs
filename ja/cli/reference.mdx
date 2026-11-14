@@ -1,0 +1,202 @@
+---
+title: "CLI コマンドと API のリファレンス"
+description: "すべてのコマンド、オプション、JSON 出力、復旧、REST の実行経路"
+---
+
+<span id="cli-reference" />
+## CLI コマンドリファレンス
+
+リリース済みの @evolinkai/cli **0.14.1** が対象です。インストールされているバージョンについては、evolink --help または evolink COMMAND --help --json を使ってください。業務コマンドは --json に対応しています。MODEL_ID、QUOTE_ID、TASK_ID、UPLOAD_ID は、実際に返された値に置き換えてください。
+
+### 認証、診断、スキル
+
+[インストール](/ja/cli/setup#cli-install)を参照してください。
+
+| コマンド | 動作 |
+|---|---|
+| evolink --version | バージョン |
+| evolink setup --agent codex --json | 前提条件、ログイン、スキルの同期、無料の接続検証 |
+| evolink auth login [--no-browser] [--timeout SECONDS] | OAuth。30–900秒、デフォルトは180秒 |
+| evolink auth status --json | 保存されているログインと、アクセストークンの有効期限をオフラインで表示します。トークンは自動的に更新されるため、有効期限の時刻を過ぎていても、ログインが失効したことにはならず、ネットワーク経由で検証された結果でもありません |
+| evolink auth logout | 現在の CLI セッションを取り消して、ログアウトします |
+| evolink doctor --agent codex --json | 環境、ストレージ、アカウント、モデル、スキルを確認し、CLI のアップデートも確認します。`--agent` を付けない場合は、インストール済みのスキルも調べます（案内のみで、`ok` は変わりません） |
+| evolink skills install [--agent NAME] [--replace-modified] | インストールと同期。デフォルトでは編集内容を保持します |
+| evolink skills status [--agent NAME] --json | スキルが未インストール、最新、古い、編集済み、競合のいずれの状態かを示します |
+
+agent の値：all/codex/claude-code/cursor/gemini/opencode/copilot/openclaw/hermes。デフォルトは all です。アシスタントがスキルを検出できることは、別途検証する必要があります。
+
+`setup`、`doctor`、`auth login` の出力には `update`（`status`、`update_available`、`latest_version`、`command`）が含まれます。そのほかのコマンドは、新しいリリースがある場合に、多くても1日1回、stderr に通知を出力します。確認をオフにするには `EVOLINK_CLI_UPDATE_CHECK=0` を設定します。[新しいバージョンがあることを知る方法](/ja/cli/setup#update-check)を参照してください。
+
+### モデル、入力、ドキュメント
+
+```bash
+evolink models search --type image --query seedream --limit 5 --page 1 --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink models pricing --model MODEL_ID --json
+evolink models recommend --type video --query seedance --references image --limit 3 --json
+evolink docs search --type video --query "first frame" --limit 5 --json
+```
+
+| コマンド | オプションと出力 |
+|---|---|
+| models search | type は image/video/audio/all、デフォルトは all。limit は 1–50、デフォルトは 20。page は 1–100000。query は最大100文字 |
+| models show MODEL_ID | 正式な ID、エイリアス、パラメータ、価格、参照入力、ドキュメントの出典、スキーマ |
+| models schema MODEL_ID | バージョン管理された入力および送信用のスキーマ。利用できない場合は、明示的に失敗します |
+| models pricing | 公開のデフォルト価格ルール。ログインなしで読めますが、タスクの見積書ではありません。オプションとして --model、--modality text/image/video/audio、--view summary/full（デフォルトは full）、--product-id、--operation、--lifecycle active/preview/deprecated を指定できます |
+| models recommend | type は必須で image/video/audio。references はカンマ区切りの image/video/audio。limit は 1–10 |
+| docs search | query は必須で最大100文字。type は search と同じ。limit は 1–20、デフォルトは 5 |
+
+docs search は、同梱の公式モデルリファレンスの索引を使います。ウェブサイトをその場でクロールするわけではありません。推奨は、ドキュメントに記載された入力、キーワード、プラットフォームの編集上の優先設定に基づくもので、人気ランキングではありません。単価はタスクの見積書ではありません。
+
+### 見積書と生成
+
+モデルの実際のパラメータを使って input.json を作成し、無料の見積書を取得します：
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+| オプション | 意味 |
+|---|---|
+| --model | 必須。正式な ID、または対応しているエイリアス |
+| --input-file FILE / --input JSON | JSON オブジェクト。どちらか一方を選びます。省略すると、空のオブジェクトから始まります |
+| --inputs-file FILE | 単一の入力の代わりに、同じモデルの1–50件の入力を含む JSON 配列または JSONL を指定します。1つの見積書でバッチ全体を扱います |
+| --prompt TEXT | プロンプトのショートカット。JSON の prompt と矛盾してはいけません |
+| --max-cost-usd NUMBER | 送信時の見積もりに対する上限。正の数で、最大 USD10000 |
+| --media-seconds NUMBER | 価格計算用のヒント。正の数で、最大3600秒。モデルの入力ではありません |
+| --pricing-parameters JSON | 価格ルールが必要とする課金使用量の、実測値または明確に見込まれる値を表す JSON オブジェクト（例：`{"search_count":2}`）。`missing_usage` に示された値を指定し、値を捏造しないでください |
+| --pricing-source pricing_rules | 省略可能です。見積もりには常に公開済みの価格ルールが使われます。以前の値である account と public_reference は、エイリアスとして受け付けられます |
+| --refresh-quote QUOTE_ID | 保存済みで未送信の見積書を、保存されている入力と予算でもう一度見積もります。上記のオプションとは併用できません |
+
+見積書の作成に成功すると quote_id が返されます。見積書は、見積もった時点から**24時間**有効で（`expires_at`）、ログイン、バックエンド、モデル、正確な入力に紐付けられます。生成では、送信前に価格ルールをもう一度読み込みます。同じ入力で、承認済みの価格以下であれば、その後にルールが変更されていても送信されます。価格が上がっていれば `price_changed`、入力が変わっていれば `quote_input_changed`、見積書の有効期限が切れていれば `quote_expired` で失敗します。これらの場合は何も送信されず、新しい見積書と承認が必要です。失敗した見積もりや、上限によって拒否された見積もりは、利用できる見積書にはなりません。課金使用量が不足している見積もりは、不足している値と、それを指定するためのオプションをそれぞれ示して失敗し、見積書は保存されません。仕様、範囲、警告を示し、明確な承認を待ってから、対応するコマンドを選びます：
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
+evolink generate video --quote QUOTE_ID --confirm --json
+evolink generate audio --quote QUOTE_ID --confirm --json
+```
+
+これらは別々の例です。1つの見積書が対象とするのは、1つの種類、1つのタスクだけです。生成では、モデルや入力の差し替えは受け付けられません。変更がある場合は、見積書を取り直して承認を得てください。--confirm は承認を得ていることを宣言するもので、それ自体がユーザーに確認を求めることはできません。
+
+<span id="refresh-quote" />
+
+有効期限が切れた場合や価格が上がった場合など、まだ送信していない見積書を新しくするには、次のように更新します：
+
+```bash
+evolink estimate --refresh-quote QUOTE_ID --json
+```
+
+更新後の見積書には新しい quote_id が付き、元のリクエスト ID は引き継がれ、以前の見積書は置き換えられます。更新後の見積書をユーザーに示し、改めて承認を得て、最新の見積書だけを送信してください。置き換えられた見積書を送信または再開しようとすると `quote_superseded` で失敗し、現在の見積書またはそのタスクが示されます。送信がすでに始まっている見積書は更新できません（`submission_already_started`）。その場合は、代わりにそのタスクを復旧してください。別の更新が同じ見積書を置き換えている最中に実行された更新は、`quote_refresh_conflict` を返します。
+
+`--inputs-file` から作成した見積書は、バッチ全体を対象とします。`generate --quote QUOTE_ID --confirm` は、すべての入力をまとめて送信し（同時に最大10件）、完了を待たずに、各入力のタスク ID またはエラーを返します。`--wait` は単一のタスク用です。結果は `tasks batch --ids` で取得します。
+
+ユーザーが、見積もりや確認は不要だと明確に述べた場合に限ります：
+
+```bash
+evolink generate image --model MODEL_ID --input-file input.json --skip-estimate --json
+```
+
+`--skip-estimate` は、見積書なしで送信します。`--inputs-file` と併用した場合も同じです。価格はチェックされず、タスクは実際の使用量に基づいて課金され、結果にもその旨が示されます（`estimate_skipped`）。無効な入力は、引き続き拒否されます。また、明示した `--max-cost-usd` は引き続き適用されます。これを超えるリクエストや、これと照らして価格をチェックできないリクエストは、送信されません。`--skip-estimate` は、`--quote` や `--confirm` とは併用できません。このコマンドは、独自のリクエスト ID を持つ記録を保存し、`tasks resume` 用の quote_id を返します。
+
+--wait は、既存のタスクの完了を待ちます。タイムアウトは1–86400秒で、デフォルトは1800秒です。タイムアウトや Ctrl-C では、サーバー側のタスクはキャンセルされません。タイムアウトには、すべての読み取り、再試行、待ち時間が含まれます。上限に達すると、`wait_timeout` が、最後に検証できた状態とその `read_at` を報告します。最新の状態を読み取れなかった場合は、`status_check: unverified` を報告します。完全な見積もりでは、送信時のチェックに、その見積もりで示された最大額がデフォルトで使われます。[予算に関する制限](/ja/cli/billing)を参照してください。
+
+### タスク、バッチ、復旧
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --type video --status processing --since 2h --limit 20 --page 1 --json
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+| 一覧のオプション | 仕様 |
+|---|---|
+| --status | processing/completed/failed/cancelled。processing にはキュー待ちも含まれます。省略するとすべてが対象です |
+| --type | image/video/audio。省略するとすべてのメディアが対象です |
+| --model | 正確な正式モデル ID |
+| --since / --until | 作成時刻：ISO 8601、Unix 秒、30m/2h/1d。until はその時刻を含みます |
+| --page / --limit | ページは 1–100000。件数は 1–50、デフォルトは 20 |
+
+時刻によるフィルタリングは、選択したページにだけ影響します。履歴はアカウント全体が対象で、このチャットだけのものではありません。ページが空でも、送信がなかったことの証明にはなりません。total は、ローカルでの時刻フィルタリングより前の値です。バッチの ID は、カンマ区切りで1–50個の値を指定します。
+
+タスク ID がある場合は、get/wait を使います。送信のレスポンスを受け取れなかった場合は、元の見積書を、そのリクエスト ID とログインのまま再開します。バッチの場合、`tasks resume --quote QUOTE_ID` は送信されなかった入力を完了させます。受け付け済みの入力については元のタスクが返され、新たな課金は発生しません。`tasks resume` がリクエスト ID で再送するのは、最初の送信から23時間以内に限られます（EvoLink はこのリクエスト ID を24時間保持します）。それを過ぎると、`recovery_window_passed` で拒否されます。見積書のルールにも従うため、見積書の有効期限が切れている場合（`quote_expired`）や価格が上がっている場合（`price_changed`）は、何も送信されません。いずれの場合も、`tasks batch` または `tasks list` で通ったものを確認し、残りだけを新しい生成またはバッチとして見積もってください。記録が失われた場合、期限が切れた場合、アカウントが変わった場合は、次の有料の操作を行う前に、履歴またはコンソールを確認してください。CLI にはキャンセル用のコマンドがありません。
+
+### 残高とタスクの使用量
+
+```bash
+evolink balance --json
+evolink usage --since 7d --until 1h --type video --max-pages 5 --json
+```
+
+balance は、アカウントの残高と、適用される上限を返します。usage では、model、type、作成時刻を指定できます。since のデフォルトは 30d、max-pages は 1–20 でデフォルトは 5、各ページは50件のタスクです。料金の欠落、カバー範囲、切り捨ての有無を確認してください。
+
+usage は、アカウント全体で保持されている履歴のうち、上限のある範囲から、完了したタスクについて報告された料金を集計したものです。請求書でも、返金の台帳でも、CLI/MCP だけの使用量でも、最終的な予算でもありません。
+
+### アップロードとオリジナルファイルのダウンロード
+
+```bash
+evolink upload ./reference.mp4 --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+evolink download TASK_ID --output ./result.mp4 --index 1 --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+CLI は **1 バイトから 95 MiB まで**の通常のファイルを受け付け、最初にアップロード ID を保存します。uploads get は、元のレシートを読み取るだけです。互換性のあるバックエンドのサポートがない場合は、再送せずに「不明」と報告することがあります。参照素材は、通常72時間保持されます。
+
+download の index は 1 始まりで、デフォルトは 1、範囲は 1–50 です。親ディレクトリは存在している必要があります。ファイルは上書きされません。各結果は最大 1 GiB です。種類と内容のチェックにより、メディアを装った HTML のエラーページは拒否されます。
+
+バッチモードの --all --output-dir DIR は、--template NAME と --resume に対応しています。再開では元のバッチの記録が使われ、名前が同じというだけのファイルは信頼されません。詳しくは[タスクの受け渡し](/ja/cli/workflows#tasks)を参照してください。
+
+### JSON、終了コード、設定
+
+--json は、schema_version:1 と ok を含む JSON を、stdout に1行で出力します。進行状況は stderr に出力されます。エラーの場合は ok:false/error となり、終了コードはゼロ以外になります。Ctrl-C では、通常は終了コード 130 で終了します。タスクの status:failed は、照会の呼び出し自体の失敗とは別のものです。まずコマンドの ok を確認し、次にタスクの状態を確認してください。
+
+ローカルの記録は ~/.evolink-media に残り、認証情報は OS の安全なストレージに保存されます。ログインを移行するためにこのディレクトリをコピーしたり、結果が不確かな送信を解決するために見積書や復旧の記録を削除したりしないでください。
+
+上級者向けの --server は、OAuth リソースとアイデンティティの紐付け先を選択します。デフォルトは https://mcp.evolink.ai/mcp で、REST の実行経路は変わりません。--api-url/--files-url は、本番環境のデフォルトのままにしてください。任意の外部 URL は拒否されます。--token-stdin は、単一のコマンドに限って使う OAuth アクセストークンを渡すためのもので、プラットフォームの API Key ではなく、setup 用でもありません。トークンをコマンドの引数やログに含めないでください。
+
+汎用の run、テキストチャット、キャンセル、チャージ、キー管理、カスタムのエイリアスファイル用のコマンドは提供されていません。対応するコンソールまたは API を使ってください。
+
+<span id="api" />
+## CLI の実行経路と API
+
+CLI 0.8.0 以降、メディアリクエストは**ターミナルまたはエージェント → EvoLink CLI → プラットフォーム REST API** の経路を通ります。入力チェック、モデルのリファレンス、見積もり、結果の整形はローカルで実行されます。業務の実行では、リモート MCP の tools/call は呼び出されません。
+
+| サービス | アドレスと役割 |
+|---|---|
+| プラットフォーム API | https://api.evolink.ai: モデル、メディア、タスク、残高 |
+| Passport | https://passport.evolink.ai: ブラウザでの認証とトークンの更新 |
+| ファイル | https://files-api.evolink.ai: アップロードと互換レシート |
+| OAuth リソース | https://mcp.evolink.ai/mcp: アイデンティティの紐付け用で、メディアの実行経路ではありません |
+| 生成されたオリジナルファイル | タスクが返す HTTPS URL：プラットフォームのトークンなしで直接ダウンロードできます |
+
+### コマンドとバックエンドの操作
+
+| CLI の機能 | バックエンドの操作または実装 |
+|---|---|
+| models search | `GET /v1/models` に、エイリアス、リファレンス、利用可否を組み合わせます |
+| models show/schema、models recommend、docs search | 公開済みの同梱リファレンス、共通ルール、現在のアカウントのモデル一覧 |
+| estimate | `GET /web/api/models/pricing` と、クライアント側の見積もりルール |
+| generate image | `POST /v1/images/generations` |
+| generate video | `POST /v1/videos/generations` |
+| generate audio | `POST /v1/audios/generations` |
+| tasks get/wait | `GET /v1/tasks/{task_id}` |
+| tasks batch | `POST /v1/tasks/batch` |
+| tasks list、usage | `GET /v1/tasks`、ページ分割、範囲に上限のある集計 |
+| balance | `GET /v1/credits` |
+| upload | `POST /v1/files/upload-token` のあと、ファイルサービスへ直接アップロードします |
+| uploads get | 互換性のあるファイルサービスの `GET /api/v1/files/upload-receipts/{upload_id}` |
+| download | タスク結果の直接ダウンロード、形式チェック、結果の記録 |
+
+CLI の quote_id、--confirm、復旧用ファイルは、クライアント側のワークフローを実装するもので、バックエンドの新しいフィールドではありません。公開済みの CLI 0.14.1 は、公開の価格ルール（参考価格で、アカウントの割引は含みません）から見積もります。--max-cost-usd は、最終的な精算額の上限ではありません。
+
+### リクエスト、復旧、自動化
+
+送信の前に、見積書とリクエスト ID を永続的に保存してください。REST では、既存の Idempotency-Key / X-Evo-Run-Id という識別子を使います。レスポンスを受け取れなかった場合は、元の見積書を使って復旧してください。再送信するために、アカウント、入力、識別子を変えてはいけません。クライアント側の記録だけでは、本番環境のすべてのノードでバックエンドの冪等性が一様に保証されていることの証明にはなりません。
+
+スクリプトでは、まず ok を確認し、次にタスクの status、その次に結果と料金のフィールドを確認してください。ターミナルの最後の行に頼るのではなく、quote_id、task_id、ダウンロードのマニフェストを保存してください。照会のエラー、タスクの失敗、ダウンロードの失敗は、それぞれ異なる対処が必要です。有料の送信を無条件に再試行しないでください。
+
+CLI とネイティブ MCP のセッションは別々に管理されますが、現在、アカウントの OAuth は `EvoLink MCP (OAuth)` の権限、上限、一時停止状態を共有します。ネイティブ接続については、[別の MCP ドキュメント](/ja/mcp/overview)を使ってください。

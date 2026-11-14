@@ -1,0 +1,110 @@
+---
+title: "Modelle, Kosten und Kontingente"
+description: "Gemeinsame Regeln für Modellauswahl, Status der Kostenschätzung, Zustimmung, Zugriff und Budgetgrenzen"
+---
+
+Diese Seite enthält die Geschäftsregeln, die für CLI und MCP gemeinsam gelten. Die genauen Eingaben finden Sie in der [CLI-Referenz](/de/cli/reference) und der [MCP-Referenz](/de/mcp/tools). Beschrieben werden die veröffentlichten Versionen CLI 0.14.1 und MCP 1.12.1. Für Suchgebühren gilt der tatsächlich zurückgegebene Wert `search_charges`.
+
+<span id="models" />
+## Modell wählen
+
+1. Bestimmen Sie den Auftrag: Bildgenerierung/-bearbeitung, Text-/Bild-zu-Video, Musik oder Sprache. Legen Sie Anzahl, Qualität, Dauer, Referenzen und Budget fest.
+2. Fragen Sie den für das Konto verfügbaren Katalog ab, verwenden Sie die genaue Modell-ID daraus und prüfen Sie das Schema. Familiennamen, Aliase und Anzeigenamen sind nicht automatisch gültige IDs zum Absenden.
+3. Vergleichen Sie passende neuere oder empfohlene Familien und erläutern Sie dann Qualität, Unterstützung für Referenzen, Kosten und voraussichtliche Wartezeit. Behaupten Sie keine gemessene Beliebtheit, wenn keine Statistiken der Plattform vorliegen.
+4. Prüfen Sie Pflichtfelder, Wertebereiche und sich gegenseitig ausschließende Eingaben, bevor Sie die Kosten der endgültigen Anfrage schätzen. Holen Sie nach einem Wechsel des Modells oder der Eingaben eine neue Bestätigung ein.
+
+Einen Vergleich wert sind unter anderem die Familien GPT Image 2.5/2.0 und Seedream 5.0 für Bilder, Seedance 2.5/2.0 und Wan 3.0 für Videos sowie Suno v6 für Musik. Das sind Suchrichtungen und keine Garantie, dass sie für das Konto verfügbar sind. Wählen Sie für gesprochene Texte Sprachsynthese-Modelle. Beispielmodelle veranschaulichen Abläufe und sind keine Standardempfehlung.
+
+| Information | CLI | MCP |
+|---|---|---|
+| Verfügbare Modelle | `models search`, `models recommend` | `search_models`, `recommend_models` |
+| Parameter und Grenzen | `models show`, `models schema` | `get_model` |
+| Modelldokumentation | `docs search` | `search_docs` |
+| Geschätzte Kosten für die endgültigen Eingaben | `estimate` | `estimate_cost` |
+
+<span id="pricing" />
+## Kostenschätzung lesen
+
+| Status | Bedeutung | Maßnahme |
+|---|---|---|
+| `estimated` | Geschätzter Betrag; maßgeblich bleibt die tatsächliche Abrechnung | Plan, Betrag und bekannte Einschränkungen zeigen, dann Zustimmung einholen |
+| `partial` | Preisfaktoren fehlen | Nicht als vollständige Gesamtsumme behandeln; fehlende Faktoren benennen und klären |
+| `token_billed` | Referenzpreis für die tokenbasiert abgerechneten Modelle von GPT Image, Gemini Omni Flash und Qwen TTS: der Betrag, den EvoLink beim Absenden reserviert; abgerechnet wird nach tatsächlichen Tokens | Als Referenzpreis zeigen, nicht als feste Gesamtsumme; der Auftrag wird nach tatsächlichen Tokens abgerechnet, die Differenz wird erstattet oder nachberechnet |
+| `needs_input` | Erforderliche Eingabe oder abrechnungsrelevante Nutzung fehlt | `missing_usage` und `usage_help` lesen, die dort genannten Angaben ergänzen und erneut schätzen |
+| `no_price` | Kein verwendbarer Preis | Nicht als kostenlos bezeichnen und nicht automatisch absenden |
+
+Die tokenbasiert abgerechneten Modelle von GPT Image (`gpt-image-1.5`, `gpt-image-2`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`, `gpt-image-2.6-flare`, `gpt-image-2.6-sunburst`) liefern `token_billed` mit einem Referenzpreis: die Credits, die EvoLink beim Absenden für genau diese Eingabe reserviert, berechnet aus den Ausgabe-Tokens für Größe und Qualität, den Prompt-Tokens und 1.536 Tokens pro Referenzbild oder Maske, multipliziert mit `n`. Steht `size` auf `auto`, wird eine Ausgabe von 2048×2048 angesetzt; mit einer festgelegten Größe liegt der Referenzpreis daher näher am tatsächlichen Wert. Bei einem GIF von `gpt-image-2.6` zählt das eine Bild, auf das alle seine Frames gezeichnet werden (Frames mit 512×512, wenn `size` auf `auto` steht). Der Auftrag wird nach den Tokens abgerechnet, die er tatsächlich verbraucht; die endgültige Abbuchung kann also niedriger oder etwas höher ausfallen. Token-Angaben in `pricing_parameters` werden für diese Modelle nicht verwendet. Ein ausdrücklich gesetztes `max_cost_usd` muss das 1,5-Fache des Referenzpreises abdecken.
+
+Die Videomodelle von Gemini Omni Flash (`gemini-omni-flash-*`, `gemini-omni-1.1-flash-*`, `gemini-omni-1.2-flash-*`) liefern ebenfalls `token_billed` mit einem Referenzpreis, berechnet so, wie EvoLink beim Absenden reserviert: Video-Ausgabe-Tokens für Auflösung und Dauer der Ausgabe, die Prompt-Tokens, 2.020 Tokens pro Eingabebild und die Tokens eines Eingabe- oder Referenzvideos. Geben Sie bei einem Eingabe- oder Referenzvideo dessen Länge als `media_seconds` (MCP) oder `--media-seconds` (CLI) an; bei mehreren Referenzvideos die Länge des längsten. Ohne diese Angabe gibt es keinen Referenzpreis, und die Kostenschätzung fordert sie an. Die Anfrage enthält die Auflösung eines Videos nicht; EvoLink liest sie erst beim Absenden. Der Referenzpreis setzt sie deshalb mit 4k an, und die Kostenschätzung listet zusätzlich den Preis für jede Eingabeauflösung auf: 360p, 720p, 1080p und 4k (`reference_usage.input_resolution_prices`); zeigen Sie dem Benutzer diese Preise. Token-Angaben in `pricing_parameters` werden auch für diese Modelle nicht verwendet, und `max_cost_usd` wird mit dem 1,5-Fachen des Referenzpreises verglichen. Der Auftrag wird nach den Tokens abgerechnet, die er tatsächlich verbraucht.
+
+`qwen-audio-3.1-tts-flash` liefert ebenfalls `token_billed` mit einem Referenzpreis, berechnet aus dem Text so, wie EvoLink beim Absenden reserviert. Token-Angaben in `pricing_parameters` werden nicht verwendet, `max_cost_usd` wird mit dem 1,5-Fachen des Referenzpreises verglichen, und der Auftrag wird nach den Tokens abgerechnet, die er tatsächlich verbraucht. `hot_fix: null` wird so gelesen, als wäre kein `hot_fix` angegeben.
+
+Eine mit 0 angegebene Nutzung, durch die eine Generierung 0 kosten würde, gilt als fehlend: Keine Mediengenerierung ist kostenlos.
+
+<span id="missing-usage" />
+
+Hängt der Preis eines Modells von einer Nutzung ab, die aus der Eingabe nicht hervorgeht, etwa von der Länge eines Referenzvideos, liefert die Kostenschätzung weder einen Betrag noch einen Zustimmungsnachweis: `total_known` ist `false`, `missing_usage` nennt jeden fehlenden Wert, und `usage_help` beschreibt, wie er anzugeben ist, in MCP mit `media_seconds` oder `pricing_parameters` und in der CLI mit `--media-seconds` oder `--pricing-parameters`. Die Generierung lehnt eine solche Anfrage vor dem Absenden ab (`quote_usage_required`). Eine Kostenschätzung mit `partial` behält den bepreisten Teil bei und nennt, wovon die Gesamtsumme außerdem abhängt. `get_model` und `models show` führen in `billing_usage` die Nutzung auf, die für den Preis eines Modells benötigt wird. Geben Sie gemessene oder ausdrücklich erwartete Werte an; erfinden Sie keine.
+
+Kostenschätzungen werten die Einstellungen aus, nach denen EvoLink abrechnet. Bei Midjourney stammen `speed` und `type` aus `model_params`; Seedream 5.0 Pro wird mit 2K bepreist, wenn `size` oder `quality` die Ausgabe auf 2K setzt; bei Referenz-zu-Video von MiniMax H3 und H3 Max zählen die Referenzbilder, die über die kostenlosen hinausgehen. Die Video-Hochskalierung von Tencent benötigt die Bildrate der Quelle als `pricing_parameters.output_fps`, außer `model_params.max_fps` ist `"30"`. Seedance Entwurf-zu-Video geht davon aus, dass der Entwurf ohne Inhaltsfilter erstellt wurde, außer `pricing_parameters.content_filter` ist `true`.
+
+Prüfen Sie `input_valid`, `problems`, `basis` und `warnings`. Einstiegspreise aus dem Katalog sind keine vollständigen Preisangebote für eine Anfrage. Auflösung, Ton, Referenzen, tatsächliche Eingabedauer und die Abrechnungsart für Audio können die Kosten beeinflussen.
+
+Bei der Generierung mit Seedance 2.5 verwendet `draft: true` ohne Angabe von `quality` den Wert `480p`. Liefert die Kostenschätzung `effective_input` und `defaults_applied`, zeigen Sie diese wirksamen Einstellungen vor der Zustimmung; die Generierung verwendet dieselben Einstellungen. Die Umwandlung Entwurf-zu-Video hat eigene Eingaben. Modellspezifische Prüfungen lassen sich nicht auf andere Modell-IDs oder Vorgänge übertragen.
+
+Bei `seedance-2.5-video-edit` wählt `input.duration: -1` die Bearbeitung aus. Die für die Preisberechnung erwarteten Ausgabesekunden gehören in `pricing_parameters.duration_seconds`; sie ersetzen weder die Einstellung für die Generierung noch legen sie die endgültige Nutzung fest.
+
+Bei sieben Medienrouten ist die Suche standardmäßig ausgeschaltet: `doubao-seedream-5.0-lite`, `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`, `gemini-nano-banana-2.1`, `seedance-2.0-text-to-video`, `seedance-2.0-fast-text-to-video` und `seedance-2.5-text-to-video`. Seedream schaltet sie mit `model_params.tools: [{"type":"web_search"}]` ein; die anderen verwenden `model_params.web_search: true`. Gemini 3.1 Flash Image und Nano Banana 2.1 unterstützen zusätzlich ein unabhängiges `model_params.image_search: true`.
+
+Lassen Sie die Web- und Bildsuche des Modells ausgeschaltet, sofern der Benutzer das Einschalten nicht ausdrücklich verlangt oder ihm zustimmt. Schalten Sie die Suche nie von sich aus ein und auch nicht nur deshalb, weil ein kopiertes Beispiel sie einschaltet. Hält der Agent eine Suche für nötig, erläutert er zuerst die zusätzlichen Preise pro Suche und die unbekannte Gesamtsumme und wartet dann auf die ausdrückliche Einwilligung, bevor er sie einschaltet. Die Zustimmung zu einem Auftrag ohne Suche berechtigt nicht dazu, eine Suche hinzuzufügen; geänderte Sucheinstellungen erfordern eine neue Kostenschätzung und Zustimmung. Dies sind Anweisungen für den Assistenten; der Server prüft die in der Unterhaltung erteilte Einwilligung nicht.
+
+Fügen Sie keinen Hinweis auf Suchgebühren hinzu, wenn die Suche ausgeschaltet ist. Schaltet die endgültige Eingabe die Suche ein, nennen Sie vor der Zustimmung zur Generierung den aktuellen Preis pro Suche für jeden eingeschalteten Suchtyp, auch wenn der Benutzer die Suche verlangt hat. Fehlt die Anzahl, ergibt sich eine mit `partial` gekennzeichnete Zwischensumme der bekannten Kosten, die von null Suchen ausgeht und keine Suchgebühren enthält. Andere unbekannte Nutzung, etwa Text- oder Thinking-Tokens, ist ebenfalls nicht enthalten. Ein einzelner Auftrag kann keine oder mehrere Suchen ausführen; die tatsächliche Anzahl hängt vom Auftrag und von der Strategie des Modells ab, die gesamten Suchgebühren sind vor der Generierung also unbekannt. Web- und Bildsuchen werden getrennt abgerechnet.
+
+`pricing_parameters.search_count` und `image_search_count` beschreiben die erwartete Nutzung, keine Grenzen für die Ausführung. Eine erwartete Anzahl von null schaltet die Suche nicht aus. Eine unvollständige Kostenschätzung kann ein ausdrückliches Budget des Benutzers nicht prüfen. Erfinden Sie keine Anzahl, um unbekannte Nutzung zu beseitigen. Behandelt ein älterer Client eine eingeschaltete Suche ohne erwartete Anzahl als vollständige Kostenschätzung, aktualisieren Sie den Client, bevor Sie diesem Preisangebot zustimmen.
+
+Veröffentlichte Clients verwenden überwiegend öffentliche Standardpreise und keine vollständigen Kontorabatte, keine gemessene Nutzung und keine Preisangebote aus der Kontoabrechnung. Neue Endpunkte oder Code-Kandidaten belegen nicht, dass sie in der Produktion eingesetzt werden. Halten Sie an, wenn die Preisangaben oder der Budgetvergleich unvollständig sind. Als Richtwert für die Umrechnung gelten etwa 68 Credits pro 1 $; maßgeblich sind die tatsächlichen Antworten und die Kontoeinträge.
+
+<span id="approval" />
+## Zustimmung und Budgets
+
+Zeigen Sie das genaue Modell, die endgültigen Eingaben, Ausgabespezifikationen und -anzahl, die geschätzten Kosten und die Einschränkungen. Holen Sie die ausdrückliche Zustimmung für diese Generierung ein. Eine Zustimmung gilt 24 Stunden ab der Kostenschätzung, für dieselbe Eingabe zum genehmigten Preis oder darunter. Die Generierung schätzt vor dem Absenden erneut und fährt fort, wenn der Preis unverändert oder niedriger ist, auch unter später geänderten Preisregeln. Ein höherer Preis (`price_changed`), ein geändertes Modell, eine geänderte Eingabe oder Referenz (`quote_input_changed`), ein anderes Konto oder eine abgelaufene Zustimmung (`quote_expired`) erfordern eine neue Kostenschätzung und Zustimmung.
+
+| Bedingung | Aktuelle Bedeutung |
+|---|---|
+| Anmeldung am Konto | Zugriff auf die Dienste des Kontos |
+| Befehls-/Werkzeugberechtigung des Hosts | Erlaubnis für den Agenten, einen Vorgang auszuführen |
+| Kostenzustimmung pro Auftrag | Annahme dieses Plans und der geschätzten Kosten |
+| Ausdrückliches `max_cost_usd` | In veröffentlichten Clients ein Vergleich mit der Kostenschätzung vor dem Absenden (der Wert muss das 1,5-Fache eines Referenzpreises abdecken); **keine Obergrenze für die endgültige Abbuchung** |
+| Kontingent des Plattform-Keys | Tages- und Gesamtlimits des Kontos sowie Zugriffsrichtlinien |
+
+Dies sind getrennte Prüfungen. Anmeldung und Host-Berechtigung sind keine Zustimmung zu einer Abbuchung. Entfernen Sie keine Budgets und wechseln Sie weder Keys noch Wege, um eine Ablehnung zu umgehen. Endgültige Obergrenzen setzen eine entsprechende Unterstützung auf dem Server voraus; die aktuelle Dokumentation kann nicht zusagen, dass die Abrechnung ein Budget für die Kostenschätzung nie überschreitet.
+
+Die CLI speichert eine lokale `quote_id` und sendet mit `--confirm` ab. Bei nativem MCP bleiben Eingaben, Kostenschätzungen und die ausdrückliche Zustimmung im Ablauf des Agenten; es gibt dort weder eine Preisangebotsdatei der CLI noch eine serverseitige Zustimmungsschaltfläche auf Sitzungsebene. Siehe [CLI-Zustimmung](/de/cli/billing#pricing) und [MCP-Zustimmung](/de/mcp/billing#pricing).
+
+<span id="skip-estimate" />
+### Generieren ohne Kostenschätzung
+
+Sagt der Benutzer ausdrücklich, dass nicht geschätzt oder bestätigt werden soll (zum Beispiel „direkt generieren“), sendet der Agent ohne Preisangebot ab: in MCP mit `skip_estimate: true`, in der CLI mit `--skip-estimate`. Der Umfang richtet sich nach dem, was der Benutzer gesagt hat: dieser Auftrag, dieser Batch oder jede spätere Generierung in der Unterhaltung. Der Agent leitet dies nie aus Schweigen, aus dem Guthaben oder aus seinem eigenen Vorschlag ab. Verzichtet der Benutzer für den Rest der Unterhaltung darauf, sagt der Agent einmal, dass spätere Generierungen ohne Rückfrage abgesendet werden; eine neue Unterhaltung oder die Bitte, Kostenschätzungen wieder einzuschalten, bringt sie zurück. Ungültige Eingaben und ein ausdrückliches Budget werden weiterhin geprüft, die Suche braucht weiterhin eine Zustimmung, und der Auftrag wird nach tatsächlicher Nutzung abgerechnet. Schlägt eine Kostenschätzung fehl oder hat sie keine Gesamtsumme und hat der Benutzer nicht darauf verzichtet, fragt der Agent einmal, ob trotzdem nach tatsächlicher Nutzung generiert werden soll.
+
+<span id="batches" />
+### Mehrere Aufträge mit einem Modell
+
+Eine Kostenschätzung deckt bis zu 50 Eingaben eines Modells ab (MCP `inputs`, CLI `--inputs-file`): Sie liefert den Preis jeder Eingabe, die Gesamtsumme und einen Zustimmungsnachweis für genau diesen Batch. Nach der Zustimmung sendet ein Aufruf alle Eingaben auf einmal ab und liefert die Auftragskennungen, ohne zu warten; holen Sie die Ergebnisse mit `list_tasks` oder `tasks batch` ab. Wurden einige Eingaben nicht abgesendet, schließen Sie den Batch mit derselben Anfragekennung und genau denselben Eingaben ab: In MCP rufen Sie innerhalb von 24 Stunden nach dem ersten Absenden erneut mit derselben `client_request_id` auf (schätzen Sie vorher erneut, wenn die Zustimmung abgelaufen ist); in der CLI führen Sie innerhalb von 23 Stunden nach dem ersten Absenden `tasks resume --quote` aus, solange das Preisangebot nicht abgelaufen und der Preis nicht gestiegen ist. Angenommene Eingaben liefern ihre ursprünglichen Aufträge ohne erneute Abbuchung zurück. Senden Sie innerhalb dieses Zeitfensters angenommene Eingaben, nicht abgesendete Eingaben oder Eingaben mit unbekanntem Ausgang nie unter einer neuen Anfragekennung erneut ab. Prüfen Sie nach Ablauf dieses Zeitfensters, welche Aufträge existieren (`list_tasks`, `tasks batch` oder `tasks list`), und senden Sie nur die Eingaben, die nicht durchgegangen sind, als neuen Batch mit neuer Kostenschätzung und neuer Anfragekennung ab. Manche Modelle, etwa GPT Image, liefern oft weniger Bilder als `n`; verwenden Sie daher eine Eingabe pro Bild.
+
+<span id="authorization" />
+## Berechtigungen, Guthaben und Kontingente
+
+CLI und Remote-MCP-OAuth desselben Kontos können derzeit Berechtigungen, Kontingente und den Pausenstatus des internen Keys gemeinsam nutzen. Änderungen wirken sich auf alle aus, die ihn verwenden, während die Sitzungen von CLI und Host getrennt bleiben. Lokales stdio verwendet den dafür konfigurierten persönlichen API Key.
+
+Modell-, Guthaben- und Auftragsabfragen senden keine Mediengenerierung ab. Die Generierung wird abgerechnet; für Uploads gelten eigene Grenzen des Dateidienstes. Beheben Sie unzureichendes Guthaben, unzureichendes Kontingent oder unzureichenden Zugriff in den jeweiligen Kontoeinstellungen. Eine erneute Authentifizierung kann weder Guthaben hinzufügen noch die Pause eines Keys aufheben.
+
+Ein fehlgeschlagener Auftrag (`status: failed`) wird nicht berechnet; die beim Absenden reservierten Credits werden automatisch wieder gutgeschrieben. Eine Zeitüberschreitung, eine Abmeldung oder das Schließen einer Seite belegen weder, dass nichts abgebucht wurde, noch eine Erstattung. Sagen Sie nur dann, dass eine Erstattung eingegangen ist, wenn ein ausdrücklicher Abrechnungsnachweis vorliegt; Nutzungsabfragen sind keine vollständigen Abrechnungen.
+
+<span id="troubleshooting" />
+## Leere Suche, ungültige Eingaben oder unvollständige Preisangaben
+
+1. Formulieren Sie die Suche breiter und behalten Sie dabei die für Auftrag und Referenzen erforderlichen Funktionen bei; prüfen Sie Konto und Berechtigungen.
+2. Lesen Sie das Schema dieses Modells erneut und prüfen Sie Felder, Enum-Werte, Wertebereiche und sich gegenseitig ausschließende Referenzen.
+3. Schätzen Sie die Kosten der endgültigen Eingaben und richten Sie sich nach der Statustabelle. Füllen Sie unbekannte Faktoren nicht mit Einstiegspreisen auf.
+4. Holen Sie für noch nicht abgesendete Anfragen eine neue Bestätigung ein. Bei abgesendeten Anfragen oder Anfragen mit unbekanntem Ausgang steht [zuerst die Wiederaufnahme](/de/cli-mcp/tasks-and-files#recovery) an.
+
+Maßnahmen für den jeweiligen Weg finden Sie unter [CLI-Fehlerbehebung für Modelle](/de/cli/billing#models-and-pricing) und [MCP-Fehlerbehebung für Modelle](/de/mcp/billing#models-and-pricing).

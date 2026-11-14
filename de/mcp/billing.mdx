@@ -1,0 +1,164 @@
+---
+title: "MCP: Autorisierung, Zustimmung und Fehlerbehebung"
+description: "Kostengrenzen, Kontozugriff, Aufbewahrung und schrittweise Fehlerbehebung"
+---
+
+<span id="pricing" />
+
+## MCP-Kosten und Zustimmung
+
+Diese Seite beschreibt das veröffentlichte MCP 1.12.1. Rufen Sie `estimate_cost` auf und zeigen Sie dann Modell, endgültige Eingaben, Anzahl der Ausgaben und die geschätzten Kosten. Rufen Sie das Generierungswerkzeug erst nach ausdrücklicher Zustimmung zu diesem Auftrag auf. Sagt der Benutzer ausdrücklich, dass nicht geschätzt oder bestätigt werden soll, für diesen Auftrag, einen Batch oder den Rest der Unterhaltung, sendet der Assistent stattdessen mit `skip_estimate: true` ab; siehe [Generieren ohne Kostenschätzung](/de/mcp/tools#skip-estimate).
+
+Status der Kostenschätzung, Einschränkungen der öffentlichen Preise, Zustimmung und Budgets finden Sie unter [Modelle, Kosten und Kontingente](/de/cli-mcp/models-and-billing#pricing). In den veröffentlichten Versionen vergleicht max_cost_usd nur mit Kostenschätzungen vor dem Absenden; es begrenzt die endgültige Abbuchung nicht.
+
+estimate_cost akzeptiert max_cost_usd nicht; die Generierungswerkzeuge akzeptieren es.
+
+Natives MCP hat weder die lokale `quote_id` und den Befehl `--confirm` der CLI noch eine serverseitige Zustimmungsschaltfläche auf Sitzungsebene. Der Agent muss Modell, Eingaben, Kostenschätzung und Zustimmung für diesen Auftrag festhalten; eine geänderte Eingabe, ein höherer Preis oder eine abgelaufene Zustimmung erfordern eine erneute Zustimmung. Eine Zustimmung (`pricing_quote`) gilt 24 Stunden ab der Kostenschätzung, zum genehmigten Preis oder darunter: Das Generierungswerkzeug schätzt erneut und sendet ab, wenn der Preis unverändert oder niedriger ist, auch unter später geänderten Preisregeln. Ein höherer Preis liefert `price_changed`, eine geänderte Eingabe `quote_input_changed` und eine Zustimmung nach ihrem `expires_at` den Fehler `quote_expired`. Die Werkzeugberechtigung des Hosts, die Kontoautorisierung und die Zustimmung zum Kauf ersetzen einander nicht.
+
+Modell-, Guthaben- und Auftragsabfragen senden keine Generierung ab. Die Generierung wird abgerechnet; die Grenzen des Dateidienstes gelten gesondert. Ein fehlgeschlagener Auftrag wird nicht berechnet, und die beim Absenden reservierten Credits werden automatisch wieder gutgeschrieben. Eine Zeitüberschreitung oder das Schließen des Chats belegt weder, dass nichts abgebucht wurde, noch, dass eine Erstattung abgeschlossen ist. Nutzungsabfragen sind keine vollständigen Abrechnungsbelege.
+
+Siehe [gemeinsame Zugriffsregeln](/de/cli-mcp/models-and-billing#authorization); die Schritte zum An- und Abmelden für diesen Weg stehen weiterhin auf dieser Seite.
+
+<span id="authorization" />
+
+## Autorisierung, Berechtigungen und Kontingente
+
+Remote-MCP verwendet das Browser-OAuth von Passport. Der Host speichert die Anmeldedaten der Verbindung, und der Dienst verwendet den vorhandenen, mit OAuth verknüpften Key. Remote-MCP und CLI können Kontozugriff, Key-Kontingente und Berechtigungen gemeinsam nutzen. Das Pausieren eines gemeinsam genutzten Keys wirkt sich auf alle aus, die ihn verwenden; die Abmeldung einer Host-Sitzung ist ein gesonderter Vorgang.
+
+Lokales stdio verwendet den persönlichen API Key, der seinem MCP-Prozess übergeben wurde, und folgt den Berechtigungen und Kontingenten dieses Keys. Fügen Sie keine Keys in den Chat ein und verwenden Sie die CLI-Anmeldung nicht als Nachweis für eine Autorisierung von nativem MCP.
+
+Trennen Sie die Verbindung oder melden Sie sich in den MCP- oder Connector-Einstellungen des Hosts ab. Widerrufen Sie die Kontoautorisierung bei Bedarf über die Verwaltung der Kontoautorisierungen. Das Schließen eines Fensters widerruft den Zugriff nicht unbedingt. Beheben Sie unzureichendes Guthaben, unzureichende Tages- oder Gesamtkontingente oder unzureichende Modellberechtigungen über die Kontoeinstellungen.
+
+<span id="retention" />
+
+## Speicherung und Gültigkeitsdauer
+
+Die Standardgültigkeit von Preisangeboten, Referenzen, Upload-Autorisierungen und Original-URLs steht unter [Aufträge, Referenzen und Ergebnisse](/de/cli-mcp/tasks-and-files#retention). Maßgeblich sind die tatsächlich zurückgegebenen Werte; ob Belege unterstützt werden, hängt vom Deployment des Dateidienstes ab.
+
+<span id="faq" />
+
+## MCP-Fehlerbehebung: Ihre Verbindung bestimmen
+
+Remote-MCP verwendet `https://mcp.evolink.ai/mcp`, Streamable HTTP und die OAuth-Anmeldung des Hosts. Lokales stdio verwendet den vom Host konfigurierten Prozess `@evolinkai/mcp` und einen Plattform-Key. Prüfen Sie Anmeldedaten und Werkzeugerkennung für die tatsächliche Verbindung.
+
+| Symptom | Abschnitt der Fehlerbehebung |
+|---|---|
+| Autorisierung im Browser schlägt fehl oder wiederholt sich | [Anmeldung](#login) |
+| Skill vorhanden, aber tatsächliche Werkzeuge fehlen | [Skills und Berechtigungen](#skills-discovery) |
+| MCP fehlt, nur Textantworten oder verweigerte Werkzeuge | [Verbindung und Werkzeugerkennung](#mcp-connection) |
+| Modell fehlt, ungültige Eingaben oder unvollständige Preisangaben | [Modelle und Preise](#models-and-pricing) |
+| Zeitüberschreitung bei der Generierung oder Ausgang unbekannt | [Aufträge und Wiederaufnahme](#tasks-and-recovery) |
+| Anhang nicht lesbar oder Upload fehlgeschlagen | [Uploads](#uploads) |
+| Originaldatei mit 403, graue Vorschau oder Ergebnis nur als Link | [Downloads](#download) |
+| Problem besteht weiter | [Informationen für den Support](#support) |
+
+Prüfen Sie, ob diese Host-Verbindung aktiviert und autorisiert ist und ob die Werkzeuge sichtbar sind, und rufen Sie dann `check_balance` tatsächlich auf. Remote-MCP stellt 16 Werkzeuge bereit; lokales stdio stellt 14 bereit. Ein Erfolg mit der CLI beweist keinen Zugriff auf natives MCP, und die MCP-Fehlerbehebung erfordert keine CLI-Installation.
+
+<span id="login" />
+
+### Anmeldung und Autorisierung im Browser
+
+<Steps>
+  <Step title="Autorisierung vom Host aus starten">
+    Verwenden Sie die Anmeldung oder Autorisierung in diesem MCP- oder Connector-Eintrag. Den Befehl oder das Menü des Hosts finden Sie in dessen eigener Anleitung. Die Anmeldung bei einer separaten CLI autorisiert diese Verbindung nicht.
+  </Step>
+  <Step title="Kontozustimmung im Browser abschließen">
+    Melden Sie sich beim richtigen EvoLink-Konto an, prüfen Sie die Scopes und stimmen Sie zu. Lassen Sie den Autorisierungsablauf des Hosts währenddessen geöffnet. Geben Sie keine vollständigen Autorisierungs-URLs oder Callback-Parameter weiter. Starten Sie einen fehlgeschlagenen Ablauf vom ursprünglichen Host aus neu.
+  </Step>
+  <Step title="Zum Host zurückkehren und prüfen">
+    Aktualisieren Sie die Werkzeuge der Verbindung, prüfen Sie, ob `check_balance` und `search_models` vorhanden sind, und fragen Sie das Guthaben tatsächlich ab. Autorisieren Sie nach 401 erneut. Prüfen Sie bei 403 zusätzlich die Kontoberechtigungen, den Key-Status und die Werkzeugberechtigungen des Hosts.
+  </Step>
+</Steps>
+
+Lokales stdio verwendet diesen Browser-Ablauf nicht. Prüfen Sie den Plattform-Key, den der Prozess erhalten hat, die Startumgebung und stderr. Mischen Sie Remote-OAuth nicht mit persönlichen Keys. Siehe [Weitere Clients](/de/mcp/other-clients).
+
+<span id="skills-discovery" />
+
+### Skill installiert, aber Werkzeuge nicht verfügbar
+
+1. Lesen Sie die Werkzeuganleitung `evolink-mcp`. Natives MCP kann keine Terminalbefehle aus dem CLI-Skill ausführen.
+2. Prüfen Sie die tatsächliche Serverkonfiguration und die Werkzeuge im Host. Das Lesen eines Skills registriert keinen Server, und die Installation eines Plugins schließt OAuth nicht automatisch ab.
+3. Laden Sie die Sitzung oder das Plugin neu und prüfen Sie die Werkzeugberechtigungen. Anleitungen ohne aufgezeichneten Werkzeugaufruf beweisen keinen Zugriff.
+4. Werden Werkzeuge aufgelistet, schlagen Aufrufe aber fehl, prüfen Sie den Werkzeugfehler und die ursprüngliche Verbindung. Verwenden Sie keine kostenpflichtige Generierung als Verbindungstest.
+
+<span id="mcp-connection" />
+### MCP-Verbindung und Zugriff: fehlende Werkzeuge, Verbindungsfehler, 401/403
+
+1. Prüfen Sie den Verbindungstyp. Remote verwendet `https://mcp.evolink.ai/mcp`, Streamable HTTP und OAuth; lokales stdio verwendet einen Startbefehl und einen persönlichen Key. Eine Dokumentationsseite, `llms.txt` oder ein REST-Endpunkt ist kein MCP-Server.
+2. Aktivieren Sie EvoLink, schließen Sie die Autorisierung im Browser für diesen Host ab und aktualisieren Sie dann oder öffnen Sie eine neue Sitzung. Sichern Sie die vorhandene Konfiguration und fügen Sie nur EvoLink ein. Prüfen Sie Anführungszeichen und Kommas in JSON, Leerzeichen in YAML und den Geltungsbereich der Konfiguration, ohne andere Dienste zu überschreiben.
+3. Rufen Sie `check_balance` und `search_models` auf. Werden Werkzeuge aufgelistet, schlagen Aufrufe aber fehl, prüfen Sie die Autorisierung. Funktioniert die Guthabenabfrage, fehlen aber die Generierungswerkzeuge, prüfen Sie die Werkzeugschalter und die Richtlinien des Arbeitsbereichs.
+
+| Symptom | Maßnahme |
+|---|---|
+| Doppelter Servername | Den vorhandenen Eintrag prüfen und eine Quelle wählen; Duplikate aus manueller Konfiguration und Plugin vermeiden |
+| 401 / abgelaufene Autorisierung | Über den betroffenen Host erneut autorisieren und dabei die Auftragskennungen aufbewahren |
+| 403 / verweigertes Werkzeug | Zwischen Host-Richtlinie, Limits von Konto oder Key und Ablehnung durch das Netzwerk unterscheiden; die fehlgeschlagene Phase festhalten, statt anzunehmen, dass eine Änderung des UA jeden 403 behebt |
+| Lokaler Prozess startet nicht | Node 20+, npx-Pfad, Host-Umgebung und Startfehler prüfen; neu laden und prüfen |
+| Lokaler Key ungültig oder nicht autorisiert | Status und Geltungsbereich im Dashboard prüfen und den Key in den Secret-Einstellungen des Hosts aktualisieren, nicht im Chat |
+| Konfigurationsänderung bleibt ohne Wirkung | Den Prozess aktualisieren, dem die Verbindung gehört; ein Remote-Gateway wird nicht zusammen mit dem Terminal Ihres Laptops aktualisiert |
+
+Einrichtungsseiten: [ChatGPT](/de/mcp/chatgpt), [Claude](/de/mcp/claude), [Claude Code](/de/mcp/claude-code), [Codex](/de/mcp/codex), [Cursor](/de/mcp/cursor), [OpenClaw](/de/mcp/openclaw), [Hermes](/de/mcp/hermes-agent), [weitere Clients](/de/mcp/other-clients).
+
+<span id="models-and-pricing" />
+### Modelle und Preise: leere Suche, ungültige Parameter, unvollständige Kostenschätzung
+
+1. Suchen Sie in den aktuellen Modellen und verwenden Sie die zurückgegebene kanonische ID. Eine Familie, ein Anzeigename oder ein Alias ist nicht unbedingt eine gültige ID zum Absenden. Formulieren Sie die Suche breiter, ohne erforderliche Funktionen für Referenzen aufzugeben.
+2. Prüfen Sie `get_model` von MCP für dieses Modell. Prüfen Sie Pflichtfelder, Schreibweise, Enum-Werte, numerische Grenzen und sich gegenseitig ausschließende Referenzen. Übernehmen Sie nicht die Felder `duration`, `size` oder `quality` eines anderen Modells.
+3. Schätzen Sie erneut und prüfen Sie `input_valid`, `problems`, `estimate.status`, `basis` und `warnings`. Eine geänderte Eingabe oder Identität, ein höherer Preis oder eine abgelaufene Zustimmung erfordern eine neue Kostenschätzung und Zustimmung.
+
+Ergänzen Sie bei `needs_input` die Eingabe oder die abrechnungsrelevante Nutzung, die `missing_usage` und `usage_help` nennen, über `media_seconds` oder `pricing_parameters`; `no_price` ist nicht verwendbar, und `partial` ist keine Gesamtsumme. Eine unbekannte Dauer oder unbekannte Multiplikatoren für Referenzen lassen sich nicht mit einem Einstiegspreis auffüllen. Behalten Sie das Budget bei; entfernen Sie nicht stillschweigend Obergrenzen, wechseln Sie keine Keys und verringern Sie keine Spezifikationen, um eine Ablehnung zu umgehen.
+
+Hat kein Modell aus `search_models`, `get_model` oder `recommend_models` einen Preis und steht in `pricing_warning` der Text `Public pricing rules are unavailable or invalid`, ist der Server 1.8.1 oder älter: Diese Versionen verwerfen alle Preise, wenn eine gestaffelte Regel keinen `multiplier` hat. Remote-MCP läuft mit einer neueren Version; rufen Sie das Werkzeug also erneut auf. Lokales stdio, das mit `npx -y @evolinkai/mcp@latest` konfiguriert ist, übernimmt die neue Version, wenn der Client neu startet. Ab 1.8.2 wird ein Modell, dessen Regeln nicht gelesen werden können, ausgelassen und in `pricing_warning` genannt; andere Modelle behalten ihre Preise.
+
+Liefert `estimate_cost` oder `get_pricing_rules` den Fehler `rate_limited` (`pricing_calls_per_minute`) mit einer Anzahl von Sekunden, warten Sie so lange und rufen Sie erneut auf. Der gehostete Dienst lässt jedes angemeldete Konto die Preisregeln für jedes dieser beiden Werkzeuge 30-mal pro Minute lesen; Antworten aus Regeln, die kurz zuvor gelesen wurden, werden nicht gezählt. Schätzen Sie mehrere Eingaben eines Modells mit `inputs` in einem Aufruf, statt für jede Eingabe einen eigenen Aufruf zu machen. Begrenzt die Plattform selbst das Lesen der Preisregeln, verwendet eine Kostenschätzung Regeln, die in den letzten 10 Minuten gelesen wurden, und gibt an, wann sie gelesen wurden. Lokales stdio ist auf diese Weise nicht begrenzt.
+
+Die Kostenschätzungen der veröffentlichten Clients auf Basis öffentlicher Standardpreise sind keine kontospezifischen, verbindlichen Preisangebote, und `max_cost_usd` ist keine Obergrenze für die endgültige Abrechnung. Siehe [Kosten](/de/mcp/billing) und [Befehls- und Werkzeugreferenz](/de/mcp/tools).
+
+<span id="tasks-and-recovery" />
+
+### Zeitüberschreitung, laufende Aufträge oder unbekannter Ausgang
+
+<Steps>
+  <Step title="Ursprünglichen Auftrag aufbewahren und abfragen">
+    Rufen Sie für eine vorhandene `task_id` das Werkzeug `get_task` auf; setzen Sie `wait_seconds` auf 0–45 für ein begrenztes Warten. Verwenden Sie `list_tasks` für mehrere Kennungen. Eine Zeitüberschreitung beendet nur dieses Warten, nicht die Generierung. Liefert ein Lesevorgang `status_check: unverified` (`task_response_invalid`, `task_identity_mismatch`, `task_status_unknown` oder `task_query_timeout` oder einen `last_known_status`, wenn ein späterer Lesevorgang während des Wartens fehlgeschlagen ist), fragen Sie denselben Auftrag erneut ab; das ist kein Fehlschlag. Ein Ergebnis der Generierung mit `submission_state: accepted` hat bereits eine `task_id`.
+  </Step>
+  <Step title="Übermittlung mit unbekanntem Ausgang über die ursprüngliche Kennung wiederaufnehmen">
+    Bewahren Sie `client_request_id`, Eingaben, Identität und Fehler auf, wenn keine Auftragskennung zurückkommt. Führen Sie die Wiederaufnahme über dasselbe Werkzeug und mit derselben Kennung durch; wechseln Sie weder Konto noch Kennung, um erneut zu generieren. EvoLink bewahrt eine Anfragekennung 24 Stunden lang auf: In dieser Zeit liefern dieselbe Kennung und dieselben Eingaben den ursprünglichen Auftrag ohne erneute Abbuchung zurück, und ein Batch sendet nur die Elemente ab, die sein Ergebnis als noch abzuschließen aufführt. Ist die Zustimmung bis dahin abgelaufen, schätzen Sie dieselben Eingaben erneut und übergeben Sie das neue `pricing_quote` mit derselben Kennung. Nach 24 Stunden verhindert die Kennung keinen zweiten Auftrag mehr: Prüfen Sie zuerst `list_tasks` und senden Sie dann nur ab, was nicht durchgegangen ist, mit neuer Kostenschätzung und neuer Kennung. `list_tasks` akzeptiert nur seine dokumentierten Parameter, keine erfundenen Filter.
+  </Step>
+  <Step title="Fehlschlag und Kontoergebnis getrennt klären">
+    Halten Sie tatsächliche Fehler und Zeitpunkte fest und fragen Sie den ursprünglichen Auftrag und die Kontonutzung ab. Ein fehlgeschlagener Auftrag wird nicht berechnet, und die beim Absenden reservierten Credits werden automatisch wieder gutgeschrieben; eine Übermittlung mit unbekanntem Ausgang ist kein Fehlschlag und beweist nicht, dass nichts abgebucht wurde. Es gibt kein nutzbares öffentliches Werkzeug zum Abbrechen in der Warteschlange. Das Trennen von MCP oder das Schließen einer Seite bricht den Auftrag nicht ab.
+  </Step>
+</Steps>
+
+Eine geänderte Eingabe, ein höherer Preis oder eine abgelaufene Zustimmung erfordern bei nicht abgesendeten Aufträgen eine neue Kostenschätzung und Zustimmung. Nehmen Sie abgesendete Anfragen oder Anfragen mit unbekanntem Ausgang zuerst wieder auf. Parameter und Beispiele finden Sie unter [Auftragswerkzeuge](/de/mcp/tools#task-progress-and-results).
+
+<span id="uploads" />
+
+### Nicht lesbare Anhänge, fehlgeschlagene Uploads oder unbekannter Ausgang
+
+1. Stellen Sie sicher, dass der Host die bereitgestellte Datei lesen kann. Remote-MCP kann einen Desktop-Pfad nicht direkt lesen, und Chat-Anhänge werden nicht automatisch zu Modell-URLs.
+2. Verwenden Sie `upload_file.file_url` für erreichbare URLs. base64 ist im Remote-Modus auf 1 MiB begrenzt. Rufen Sie für größere Dateien `prepare_upload` auf, laden Sie aus einer Umgebung mit Dateizugriff hoch und rufen Sie dann `get_upload` auf. Einmalige Uploads erlauben bis zu 95 MiB; die Autorisierung gilt etwa 15 Minuten und der Status etwa eine Stunde.
+3. Lokales stdio kann `upload_file.file_path` auf dem Rechner des MCP-Prozesses verwenden. Prüfen Sie Pfad, Berechtigungen, Format sowie die Grenzen von Dateidienst und Modell; ein Desktop-Pfad ist auf einem Cloud-Host nicht automatisch lesbar.
+4. Bewahren Sie die ursprüngliche `upload_id` auf und fragen Sie sie ab. Unbekannt heißt nicht, dass nichts hochgeladen wurde, und die Kompatibilität der Belege hängt vom Deployment des Dateidienstes ab. Fordern Sie einen Ersatz nach nachweislichem Fehlschlag oder nach Ablauf der Gültigkeit an. Referenzen bleiben in der Regel 72 Stunden erhalten; laden Sie abgelaufene Eingaben erneut hoch.
+
+Parameter finden Sie unter [Upload-Werkzeuge](/de/mcp/tools), die vollständigen Schritte im [Ablauf für Referenzen](/de/mcp/overview#files). Verwenden Sie eine erreichbare URL, wenn dem Host Dateifunktionen fehlen. Beheben Sie Upload-Fehler nicht durch erneutes Generieren.
+
+<span id="download" />
+
+### Downloads und Vorschauen
+
+Fragen Sie den ursprünglichen Auftrag ab, vergewissern Sie sich, dass er abgeschlossen ist, und verwenden Sie dessen Original-URL. Öffnen Sie Originale im Browser oder speichern Sie sie aus einer Umgebung mit Dateizugriff; siehe [MCP-Übergabe](/de/mcp/overview#delivery).
+
+HTTP- und Formatprüfungen, das Python-Beispiel mit Produkt-User-Agent, abgelaufene Links und graue Vorschauen stehen unter [Fehlerbehebung beim Download](/de/cli-mcp/tasks-and-files#download). Nehmen Sie Aufträge mit unbekanntem Ausgang wieder auf, statt neu zu generieren oder Vorschauen zu bearbeiten.
+
+<span id="support" />
+
+### Informationen für den Support
+
+Folgen Sie der [Support-Checkliste](/de/cli-mcp/tasks-and-files#support) mit Versionen, fehlgeschlagener Phase, Kennungen und geschwärzten Fehlern. Bewahren Sie die Diagnosedaten dieses Wegs auf; geben Sie keine Keys, Tokens, privaten URLs oder Umgebungsauszüge weiter.
+
+<span id="cli-install" />
+
+### Fehlerbehebung zur CLI-Installation gesucht
+
+CLI-Befehle, sicherer Speicher, SSH-Callbacks und Skill-Erkennung stehen jetzt in der [CLI-Fehlerbehebung](/de/cli/billing#cli-install) und in der [Anleitung zur CLI-Einrichtung](/de/cli/setup). Dieser Eintrag erhält die Kompatibilität mit alten Links. Nutzen Sie für die Einrichtung von nativem MCP diese Seite und die Anleitung Ihres Clients.

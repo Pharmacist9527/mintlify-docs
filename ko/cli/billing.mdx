@@ -1,0 +1,241 @@
+---
+title: "CLI 로그인, 승인, 문제 해결"
+description: "비용의 적용 범위, 계정 접근 권한, 보관 기간, 단계별 문제 해결"
+---
+
+<span id="pricing" />
+
+## CLI 비용과 승인
+
+이 페이지는 정식 출시된 CLI 0.14.1을 기준으로 합니다. CLI는 플랫폼 API를 직접 호출하고, 명령과 저장된 예상 비용을 로컬에서 관리합니다. 로그인에는 Passport를 사용합니다. 먼저 [전체 작업 흐름](/ko/cli/workflows)부터 확인하세요.
+
+1. 최종 모델과 입력으로 `evolink estimate`를 실행하고 예상 비용을 보여 주세요.
+2. 이 모델, 매개변수, 비용에 대한 승인을 받은 뒤 저장된 `quote_id`와 `--confirm`을 사용해 생성하세요.
+3. 입력이나 로그인이 바뀌었거나, 가격이 올랐거나, 견적이 만료되었다면 예상 비용을 다시 산정하고 승인을 받으세요. 다른 견적을 재사용하지 마세요. 사용자가 예상 비용 산정이나 확인을 하지 말라고 명시적으로 말한 경우에는 1–2단계 대신 `generate --skip-estimate`를 사용하세요.
+4. 원래 작업과 계정 사용량을 조회하세요. 예상 비용은 실제 청구나 환불이 이루어졌다는 근거가 되지 않습니다.
+
+예상 비용 상태, 공개 가격의 한계, 승인, 예산은 [모델, 비용, 할당량](/ko/cli-mcp/models-and-billing#pricing)을 참고하세요. 정식 출시된 버전의 max_cost_usd는 제출 전 예상 비용과 비교만 할 뿐, 최종 청구액에 상한을 두지 않습니다.
+
+견적은 예상 비용을 산정한 시점부터 24시간 동안 유효하며, 원래 신원, 모델, 입력에 묶입니다. 생성 단계에서는 제출하기 전에 예상 비용을 다시 산정합니다. 같은 입력이 승인된 가격 이하이면 제출하며, 이후에 가격 규칙이 바뀐 경우에도 마찬가지입니다. 반면 가격이 올랐거나(`price_changed`), 입력이 바뀌었거나(`quote_input_changed`), 견적이 만료되었으면(`quote_expired`) 아무것도 보내지 않으며 예상 비용을 새로 산정하고 다시 승인받아야 합니다. 견적은 결제 영수증이 아닙니다. `--confirm`은 이번 작업에 대한 승인을 나타낼 뿐, 로그인이나 호스트의 실행 권한을 대신하지 않습니다. 모델, 잔액, 작업 조회는 생성을 제출하지 않습니다. 생성에는 요금이 부과되며, 파일 서비스의 크기 제한과 보관 기간 제한은 별도로 적용됩니다. 참고 환산 비율은 $1당 약 68 크레딧입니다. 실제로 반환된 값과 계정 기록을 기준으로 하세요.
+
+[공통 접근 권한 규칙](/ko/cli-mcp/models-and-billing#authorization)을 참고하세요. 이 페이지에는 이 경로의 로그인과 로그아웃 방법을 남겨 두었습니다.
+
+<span id="authorization" />
+
+## 로그인, 권한, 할당량
+
+브라우저 로그인은 Passport가 처리하고, CLI 자격 증명은 시스템 보안 저장소에 저장됩니다. 비즈니스 요청은 OAuth에 연결된 기존 키를 사용합니다. CLI와 원격 MCP는 계정 접근 권한, 키 할당량, 권한을 공유할 수 있습니다. 공유 키를 일시 중지하거나 변경하면 그 키를 사용하는 쪽 모두에 영향을 줍니다. 각 OAuth 세션은 따로 로그아웃합니다.
+
+```bash
+evolink auth status --json
+```
+
+이 로컬 CLI에서 로그아웃하려면 다음을 따로 실행하세요:
+
+```bash
+evolink auth logout
+```
+
+개인 API Key로 설정한 로컬 MCP는 그 키의 권한을 사용합니다. CLI에 로그인해도 별도의 MCP 프로세스가 인증되지는 않습니다. 잔액, 일일 및 총 할당량, 모델 접근 권한, 도구 권한 때문에 제출이 막힐 수 있습니다. 실패한 작업에는 요금이 부과되지 않으며, 제출 시 선차감된 크레딧은 자동으로 반환됩니다. 다만 연결이 끊기거나 로그아웃했다고 해서 환불이 완료되었다는 근거가 되지는 않습니다.
+
+<span id="retention" />
+
+## 보관과 만료
+
+견적, 참조 파일, 업로드 권한, 원본 URL의 기본 유효 기간은 [작업, 참조 파일, 결과](/ko/cli-mcp/tasks-and-files#retention)에서 관리합니다. 실제로 반환된 값이 우선합니다. 접수 확인 지원 여부는 파일 서비스의 배포 환경에 따라 다릅니다.
+
+<span id="faq" />
+
+## CLI 문제 해결: 실패한 단계 찾기
+
+CLI를 실행하는 것과 같은 컴퓨터, OS 사용자, 터미널에서 버전과 접근 권한을 확인하세요. 이 조회들은 생성을 제출하지 않습니다:
+
+```bash
+evolink --version
+evolink auth status --json
+evolink doctor --json
+```
+
+| 증상 | 문제 해결 섹션 |
+|---|---|
+| `node`, `npm` 또는 `evolink`를 찾을 수 없음 | [환경과 설치](#cli-install) |
+| 로그인, SSH 콜백 또는 보안 저장소 실패 | [로그인](#login) |
+| 스킬은 설치되었지만 에이전트가 사용할 수 없음 | [스킬 인식](#skills-discovery) |
+| 모델이 없음, 입력이 거부됨, 가격 정보가 불완전함 | [모델과 가격](#models-and-pricing) |
+| 생성 시간 초과, 제출 여부를 알 수 없음 | [작업과 복구](#tasks-and-recovery) |
+| 업로드 실패 또는 결과를 알 수 없음 | [업로드](#uploads) |
+| 다운로드 403, 회색 미리보기 또는 링크만 표시되는 결과 | [다운로드](#download) |
+| 위 항목을 확인한 뒤에도 문제가 계속됨 | [고객 지원에 전달할 정보](#support) |
+
+현재 단계의 문제를 해결한 뒤 다음으로 넘어가세요. 연결 검증에는 유료 생성이 필요하지 않습니다. 설치를 시험하려고 생성을 반복하지 마세요.
+
+<span id="cli-install" />
+### 환경과 설치: 명령을 찾을 수 없음, 권한, 시간 초과
+
+**1단계: 실제 실행 환경을 확인하세요**. 에이전트가 사용하는 터미널에서 실행하세요:
+
+```bash
+node --version
+npm --version
+```
+
+CLI에는 Node.js 22+가 필요합니다. `command not found`가 나오거나 Windows에서 명령을 인식할 수 없다고 나오면 [Node.js](https://nodejs.org/en/download)를 설치하고 터미널을 다시 여세요. 데스크톱에 설치했다고 해서 SSH, WSL, 컨테이너 안에 CLI가 설치되는 것은 아닙니다.
+
+**2단계: npm의 설치 위치를 확인하세요**.
+
+```bash
+npm config get prefix
+```
+
+| 증상 | 조치 |
+|---|---|
+| npm 설치는 성공했지만 evolink를 찾을 수 없음 | 새 터미널을 열고, 같은 Node/npm 환경인지 확인한 뒤, 그 환경의 전역 명령 디렉토리가 PATH에 있는지 확인하세요 |
+| EACCES / permission denied | [npm의 권한 안내](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally/)에 따라 사용자가 쓸 수 있는 Node/npm 환경을 사용하고, CLI를 다시 설치한 뒤 경로와 버전을 확인하세요 |
+| 시간 초과, DNS, 인증서, 프록시 오류 | 공식 npm 레지스트리 접근과 프록시 설정을 확인하세요. 오류 내용을 보존하고 인증서 검증은 켜 둔 채로 두세요 |
+| PowerShell이 스크립트를 차단함 | 같은 Windows 환경에서 명령 프롬프트를 사용하거나 조직의 기기 정책을 따르세요 |
+| 오래된 evolink 명령 또는 여러 개의 evolink 명령 | 에이전트가 사용하는 명령의 위치를 찾은 뒤 해당 Node 환경을 업데이트하세요 |
+
+사용하는 시스템에 맞는 경로 확인 명령을 선택하세요:
+
+<Tabs>
+  <Tab title="macOS / Linux">
+
+```bash
+command -v node
+command -v npm
+command -v evolink
+```
+
+  </Tab>
+  <Tab title="Windows PowerShell">
+
+```powershell
+Get-Command node
+Get-Command npm
+Get-Command evolink
+```
+
+  </Tab>
+</Tabs>
+
+**3단계: 다시 검증하세요**. 해당 문제를 바로잡은 뒤 설치하거나 업데이트하고 `evolink --version`을 실행하세요. 명령이 동작할 때에만 로그인 단계로 넘어가세요. [전체 설치 안내](/ko/cli/setup#cli-install)를 참고하세요.
+
+<span id="login" />
+### 로그인과 콜백: 브라우저가 열리지 않거나 로그인이 완료되지 않음
+
+1. `evolink auth login` 또는 `setup`을 실행 중인 상태로 두세요. 브라우저가 열리지 않으면 이번 시도의 링크를 직접 열고 계정을 확인한 뒤 승인하세요.
+2. 원래 터미널로 돌아와 완료될 때까지 기다리세요. 승인하고 나면 브라우저가 "승인을 받았습니다"라는 알림이 표시된 EvoLink MCP 페이지로 이동합니다. 이는 콜백이 도착했다는 뜻일 뿐, 계정 연결이 검증되었다는 뜻은 아닙니다. 명령을 중간에 종료하지 마세요.
+3. 저장된 인증 정보와 실제 계정 접근을 각각 확인하세요:
+
+```bash
+evolink auth status --json
+evolink balance --json
+```
+
+각각 `authenticated: true`와 실제 잔액 데이터가 표시되는지 확인하세요. 시간이 초과되었다면 인증 코드를 다시 쓰지 말고 새 링크로 새로 시도하세요. 더 오래 기다리려면 다음을 실행하세요:
+
+```bash
+evolink auth login --timeout 600
+```
+
+| 증상 | 조치 |
+|---|---|
+| 127.0.0.1 / localhost 콜백에 연결할 수 없음 | 로그인이 아직 실행 중인지, 브라우저와 CLI가 각각 어디에서 실행되는지 확인하세요. 원격 환경에서는 [SSH 콜백 포워딩](/ko/cli/setup#ssh-login)을 사용하세요 |
+| credential_store_unavailable | Linux에서는 같은 사용자의 D-Bus, Secret Service, 잠금 해제 상태를 확인하세요. 먼저 보안 저장소를 설정하세요 |
+| 사용자, 컨테이너 또는 서버를 바꾼 뒤 로그인 상태가 사라짐 | 세션은 원래 환경에 속합니다. 자격 증명 파일을 복사하지 말고 새 환경에서 다시 인증하세요 |
+| 키가 일시 중지되었거나, 만료되었거나, 한도를 초과함 | 콘솔에서 공유 키를 확인하세요. 다시 인증한다고 일시 중지가 해제되거나 한도가 늘어나지는 않습니다 |
+| 에이전트가 로그인 토큰이 만료되었다고 하거나, `auth status`의 `access_token_expires_at`이 지남 | 이는 수명이 짧은 액세스 토큰의 만료일 뿐입니다. CLI가 다음 명령을 실행하기 전에 토큰을 갱신하므로 다시 로그인할 필요가 없습니다. `evolink balance --json`으로 검증하세요. `login_required` 또는 `login_expired`가 나올 때에만 `auth login`을 다시 실행하세요 |
+| 승인한 뒤 브라우저가 사이트로 돌아오지 않고 두 언어로 표시된 127.0.0.1 페이지에 머무름 | 설치된 CLI가 0.9.1보다 오래된 버전입니다. `npm install -g @evolinkai/cli@latest`로 업그레이드한 뒤 `evolink skills install`을 실행하세요. 0.10.0부터는 CLI가 새 릴리스를 직접 알려 줍니다. [새 버전이 나왔는지 확인하는 방법](/ko/cli/setup#update-check)을 참고하세요 |
+| 출력에 `EvoLink CLI X is available`이 표시됨 | 오류가 아니라 새 릴리스 알림입니다. 명령 자체는 완료되었습니다. 안내대로 업그레이드하고 `evolink skills install`을 실행하세요. 확인을 끄려면 `EVOLINK_CLI_UPDATE_CHECK=0`을 설정하세요 |
+
+`--no-browser`를 써도 브라우저 콜백은 여전히 필요합니다. 디바이스 코드 인증이나 브라우저 없는 인증이 아닙니다. API Key를 원격 OAuth 토큰으로 입력하지 마세요.
+
+<span id="skills-discovery" />
+### 스킬과 권한: 설치된 파일을 에이전트가 사용하지 않음
+
+1. 에이전트를 실행하는 사용자의 디렉토리를 확인하세요. 해당하는 `--agent` 값을 사용합니다. Codex의 경우:
+
+```bash
+evolink skills status --agent codex --json
+```
+
+2. `current: true`는 설치된 파일이 CLI와 일치한다는 뜻입니다. 파일이 없거나 오래되었으면 `evolink skills install --agent codex`를 사용하세요. `modified`이면 로컬 수정 사항을 유지하세요. `conflict`이면 스킬 디렉토리 전체를 삭제하지 말고 충돌하는 스킬이나 잘못된 메타데이터를 해결하세요.
+3. 에이전트에게 `evolink-cli`를 인식하고 읽었는지 확인해 달라고 요청하세요. 필요하면 새로 고치거나 새 대화를 여세요. 필요한 명령 권한은 호스트에서 검토하세요. 조직의 제한은 조직의 설정에서 처리해야 합니다.
+
+`assistant_discovery: not_checked`는 호스트의 로드 여부가 아직 검증되지 않았다는 뜻입니다. `SKILL.md` 파일이 있거나 문서 페이지를 읽었다고 해서 에이전트가 CLI를 실행할 수 있다는 증거가 되지는 않습니다.
+
+CLI를 업데이트한 뒤에는 스킬을 동기화하세요. `--replace-modified`는 로컬 변경 사항을 교체하기로 결정한 뒤에만 사용하세요. 백업은 `~/.evolink-media/skill-backups/` 아래에 있습니다. 디렉토리와 내용은 [에이전트가 읽을 수 있는 자료](/ko/cli/skills#skills)에 정리되어 있습니다.
+
+<span id="models-and-pricing" />
+### 모델과 가격: 검색 결과 없음, 유효하지 않은 매개변수, 불완전한 예상 비용
+
+1. 현재 제공되는 모델을 검색하고 반환된 정식 ID를 사용하세요. 계열 이름, 표시 이름, 별칭은 유효한 제출용 ID가 아닐 수 있습니다. 필요한 참조 파일 기능 조건은 버리지 말고 검색어를 넓히세요.
+2. 해당 모델에 대해 `models show` / `models schema`를 확인하세요. 필수 항목, 철자, 열거형 값, 숫자 제한, 상호 배타적인 참조 입력을 확인하세요. 다른 모델의 `duration`, `size`, `quality` 필드를 그대로 복사하지 마세요.
+3. 예상 비용을 다시 산정하고 `input_valid`, `problems`, `estimate.status`, `basis`, `warnings`를 확인하세요. 입력이나 신원이 바뀌었거나, 가격이 올랐거나, 견적이 만료되었다면 예상 비용을 새로 산정하고 다시 승인받아야 합니다.
+
+`needs_input`이면 `missing_usage`와 `usage_help`에 명시된 입력 또는 과금 사용량을 `--media-seconds` 또는 `--pricing-parameters`로 제공하세요. `no_price`는 사용할 수 없고 `partial`은 합계가 아닙니다. 알 수 없는 길이나 참조 파일 배율을 시작 가격으로 채울 수는 없습니다. 예산은 그대로 유지하세요. 거부를 우회하려고 말없이 상한을 없애거나, 키를 바꾸거나, 사양을 낮추지 마세요.
+
+검색, `models show`, `models recommend`에 나오는 모든 모델에 가격이 없고 `pricing_warning`에 `Public pricing rules are unavailable or invalid`라고 표시된다면, CLI가 0.10.1 이하 버전입니다. 이 버전들은 모델 목록에 `multiplier`가 없는 구간별 규칙이 있으면 모든 가격을 표시하지 않는데, 그런 규칙이 10월 12일부터 게시되고 있습니다. `npm install -g @evolinkai/cli@latest`로 0.10.2 이상으로 업그레이드한 뒤 `evolink skills install`을 실행하세요. 0.10.2부터는 규칙을 읽을 수 없는 모델만 제외되어 `pricing_warning`에 표시되고, 다른 모델의 가격은 유지됩니다.
+
+정식 출시 버전의 공개 기본 가격 기준 예상 비용은 계정별로 확정된 견적(Quote)이 아니며, `max_cost_usd`는 최종 정산 금액의 상한이 아닙니다. [비용](/ko/cli/billing)과 [명령 레퍼런스](/ko/cli/reference)를 참고하세요.
+
+<span id="tasks-and-recovery" />
+
+### 생성 시간 초과, 실행 중인 작업, 결과를 알 수 없는 제출
+
+<Steps>
+  <Step title="ID가 있으면 원래 작업 조회하기">
+    ```bash
+    evolink tasks get TASK_ID --json
+    evolink tasks wait TASK_ID --timeout 600 --json
+    ```
+    대기 시간이 초과되어도 생성은 취소되지 않습니다. 작업이 여러 개면 batch 또는 list를 사용하고, 완료되면 원본을 다운로드하세요. 조회가 `status_check: unverified`(`task_response_invalid`, `task_identity_mismatch` 또는 `task_status_unknown`)를 반환하면 최신 상태를 검증하지 못한 것입니다. 생성하지 말고 같은 작업을 다시 조회하세요. `submission_state: accepted`가 포함된 `generate` 결과에는 상태가 없더라도 이미 작업 ID가 있습니다.
+  </Step>
+  <Step title="작업 ID가 반환되지 않았으면 원래 견적 복구하기">
+    ```bash
+    evolink tasks resume --quote QUOTE_ID --json
+    ```
+    원래 신원, 견적, 요청 ID를 그대로 유지하세요. 계정, 견적, 요청 ID를 바꿔서 다시 생성하지 마세요. 결과를 알 수 없다는 것이 아무것도 제출되지 않았거나 요금이 부과되지 않았다는 뜻은 아닙니다.
+  </Step>
+  <Step title="실패를 처리하기 전에 증빙 보존하기">
+    원래 작업 ID, 오류 코드, 시간을 기록하세요. 실패가 확인된 작업에는 요금이 부과되지 않으며, 제출 시 선차감된 크레딧은 자동으로 반환됩니다. 사용할 수 있는 공개 취소 명령은 없습니다. 터미널을 닫거나 대기를 멈춰도 서버의 작업은 취소되지 않습니다.
+  </Step>
+</Steps>
+
+아직 제출하지 않은 견적이 만료되었거나, 입력이 바뀌었거나, 가격이 올랐다면 예상 비용을 다시 산정하고 다시 승인받으세요. 기존 작업이나 결과를 알 수 없는 제출은 먼저 복구하세요. [작업 명령 레퍼런스](/ko/cli/reference#cli-reference)를 참고하세요.
+
+<span id="uploads" />
+
+### 업로드 실패, 크기 초과, 결과를 알 수 없는 업로드
+
+1. 에이전트를 실행하는 컴퓨터에서 절대 경로, 권한, 실제 형식을 확인하세요. 원격 호스트나 컨테이너는 데스크톱 경로를 직접 읽을 수 없습니다.
+2. 로컬 CLI 업로드는 95 MiB로 제한되며, 모델에 따라 형식, 개수, 크기 제한이 더 엄격할 수 있습니다. 먼저 모델 문서를 확인하세요. 채팅 첨부 파일은 읽을 수 있는 파일이나 접근 가능한 URL로 만들어야 합니다.
+3. 결과를 알 수 없을 때는 원래 `upload_id`를 보존하고 조회하세요:
+
+```bash
+evolink uploads get UPLOAD_ID --json
+```
+
+4. 접수 확인 조회는 파일 서비스의 배포 환경에 따라 달라집니다. `outcome_unknown`이 아무것도 업로드되지 않았다는 근거는 아닙니다. 새 업로드는 실패나 만료가 확인된 뒤에만 요청하세요. 참조 파일은 보통 72시간 동안 유지됩니다. 만료된 입력은 다시 업로드하고 요청을 수정한 뒤, 생성하기 전에 예상 비용을 다시 산정하고 승인받으세요.
+
+업로드 방법은 [참조 파일 작업 흐름](/ko/cli/workflows#files)을, 접수 확인 필드는 [명령 레퍼런스](/ko/cli/reference)를 참고하세요. 일회용 업로드 URL, 서명된 비공개 URL, 키를 채팅에 공유하지 마세요.
+
+<span id="download" />
+
+### 다운로드와 미리보기
+
+원래 작업을 조회해 완료되었는지 확인하고, 그 작업의 원본 URL을 사용하세요. 가능하면 CLI의 download를 사용하세요. [CLI 레퍼런스](/ko/cli/reference)를 참고하세요. 다운로드는 이미 제품 UA를 사용합니다.
+
+HTTP/형식 검사, Python 제품 User-Agent 예시, 만료된 링크, 회색 미리보기는 [다운로드 문제 해결](/ko/cli-mcp/tasks-and-files#download)에서 다룹니다. 결과를 알 수 없는 작업은 다시 생성하거나 미리보기를 편집하지 말고 복구하세요.
+
+<span id="support" />
+
+### 고객 지원에 전달할 정보
+
+[고객 지원 체크리스트](/ko/cli-mcp/tasks-and-files#support)에 따라 버전, 실패한 단계, ID, 민감 정보를 가린 오류를 준비하세요. 이 경로의 진단 정보를 보존하고, 키, 토큰, 비공개 URL, 환경 변수 덤프는 공유하지 마세요.
+
+<span id="mcp-connection" />
+
+### 네이티브 MCP 연결 문제 해결
+
+CLI와 MCP는 서로 다른 진입점입니다. 네이티브 OAuth, 도구 인식, 로컬 stdio는 [MCP 문제 해결](/ko/mcp/billing#mcp-connection)을 참고하세요. CLI 설치에 성공했다고 해서 MCP 접근이 검증된 것은 아닙니다. 이 항목은 예전 링크가 계속 동작하도록 남겨 둔 것입니다. CLI 명령, 로그인, 스킬은 위에서 다룹니다.

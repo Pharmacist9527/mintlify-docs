@@ -1,0 +1,202 @@
+---
+title: "Referencia de comandos y de la API de la CLI"
+description: "Comandos completos, opciones, salida JSON, recuperación y ruta de ejecución REST"
+---
+
+<span id="cli-reference" />
+## Referencia de comandos de la CLI
+
+Corresponde a la versión publicada **0.14.1** de @evolinkai/cli. Usa evolink --help o evolink COMMAND --help --json para ver la ayuda de la versión que tienes instalada. Los comandos de negocio admiten --json. Sustituye MODEL_ID, QUOTE_ID, TASK_ID y UPLOAD_ID por los valores reales devueltos.
+
+### Autenticación, diagnóstico y habilidades
+
+Consulta la [instalación](/es/cli/setup#cli-install).
+
+| Comando | Comportamiento |
+|---|---|
+| evolink --version | Versión |
+| evolink setup --agent codex --json | Requisitos previos, inicio de sesión, sincronización de habilidades y verificación gratuita de la conexión |
+| evolink auth login [--no-browser] [--timeout SECONDS] | OAuth, 30–900 segundos, predeterminado: 180 |
+| evolink auth status --json | Vista sin conexión del inicio de sesión guardado y de la caducidad del token de acceso; el token se renueva automáticamente, así que una hora ya pasada no indica que el inicio de sesión haya caducado ni sirve como verificación de la red |
+| evolink auth logout | Revoca la sesión actual de la CLI y cierra sesión |
+| evolink doctor --agent codex --json | Entorno, almacenamiento, cuenta, modelos y habilidades, además de una comprobación de actualizaciones de la CLI; sin `--agent` también revisa las habilidades instaladas (solo da indicaciones, `ok` no cambia) |
+| evolink skills install [--agent NAME] [--replace-modified] | Instala o sincroniza; conserva los cambios de forma predeterminada |
+| evolink skills status [--agent NAME] --json | Habilidades que faltan, actuales, desactualizadas, modificadas o en conflicto |
+
+Valores de agent: all/codex/claude-code/cursor/gemini/opencode/copilot/openclaw/hermes; el valor predeterminado es all. Aun así, el asistente debe verificar que detecta la habilidad.
+
+La salida de `setup`, `doctor` y `auth login` incluye `update` (`status`, `update_available`, `latest_version`, `command`); los demás comandos imprimen un aviso en stderr como máximo una vez al día cuando hay una versión más reciente. Define `EVOLINK_CLI_UPDATE_CHECK=0` para desactivar las comprobaciones; consulta [Cómo saber si hay una versión nueva](/es/cli/setup#update-check).
+
+### Modelos, entradas y documentación
+
+```bash
+evolink models search --type image --query seedream --limit 5 --page 1 --json
+evolink models show MODEL_ID --json
+evolink models schema MODEL_ID --json
+evolink models pricing --model MODEL_ID --json
+evolink models recommend --type video --query seedance --references image --limit 3 --json
+evolink docs search --type video --query "first frame" --limit 5 --json
+```
+
+| Comando | Opciones y salida |
+|---|---|
+| models search | type image/video/audio/all, predeterminado: all; limit 1–50, predeterminado: 20; page 1–100000; query de hasta 100 caracteres |
+| models show MODEL_ID | ID canónico, alias, parámetros, precios, referencias, procedencia de la documentación y esquema |
+| models schema MODEL_ID | Esquema versionado de entrada y de envío; falla explícitamente cuando no está disponible |
+| models pricing | Reglas de precios públicas predeterminadas, que se pueden leer sin iniciar sesión y no son la cotización de una tarea; opcionales: --model, --modality text/image/video/audio, --view summary/full (predeterminado: full), --product-id, --operation y --lifecycle active/preview/deprecated |
+| models recommend | type obligatorio: image/video/audio; references: image/video/audio separados por comas; limit 1–10 |
+| docs search | query obligatorio, de hasta 100 caracteres; type igual que en la búsqueda; limit 1–20, predeterminado: 5 |
+
+La búsqueda en la documentación usa el índice oficial de referencias de modelos incluido en el paquete, no un rastreo en vivo del sitio web. La recomendación se basa en las entradas documentadas, las palabras clave y las preferencias editoriales de la plataforma, no en una clasificación de popularidad. Los precios unitarios no son cotizaciones de tareas.
+
+### Cotizaciones y generación
+
+Crea input.json con los parámetros reales del modelo y obtén una cotización gratuita:
+
+```bash
+evolink estimate --model MODEL_ID --input-file input.json --max-cost-usd 1 --json
+```
+
+| Opción | Significado |
+|---|---|
+| --model | Obligatorio; ID canónico o alias admitido |
+| --input-file FILE / --input JSON | Objeto JSON; elige una de las dos; si se omite, se parte de un objeto vacío |
+| --inputs-file FILE | Arreglo JSON o JSONL con 1–50 entradas de un mismo modelo, en lugar de una sola entrada; una cotización cubre el lote |
+| --prompt TEXT | Atajo para el prompt; no puede entrar en conflicto con el prompt del JSON |
+| --max-cost-usd NUMBER | Tope positivo para la estimación en el envío, como máximo USD10000 |
+| --media-seconds NUMBER | Indicación positiva para el precio, de hasta 3600 segundos; no es una entrada del modelo |
+| --pricing-parameters JSON | Objeto JSON con el uso facturable, medido o explícitamente previsto, que necesitan las reglas de precios, como `{"search_count":2}`; proporciona lo que indica `missing_usage` y nunca inventes valores |
+| --pricing-source pricing_rules | Opcional. Las estimaciones usan siempre las reglas de precios publicadas; los valores antiguos account y public_reference se aceptan como alias |
+| --refresh-quote QUOTE_ID | Vuelve a estimar una cotización guardada y aún no enviada, con la entrada y el presupuesto guardados; no se puede combinar con las opciones anteriores |
+
+Una cotización obtenida correctamente devuelve quote_id, es válida durante **24 horas** desde la estimación (`expires_at`) y queda vinculada al inicio de sesión, al backend, al modelo y a las entradas exactas. La generación vuelve a leer las reglas de precios antes de enviar: la misma entrada se envía si el precio es el aprobado o uno inferior, también con reglas posteriores; un precio más alto falla con `price_changed`, una entrada modificada con `quote_input_changed` y una cotización caducada con `quote_expired`. En esos casos no se envía nada y hacen falta una cotización y una aprobación nuevas. Las estimaciones fallidas o rechazadas por el tope no son cotizaciones utilizables. Una estimación a la que le falta el uso facturable falla indicando cada valor que falta y la opción con la que se proporciona, y no guarda ninguna cotización. Muestra las especificaciones, el rango de costo y las advertencias, espera la aprobación explícita y elige el comando correspondiente:
+
+```bash
+evolink generate image --quote QUOTE_ID --confirm --wait --timeout 1800 --json
+evolink generate video --quote QUOTE_ID --confirm --json
+evolink generate audio --quote QUOTE_ID --confirm --json
+```
+
+Son ejemplos independientes; una cotización cubre un solo tipo y una sola tarea. La generación no acepta un modelo ni una entrada de sustitución. Si algo cambia, vuelve a cotizar y a obtener la aprobación. --confirm declara que la aprobación se ha obtenido; no puede preguntar al usuario por sí mismo.
+
+<span id="refresh-quote" />
+
+Para renovar una cotización que no se ha enviado, por ejemplo porque ha caducado o porque el precio ha subido, actualízala:
+
+```bash
+evolink estimate --refresh-quote QUOTE_ID --json
+```
+
+La cotización actualizada tiene un quote_id nuevo, mantiene el identificador de solicitud original y sustituye a la cotización anterior. Muéstrasela al usuario, obtén de nuevo la aprobación y envía solo la cotización más reciente. Enviar o reanudar una cotización sustituida falla con `quote_superseded`, que indica la cotización actual o su tarea. Una cotización cuyo envío ya ha empezado no se puede actualizar (`submission_already_started`); en su lugar, recupera su tarea. Una actualización que se ejecuta mientras otra sustituye la misma cotización devuelve `quote_refresh_conflict`.
+
+Una cotización creada con `--inputs-file` cubre todo el lote: `generate --quote QUOTE_ID --confirm` envía todas las entradas de una vez (hasta 10 simultáneas) y devuelve, sin esperar, el identificador de la tarea o el error de cada entrada; `--wait` sirve para una sola tarea. Recoge los resultados con `tasks batch --ids`.
+
+Solo cuando el usuario haya dicho explícitamente que no hace falta estimar ni confirmar:
+
+```bash
+evolink generate image --model MODEL_ID --input-file input.json --skip-estimate --json
+```
+
+`--skip-estimate` envía sin cotización, también con `--inputs-file`: el precio no se comprueba, la tarea se cobra según el uso real y el resultado lo indica (`estimate_skipped`). Una entrada no válida se sigue rechazando, y un `--max-cost-usd` explícito se sigue aplicando: una solicitud que supere ese tope, o cuyo precio no se pueda comparar con él, no se envía. `--skip-estimate` no se puede combinar con `--quote` ni con `--confirm`. El comando guarda un registro con su propio identificador de solicitud y devuelve un quote_id para `tasks resume`.
+
+--wait espera a la tarea existente. El tiempo de espera es de 1–86400 segundos, predeterminado: 1800. Que se agote el tiempo de espera o pulsar Ctrl-C no cancela la tarea en el servidor. El tiempo de espera abarca todas las lecturas, los reintentos y las pausas; al llegar al límite, `wait_timeout` indica el último estado verificado y su `read_at`, o `status_check: unverified` cuando no se pudo leer el estado más reciente. Las estimaciones completas usan de forma predeterminada su máximo cotizado en las comprobaciones del envío. Consulta las [limitaciones del presupuesto](/es/cli/billing).
+
+### Tareas, lotes y recuperación
+
+```bash
+evolink tasks get TASK_ID --json
+evolink tasks wait TASK_ID --timeout 1800 --json
+evolink tasks batch --ids TASK_ID_ONE,TASK_ID_TWO --json
+evolink tasks list --type video --status processing --since 2h --limit 20 --page 1 --json
+evolink tasks resume --quote QUOTE_ID --json
+```
+
+| Opción de tasks list | Comportamiento |
+|---|---|
+| --status | processing/completed/failed/cancelled; processing incluye las tareas en cola; omítelo para ver todas |
+| --type | image/video/audio; omítelo para todos los tipos de contenido multimedia |
+| --model | ID canónico exacto del modelo |
+| --since / --until | Hora de creación: ISO 8601, segundos Unix o 30m/2h/1d; until es inclusivo |
+| --page / --limit | Página 1–100000; tamaño 1–50, predeterminado: 20 |
+
+El filtro por tiempo solo afecta a la página seleccionada. El historial abarca toda la cuenta, no solo este chat. Una página vacía no demuestra que no haya habido envío; total se calcula antes del filtro local por tiempo. En el modo por lotes, los identificadores son 1–50 valores separados por comas.
+
+Si tienes el identificador de la tarea, usa get/wait. Si se perdió la respuesta de un envío, reanuda la cotización original con su identificador de solicitud y su inicio de sesión. En un lote, `tasks resume --quote QUOTE_ID` completa las entradas que no se enviaron; las entradas aceptadas devuelven sus tareas originales sin un nuevo cargo. `tasks resume` repite el envío con el identificador de solicitud solo dentro de las 23 horas posteriores a su primer envío (EvoLink lo conserva durante 24 horas); después lo rechaza con `recovery_window_passed`. También sigue la regla de las cotizaciones: con una cotización caducada (`quote_expired`) o un precio más alto (`price_changed`) no se envía nada. En todos esos casos, comprueba con `tasks batch` o `tasks list` qué se envió correctamente y estima solo el resto como una generación o un lote nuevos. Si los registros se han perdido o han caducado, o si la cuenta ha cambiado, revisa el historial o la consola antes de crear otra solicitud facturable. La CLI no tiene ningún comando de cancelación.
+
+### Saldo y uso de las tareas
+
+```bash
+evolink balance --json
+evolink usage --since 7d --until 1h --type video --max-pages 5 --json
+```
+
+El comando balance devuelve el saldo de la cuenta y los límites aplicables. El comando usage acepta model, type y la hora de creación; since es 30d de forma predeterminada, max-pages admite 1–20 con 5 como valor predeterminado, y hay 50 tareas por página. Revisa los costos que faltan, la cobertura y el truncamiento.
+
+El uso que se muestra es el costo informado de las tareas completadas, obtenido de un historial conservado y acotado de toda la cuenta; no es una factura, ni un registro de reembolsos, ni el uso exclusivo de la CLI o de MCP, ni un presupuesto final.
+
+### Subidas y descarga de originales
+
+```bash
+evolink upload ./reference.mp4 --upload-path references --json
+evolink uploads get UPLOAD_ID --json
+evolink download TASK_ID --output ./result.mp4 --index 1 --json
+evolink download TASK_ID --all --output-dir ./results --json
+evolink download TASK_ID --all --output-dir ./results --resume --json
+```
+
+La CLI acepta archivos normales **de 1 byte a 95 MiB** y guarda primero un identificador de subida. uploads get solo lee el comprobante original. Si el backend no ofrece un soporte compatible, puede informar de un resultado desconocido sin volver a enviar el archivo. Las referencias suelen conservarse 72 horas.
+
+El índice de descarga empieza en 1, su valor predeterminado es 1 y su rango es 1–50. Los directorios superiores deben existir; los archivos no se sobrescriben. Cada resultado ocupa como máximo 1 GiB. Las comprobaciones de tipo y de contenido rechazan las páginas de error HTML que se hacen pasar por contenido multimedia.
+
+El modo por lotes --all --output-dir DIR admite --template NAME y --resume. La reanudación usa los registros originales del lote y no se fía de archivos cualesquiera con el mismo nombre. Más información en [Entrega de tareas](/es/cli/workflows#tasks).
+
+### JSON, códigos de salida y configuración
+
+--json escribe en stdout una sola línea JSON con schema_version:1 y ok. El progreso va a stderr. Los errores usan ok:false/error y un código de salida distinto de cero; con Ctrl-C, el comando suele salir con el código 130. Una tarea con status:failed no es lo mismo que un fallo al invocar una consulta. Comprueba primero el ok del comando y después el estado de la tarea.
+
+Los registros locales se guardan en ~/.evolink-media; las credenciales usan el almacenamiento seguro del sistema operativo. No copies este directorio para migrar el inicio de sesión ni borres los registros de cotización o de recuperación para arreglar un envío incierto.
+
+La opción avanzada --server selecciona el recurso de OAuth y la vinculación de identidad, de forma predeterminada https://mcp.evolink.ai/mcp, sin cambiar la ejecución REST. Mantén los valores predeterminados de producción de --api-url/--files-url; las URLs externas arbitrarias se rechazan. --token-stdin es un token de acceso de OAuth para un solo comando, no una clave API de la plataforma, y no sirve para setup. No pongas tokens en los argumentos de los comandos ni en los registros.
+
+No hay ningún comando genérico run, ni de chat de texto, cancelación, recarga de saldo, gestión de claves o archivo de alias personalizados. Usa la consola o la API correspondientes.
+
+<span id="api" />
+## Ruta de ejecución de la CLI y APIs
+
+Desde la CLI 0.8.0, las solicitudes multimedia usan **terminal o agente → EvoLink CLI → API REST de la plataforma**. Las comprobaciones de las entradas, las referencias de modelos, la estimación y el formato de los resultados se ejecutan en local; la ejecución de negocio no llama a tools/call del MCP remoto.
+
+| Servicio | Dirección y función |
+|---|---|
+| API de la plataforma | https://api.evolink.ai: modelos, contenido multimedia, tareas y saldo |
+| Passport | https://passport.evolink.ai: autorización en el navegador y renovación |
+| Archivos | https://files-api.evolink.ai: subidas y comprobantes compatibles |
+| Recurso de OAuth | https://mcp.evolink.ai/mcp: vinculación de identidad, no la ruta de ejecución multimedia |
+| Originales generados | URLs HTTPS devueltas por las tareas: descarga directa sin tokens de la plataforma |
+
+### Comandos y operaciones del backend
+
+| Capacidad de la CLI | Operación del backend o implementación |
+|---|---|
+| models search | `GET /v1/models`, combinado con los alias, las referencias y la disponibilidad |
+| models show/schema, models recommend, docs search | Referencias publicadas incluidas en el paquete, reglas compartidas y catálogo actual de la cuenta |
+| estimate | `GET /web/api/models/pricing` y las reglas de estimación del cliente |
+| generate image | `POST /v1/images/generations` |
+| generate video | `POST /v1/videos/generations` |
+| generate audio | `POST /v1/audios/generations` |
+| tasks get/wait | `GET /v1/tasks/{task_id}` |
+| tasks batch | `POST /v1/tasks/batch` |
+| tasks list, usage | `GET /v1/tasks`, paginación y agregación acotada |
+| balance | `GET /v1/credits` |
+| upload | `POST /v1/files/upload-token`, seguido de una subida directa al servicio de archivos |
+| uploads get | `GET /api/v1/files/upload-receipts/{upload_id}` del servicio de archivos compatible |
+| download | Descarga directa del resultado de la tarea, comprobaciones de formato y registros de resultados |
+
+El quote_id, --confirm y los archivos de recuperación de la CLI implementan un flujo de trabajo del cliente, no campos nuevos del backend. La versión publicada CLI 0.14.1 estima a partir de las reglas de precios públicas (tarifas de referencia, sin descuentos de cuenta). --max-cost-usd no es un tope de la liquidación final.
+
+### Solicitudes, recuperación y automatización
+
+Guarda de forma persistente la cotización y el identificador de solicitud antes de enviar. REST usa los identificadores existentes Idempotency-Key / X-Evo-Run-Id. Si se pierde una respuesta, recupera el envío con la cotización original; no cambies de identidad, de entradas ni de identificadores para volver a enviar. Los registros del cliente, por sí solos, no demuestran una idempotencia uniforme del backend en todos los nodos de producción.
+
+Los scripts deben comprobar primero ok, después el estado de la tarea y, por último, los campos de resultados y de costo. Guarda el quote_id, el task_id y los manifiestos de descarga en lugar de depender de la última línea de la terminal. Los errores de consulta, las tareas fallidas y las descargas fallidas requieren un tratamiento distinto. No reintentes de forma incondicional los envíos de pago.
+
+Las sesiones de la CLI y del MCP nativo se gestionan por separado, pero el OAuth de la cuenta comparte actualmente los permisos, los límites y el estado de pausa de `EvoLink MCP (OAuth)`. Para las conexiones nativas, usa la [documentación aparte de MCP](/es/mcp/overview).
