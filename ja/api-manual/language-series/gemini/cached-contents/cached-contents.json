@@ -1,0 +1,1312 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gemini 明示的コンテキストキャッシュ（cachedContents）",
+    "description": "繰り返し使う長いプレフィックス（文書、システム指示、ツール定義）を一度キャッシュし、以後の生成リクエストではキャッシュ名と新しい質問だけを送ります。キャッシュ部分にはキャッシュヒット単価が適用されます。形式は Gemini ネイティブの cachedContents API と同じです。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替アドレス"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "明示的コンテキストキャッシュ",
+      "description": "Gemini の明示的キャッシュの作成、取得、延長、削除"
+    }
+  ],
+  "paths": {
+    "/v1beta/cachedContents": {
+      "post": {
+        "summary": "キャッシュを作成",
+        "operationId": "geminiCreateCachedContent",
+        "tags": [
+          "明示的コンテキストキャッシュ"
+        ],
+        "description": "`contents`、`systemInstruction`、`tools` のうち少なくとも1つを指定してキャッシュを作成し、`name` を取得します。`toolConfig` も指定できます。\n\n- **モデル**：`model` は `models/gemini-3.8-flash` または `gemini-3.8-flash` のどちらでも指定できます。対応モデルは `gemini-3.8-flash`、`gemini-3.7-flash`、`gemini-3.6-flash`、`gemini-3.5-flash`、`gemini-3.5-flash-lite`、`gemini-3-flash-preview`、`gemini-3.1-flash-lite-preview`、`gemini-3.1-pro-preview`、`gemini-3.1-pro-preview-customtools`、`gemini-3-pro-preview` です。Gemini 4 は明示的キャッシュに対応していません。\n- **有効期間**：`ttl`（例：`\"3600s\"`）または `expireTime`（RFC 3339）のいずれか一方を指定します。両方省略すると1時間です。最短60秒、最長168時間（`604800s`）で、期限切れ後に自動削除されます。\n- **サイズ**：リクエストボディは最大10 MBです。モデルの最小キャッシュトークン数（例：`gemini-3.8-flash` は4,096）に満たない場合は400を返します。\n- **フィールド**：記載されたフィールドのみ受け付けます。それ以外は400を返します。\n- **tools**：`googleSearch`、`codeExecution`、`functionDeclarations` のみ対応し、それ以外は400を返します。\n- **返される `name`**：`cachedContents/<id>` 形式で、`<id>` は作成リクエストのIDです。ダッシュボードの「ログ」で検索すると作成時の課金を確認できます。\n- **料金**：作成時にキャッシュ書き込み料金（入力単価と同じ）と全有効期間の保存料金を前払いで徴収します。短縮・削除・期限切れでも保存料金は返金されず、延長時は追加期間分を徴収します。「キャッシュを作成」ページの料金説明を参照してください。\n\n認証は `Authorization: Bearer` を使用します。`x-goog-api-key` ヘッダーも利用できます。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCachedContentRequest"
+              },
+              "examples": {
+                "long_document": {
+                  "summary": "長い文書とシステム指示を1時間キャッシュ",
+                  "value": {
+                    "model": "models/gemini-3.8-flash",
+                    "displayName": "product-manual-v3",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "あなたは製品マニュアルのアシスタントです。提供されたマニュアルのみに基づいて回答し、記載のない情報には「マニュアルに記載がありません」と回答してください。"
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "（製品マニュアル全文をここに記入します。キャッシュ内容は4,096トークン以上必要です。）"
+                          }
+                        ]
+                      }
+                    ],
+                    "ttl": "3600s"
+                  }
+                },
+                "with_tools": {
+                  "summary": "システム指示と関数定義を絶対有効期限でキャッシュ",
+                  "value": {
+                    "model": "gemini-3.8-flash",
+                    "displayName": "support-agent-tools",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "（長いカスタマーサポート規定をここに記入します。4,096トークン以上必要です。）"
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "（過去の問い合わせ事例……）"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "functionDeclarations": [
+                          {
+                            "name": "lookup_order",
+                            "description": "注文番号で注文状況を照会",
+                            "parameters": {
+                              "type": "object",
+                              "properties": {
+                                "order_id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "order_id"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "キャッシュを作成しました。`usageMetadata.totalTokenCount` が書き込み料金と保存料金の計算に用いるトークン数です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パラメータ不正、モデルが明示的キャッシュに非対応、現在のユーザーグループでは未提供、または最小トークン数未満",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "ttl must not exceed 604800s (168h)",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key が無効または未指定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "書き込み料金と保存料金に対する残高不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage prepayment",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key にモデル利用権限がない、送信元IPが許可リスト外、または Key のユーザーグループが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "明示的キャッシュ機能が有効になっていません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "リクエストボディが10 MBを超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "cache content exceeds 10485760 bytes; use Cloud Storage fileUri for larger content",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CONTENT_TOO_LARGE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "サービスが一時的に利用できません。このリクエストは課金されません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "キャッシュ一覧を取得",
+        "operationId": "geminiListCachedContents",
+        "tags": [
+          "明示的コンテキストキャッシュ"
+        ],
+        "description": "現在のアカウントの**期限内**のキャッシュを有効期限の降順で取得します。アカウント単位で所属し、Key は区別しません。期限切れ・削除済みは含みません。無料です。",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "1ページの件数。デフォルト50、最大200。",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "description": "前の応答の `nextPageToken`。最初のページでは省略します。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "キャッシュ一覧。次ページがある場合は `nextPageToken` を含みます",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCachedContentsResponse"
+                },
+                "example": {
+                  "cachedContents": [
+                    {
+                      "name": "cachedContents/20261103012026348092000s1oTuB96",
+                      "model": "models/gemini-3.8-flash",
+                      "displayName": "product-manual-v3",
+                      "createTime": "2026-11-03T01:20:27.311Z",
+                      "updateTime": "2026-11-03T01:20:27.311Z",
+                      "expireTime": "2026-11-03T02:20:26.902Z",
+                      "usageMetadata": {
+                        "totalTokenCount": 7525
+                      }
+                    }
+                  ],
+                  "nextPageToken": "50"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pageToken が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "invalid pageToken",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key が無効または未指定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key にモデル利用権限がないか、送信元IPが許可リスト外",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "明示的キャッシュ機能が有効になっていません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1beta/cachedContents/{id}": {
+      "get": {
+        "summary": "キャッシュを取得",
+        "operationId": "geminiGetCachedContent",
+        "tags": [
+          "明示的コンテキストキャッシュ"
+        ],
+        "description": "メタデータ（モデル、トークン数、作成・更新・有効期限）を返し、キャッシュ内容は返しません。期限切れは存在しない場合と同じ404です。無料です。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "キャッシュID：作成時の `name` から `cachedContents/` を除いた部分です。`cachedContents/20261103012026348092000s1oTuB96` なら `20261103012026348092000s1oTuB96` を指定します。",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "キャッシュのメタデータ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key が無効または未指定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key にモデル利用権限がないか、送信元IPが許可リスト外",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "キャッシュが存在しない、期限切れ、削除済み、他アカウントに所属、または明示的キャッシュ機能が未提供",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "有効期間を延長・短縮",
+        "operationId": "geminiUpdateCachedContent",
+        "tags": [
+          "明示的コンテキストキャッシュ"
+        ],
+        "description": "変更できるのは有効期間のみで、内容は変更できません。`ttl`（**現在から**の新しい期間、例：`\"7200s\"`）または `expireTime`（新しい絶対有効期限）の一方を指定します。\n\n- 新しい有効期限は現在から60秒以上168時間以内です。\n- `ttl` または `expireTime` のみ受け付け、両方または他のフィールドを指定すると400です。\n- **延長**：追加期間の保存料金を秒単位で徴収し、1秒未満は1秒として計算します。**短縮**：徴収済みの保存料金は返金されません。\n- 有料操作です。Key にモデルの利用権限が必要で、現在のユーザーグループの料金が適用されます。残高不足は402です。\n- 同じ延長リクエストの再試行時は `Idempotency-Key` ヘッダーで二重課金を防げます。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "キャッシュID：作成時の `name` から `cachedContents/` を除いた部分です。`cachedContents/20261103012026348092000s1oTuB96` なら `20261103012026348092000s1oTuB96` を指定します。",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCachedContentRequest"
+              },
+              "examples": {
+                "extend_by_ttl": {
+                  "summary": "現在からさらに2時間保持",
+                  "value": {
+                    "ttl": "7200s"
+                  }
+                },
+                "set_expire_time": {
+                  "summary": "絶対有効期限を指定",
+                  "value": {
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新後のメタデータ。`expireTime` が新しい有効期限です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:35:10.020Z",
+                  "expireTime": "2026-11-03T03:35:10.000Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ttl / expireTime が未指定または両方指定、未対応フィールド、有効期限の範囲外、処理中の期限切れ（CACHE_EXPIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "new expiry must be at least 60s in the future",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key が無効または未指定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "延長分の保存料金に対する残高不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage extension",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key にモデル利用権限がない、送信元IPが許可リスト外、または Key のユーザーグループが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "キャッシュが存在しない、期限切れ、削除済み、他アカウントに所属、または明示的キャッシュ機能が未提供",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "サービスが一時的に利用できません。このリクエストは課金されません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "キャッシュが一時的に利用できません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "キャッシュを削除",
+        "operationId": "geminiDeleteCachedContent",
+        "tags": [
+          "明示的コンテキストキャッシュ"
+        ],
+        "description": "キャッシュを即座に削除します。以後その名前を参照すると404です。徴収済みの保存料金は返金されません。無料です。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "キャッシュID：作成時の `name` から `cachedContents/` を除いた部分です。`cachedContents/20261103012026348092000s1oTuB96` なら `20261103012026348092000s1oTuB96` を指定します。",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "削除済み。空のオブジェクトを返します",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "API Key が無効または未指定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key にモデル利用権限がないか、送信元IPが許可リスト外",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "キャッシュが存在しない、期限切れ、削除済み、他アカウントに所属、または明示的キャッシュ機能が未提供",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "キャッシュが一時的に利用できません。後ほど再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## すべてのエンドポイントは Bearer Token 認証が必要です\n\n**API Key の取得：**\n\n[API Key 管理](https://evolink.ai/dashboard/keys)で取得してください。\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\nGemini ネイティブ形式の `x-goog-api-key: YOUR_API_KEY` ヘッダー、または URL パラメータ `?key=YOUR_API_KEY` も使用できます。"
+      }
+    },
+    "schemas": {
+      "Part": {
+        "type": "object",
+        "description": "コンテンツのパーツ。テキスト、インラインデータ（base64）、ファイル参照のいずれか",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "テキスト"
+          },
+          "inlineData": {
+            "type": "object",
+            "description": "インラインのバイナリデータ（画像・音声・PDFなど）",
+            "properties": {
+              "mimeType": {
+                "type": "string",
+                "example": "application/pdf"
+              },
+              "data": {
+                "type": "string",
+                "description": "base64 エンコードされたデータ"
+              }
+            }
+          },
+          "fileData": {
+            "type": "object",
+            "description": "ファイル参照",
+            "properties": {
+              "mimeType": {
+                "type": "string"
+              },
+              "fileUri": {
+                "type": "string",
+                "description": "公開アクセス可能な URL"
+              }
+            }
+          }
+        }
+      },
+      "Content": {
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "description": "ロール。システム指示では不要"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "ツール宣言。以下の3種類のみ対応し、他のツールは拒否されます",
+        "properties": {
+          "googleSearch": {
+            "type": "object",
+            "description": "ウェブ検索。`{}` を指定"
+          },
+          "codeExecution": {
+            "type": "object",
+            "description": "コード実行。`{}` を指定"
+          },
+          "functionDeclarations": {
+            "type": "array",
+            "description": "関数宣言（OpenAPI のサブセットによるパラメータ構造）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateCachedContentRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "モデル。`models/gemini-3.8-flash` と `gemini-3.8-flash` の両形式に対応。対応モデル：`gemini-3.8-flash`、`gemini-3.7-flash`、`gemini-3.6-flash`、`gemini-3.5-flash`、`gemini-3.5-flash-lite`、`gemini-3-flash-preview`、`gemini-3.1-flash-lite-preview`、`gemini-3.1-pro-preview`、`gemini-3.1-pro-preview-customtools`、`gemini-3-pro-preview`",
+            "example": "models/gemini-3.8-flash"
+          },
+          "contents": {
+            "type": "array",
+            "description": "キャッシュする会話内容。配列で指定し、参照時の会話プレフィックスになります。`contents`、`systemInstruction`、`tools` のうち少なくとも1つが必要です",
+            "items": {
+              "$ref": "#/components/schemas/Content"
+            }
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "システム指示。キャッシュ後は、それを参照する生成リクエストに systemInstruction を指定できません"
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツール宣言。キャッシュ後は、それを参照する生成リクエストに tools を指定できません",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "ツール呼び出し設定（functionCallingConfig など）。キャッシュ後は、それを参照する生成リクエストに toolConfig を指定できません"
+          },
+          "ttl": {
+            "type": "string",
+            "description": "有効期間（例：`\"3600s\"`）。最短 `60s`、最長 `604800s`（168時間）。expireTime と排他的で、両方指定すると400。両方省略時は `3600s`",
+            "example": "3600s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "絶対有効期限（RFC 3339、UTC）。ttl と排他的で、両方指定すると400",
+            "example": "2026-11-03T06:00:00Z"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "管理用の名前。最大255文字で、料金には影響しません",
+            "example": "product-manual-v3"
+          }
+        }
+      },
+      "UpdateCachedContentRequest": {
+        "type": "object",
+        "description": "ttl と expireTime のどちらか一方のみ必須。他のフィールドは400",
+        "properties": {
+          "ttl": {
+            "type": "string",
+            "description": "現在からの新しい有効期間（例：`\"7200s\"`）。最短 `60s`、最長 `604800s`",
+            "example": "7200s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "新しい絶対有効期限（RFC 3339、UTC）",
+            "example": "2026-11-03T06:00:00Z"
+          }
+        }
+      },
+      "CachedContent": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "`cachedContents/<id>` 形式のキャッシュ名。生成リクエストの `cachedContent` に指定します。`<id>` は作成リクエストのIDでもあります",
+            "example": "cachedContents/20261103012026348092000s1oTuB96"
+          },
+          "model": {
+            "type": "string",
+            "description": "キャッシュに紐づくモデル。生成時も同じモデルを使用する必要があります",
+            "example": "models/gemini-3.8-flash"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "作成時に指定した名前。未指定の場合は返されません"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "作成日時（UTC）"
+          },
+          "updateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最終更新日時（UTC）"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "有効期限（UTC）。期限切れ後に自動削除"
+          },
+          "usageMetadata": {
+            "type": "object",
+            "properties": {
+              "totalTokenCount": {
+                "type": "integer",
+                "description": "キャッシュの総トークン数。書き込み料金と保存料金の計算に使用",
+                "example": 7525
+              }
+            }
+          }
+        }
+      },
+      "ListCachedContentsResponse": {
+        "type": "object",
+        "properties": {
+          "cachedContents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CachedContent"
+            }
+          },
+          "nextPageToken": {
+            "type": "string",
+            "description": "次ページがある場合に返されます。そのまま次のリクエストの `pageToken` に指定します"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Gemini ネイティブのエラー形式。`error.details[0].reason` が具体的な理由コードです。「キャッシュを作成」のエラー表を参照してください",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP ステータスコード"
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "description": "ステータス値（INVALID_ARGUMENT / NOT_FOUND / UNAVAILABLE など）"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "@type": {
+                      "type": "string",
+                      "example": "type.googleapis.com/google.rpc.ErrorInfo"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "example": "CACHE_NOT_FOUND"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "example": "evolink.ai"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

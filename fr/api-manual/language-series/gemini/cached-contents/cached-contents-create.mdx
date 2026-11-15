@@ -1,0 +1,170 @@
+---
+title: "Gemini Cache explicite du contexte - Créer un cache"
+openapi: '/fr/api-manual/language-series/gemini/cached-contents/cached-contents.json POST /v1beta/cachedContents'
+---
+
+<Note>
+**BaseURL** : utilisez par défaut `https://direct.evolink.ai`, mieux adapté aux modèles de texte et aux connexions longues ; `https://api.evolink.ai` est l’adresse de secours.
+</Note>
+
+Créez un cache pour un long préfixe réutilisable (documents, instructions système ou définitions d’outils). Les générations suivantes n’envoient que le nom du cache et une nouvelle question. Les tokens en cache sont facturés au tarif de lecture ; le stockage dépend du nombre de tokens et de la durée de conservation.
+
+## Modèles pris en charge
+
+| Famille | Modèles |
+|---|---|
+| Gemini 3.x Flash | `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3-flash-preview` |
+| Gemini 3.x Flash-Lite | `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite-preview` |
+| Gemini 3.x Pro | `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`, `gemini-3-pro-preview` |
+
+Gemini 4 ne prend pas en charge le cache explicite ; la création renvoie 400 `EXPLICIT_CACHE_UNSUPPORTED`.
+
+## Cache explicite et implicite
+
+| | Cache implicite (par défaut) | Cache explicite (cette page) |
+|---|---|---|
+| Utilisation | Aucun changement ; un préfixe identique peut produire une lecture automatique | Créer un cache puis référencer son nom lors de la génération |
+| Lecture du cache | Non garantie | Une référence au cache produit une lecture |
+| Frais d’écriture | Aucun | Selon le nombre de tokens en cache |
+| Frais de stockage | Aucun | Tokens en cache × heures |
+| Usage adapté | Réutilisation naturelle sans modification | Nombreux appels au même long préfixe sur une période donnée |
+
+## Procédure
+
+1. **Créer** : `POST /v1beta/cachedContents`, avec le préfixe dans au moins un des champs `contents`, `systemInstruction` ou `tools`. Renvoie le nom `name`.
+2. **Référencer** : ajoutez `"cachedContent": "<name>"` au corps de `POST /v1beta/models/{model}:generateContent` (`streamGenerateContent` en streaming), et seulement la nouvelle question dans `contents`.
+3. **Prolonger** (facultatif) : `PATCH /v1beta/cachedContents/{id}` avec un nouveau `ttl` ou `expireTime`. Le stockage est facturé sur la durée ajoutée.
+4. **Supprimer** (facultatif) : `DELETE /v1beta/cachedContents/{id}` lorsque le cache n’est plus utile. Sinon, il est supprimé à expiration. Le stockage déjà facturé n’est pas remboursé.
+
+Le cache appartient au compte : toute clé API du même compte peut l’utiliser (le modèle doit figurer dans sa liste de modèles autorisés si elle en possède une). Un autre compte reçoit 404 pour ce nom. L’utilisation et la prolongation appliquent le tarif du groupe actuel de la clé qui effectue la requête.
+
+## Référencer le cache lors de la génération
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-3.8-flash:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cachedContent": "cachedContents/20261103012026348092000s1oTuB96",
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Que dit le manuel sur les retours ?" }] }
+    ]
+  }'
+```
+
+`usageMetadata.cachedContentTokenCount` indique les tokens lus dans le cache, facturés au tarif de lecture. `promptTokenCount` les inclut ; les autres tokens sont facturés au tarif d’entrée normal.
+
+```json
+{
+  "candidates": [
+    { "content": { "role": "model", "parts": [{ "text": "Le chapitre 7 du manuel indique…" }] }, "finishReason": "STOP" }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 7541,
+    "cachedContentTokenCount": 7525,
+    "candidatesTokenCount": 212,
+    "totalTokenCount": 7753
+  },
+  "modelVersion": "gemini-3.8-flash"
+}
+```
+
+<Warning>
+Une génération utilisant un cache **ne doit pas inclure** `systemInstruction`, `tools` ou `toolConfig`. Définissez-les à la création ; les transmettre renvoie 400. Le modèle de génération doit être identique à celui du cache, sinon l’API renvoie 400 `CACHE_MODEL_MISMATCH`.
+</Warning>
+
+## Exemple complet (Python)
+
+```python
+import requests
+
+BASE = "https://direct.evolink.ai"
+HEADERS = {"Authorization": "Bearer YOUR_API_KEY", "Content-Type": "application/json"}
+
+# 1. Créer un cache : long document + instructions système, pour 1 heure
+manual = open("manual.txt", encoding="utf-8").read()   # Respecter le minimum de tokens du modèle
+cache = requests.post(f"{BASE}/v1beta/cachedContents", headers=HEADERS, json={
+    "model": "models/gemini-3.8-flash",
+    "displayName": "product-manual-v3",
+    "systemInstruction": {"parts": [{"text": "Vous êtes un assistant de manuel produit. Répondez uniquement à partir du manuel."}]},
+    "contents": [{"role": "user", "parts": [{"text": manual}]}],
+    "ttl": "3600s",
+}).json()
+name = cache["name"]            # cachedContents/<id>
+cache_id = name.split("/")[-1]  # <id>
+print("cached tokens:", cache["usageMetadata"]["totalTokenCount"], "expire:", cache["expireTime"])
+
+# 2. Réutiliser le cache : envoyer seulement la nouvelle question
+for question in ["Quelle est la politique de retour ?", "Quelle est la durée de garantie ?", "Puis-je envoyer un produit depuis l’étranger pour réparation ?"]:
+    resp = requests.post(f"{BASE}/v1beta/models/gemini-3.8-flash:generateContent", headers=HEADERS, json={
+        "cachedContent": name,
+        "contents": [{"role": "user", "parts": [{"text": question}]}],
+    }).json()
+    print(resp["candidates"][0]["content"]["parts"][0]["text"])
+    print("cache hit tokens:", resp["usageMetadata"].get("cachedContentTokenCount", 0))
+
+# 3. Continuer : conserver 2 heures à partir de maintenant (stockage de la durée ajoutée facturé)
+requests.patch(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS, json={"ttl": "7200s"})
+
+# 4. Supprimer ensuite (le stockage déjà facturé n’est pas remboursé)
+requests.delete(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS)
+```
+
+## Facturation
+
+| Poste | Mode de facturation |
+|---|---|
+| Écriture | Tokens en cache × tarif d’écriture, à la création. Ce tarif est celui de l’entrée du modèle ; au-delà de 200 000 tokens, les caches Pro appliquent le tarif de contexte long |
+| Stockage | Tokens en cache × durée (heures, calculées au prorata des secondes) × tarif de stockage (par million de tokens par heure), facturé à la création pour toute la durée |
+| Génération avec cache | `cachedContentTokenCount` au tarif de lecture ; autres entrées et sorties aux tarifs normaux. Si `googleSearch` est déclaré dans le cache, chaque recherche est facturée séparément au tarif de recherche |
+| Prolongation | Stockage de la durée ajoutée ; toute durée inférieure à 1 seconde est facturée comme 1 seconde |
+| Réduction / suppression / expiration | Aucun remboursement du stockage déjà facturé |
+| Liste / consultation | Gratuit |
+
+- Le nombre de tokens est celui de `usageMetadata.totalTokenCount` dans la réponse de création.
+- `<id>` dans le nom du cache est l’identifiant de la requête de création. Recherchez-le dans « Logs » du tableau de bord pour consulter les frais de création et de prolongation (tokens, durée et frais de stockage).
+- Consultez les [tarifs](https://evolink.ai/pricing) d’écriture, de lecture et de stockage de chaque modèle.
+- Rentabilité : le stockage dépend de la durée, et chaque lecture économise de l’entrée. Plus le préfixe est réutilisé durant sa validité, plus le cache est rentable ; pour un ou deux appels, envoyer le texte original coûte moins cher.
+
+## Limites
+
+- **Durée** : de 60 secondes à 168 heures (`604800s`). Fournissez uniquement `ttl` ou `expireTime` ; sans aucun des deux, la durée est de 1 heure.
+- **Contenu** : au moins un des champs `contents`, `systemInstruction` ou `tools`. Corps limité à 10 MB ; respectez le minimum de tokens du modèle (par exemple 4 096 pour `gemini-3.8-flash`), sinon l’API renvoie 400.
+- **Champs** : seuls les champs de cette page sont acceptés. Les autres renvoient 400 en indiquant leur nom.
+- **tools** : uniquement `googleSearch`, `codeExecution` et `functionDeclarations`.
+- **Contenu immuable** : seule la durée est modifiable après création. Pour changer le contenu, créez un nouveau cache.
+- **Contrôle d’accès** : création et prolongation respectent les mêmes listes d’IP/modèles autorisés et limites de fréquence que la génération.
+
+## Codes d’erreur
+
+Les erreurs suivent le format natif Gemini ; `error.details[0].reason` contient le code précis :
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "cached content not found",
+    "status": "NOT_FOUND",
+    "details": [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "CACHE_NOT_FOUND", "domain": "evolink.ai" }]
+  }
+}
+```
+
+| HTTP | reason | Signification |
+|---|---|---|
+| 400 | `INVALID_ARGUMENT` | Paramètres invalides : aucun contenu, `ttl` hors de 60 secondes–168 heures, `ttl` et `expireTime` ensemble, champs ou outils non acceptés, etc. |
+| 400 | `EXPLICIT_CACHE_UNSUPPORTED` | Modèle sans cache explicite (Gemini 4 ou modèles d’image) |
+| 400 | `NO_AVAILABLE_CHANNEL` | Le groupe actuel ne peut pas créer de cache pour ce modèle |
+| 400 | `MODEL_PRICE_ERROR` | Cache explicite de ce modèle non ouvert au groupe actuel |
+| 400 | `CACHE_EXPIRED` | Cache expiré pendant le traitement ou durée restante trop courte |
+| 400 | `CACHE_MODEL_MISMATCH` | Modèle de génération différent de celui du cache |
+| 400 | `INVALID_CACHED_CONTENT` | Format de `cachedContent` incorrect |
+| 4xx | `UPSTREAM_ERROR` | Contenu refusé par le modèle ; motif dans `message`, souvent un nombre de tokens inférieur au minimum |
+| 402 | `INSUFFICIENT_QUOTA` | Solde insuffisant pour les frais d’écriture et de stockage |
+| 403 | — | La clé n’a pas accès au modèle, l’IP source n’est pas autorisée ou le groupe de la clé n’est plus disponible |
+| 404 | `CACHE_NOT_FOUND` | Cache absent, expiré, supprimé ou appartenant à un autre compte |
+| 404 | `EXPLICIT_CACHE_DISABLED` | Le cache explicite n’est pas activé |
+| 413 | `CACHE_CONTENT_TOO_LARGE` | Le corps de la requête dépasse 10 MB |
+| 502 | `UPSTREAM_ERROR` | Service temporairement indisponible. Cette requête n’est pas facturée ; réessayez plus tard |
+| 503 | `CACHE_CHANNEL_UNAVAILABLE` | Cache temporairement indisponible ; réessayez plus tard |
+| 503 | `INTERNAL` | Service temporairement indisponible ; réessayez plus tard |

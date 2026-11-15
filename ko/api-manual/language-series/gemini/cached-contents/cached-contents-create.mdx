@@ -1,0 +1,170 @@
+---
+title: "Gemini 명시적 컨텍스트 캐싱 - 캐시 생성"
+openapi: '/ko/api-manual/language-series/gemini/cached-contents/cached-contents.json POST /v1beta/cachedContents'
+---
+
+<Note>
+**BaseURL**: 기본값은 텍스트 모델과 긴 연결을 더 잘 지원하는 `https://direct.evolink.ai`입니다. `https://api.evolink.ai`는 대체 주소입니다.
+</Note>
+
+반복해서 사용하는 긴 접두사(문서, 시스템 지침, 도구 정의)를 캐시로 만들면 이후 생성 요청에는 캐시 이름과 새 질문만 보냅니다. 캐시 부분에는 적중 단가가 적용되며, 보관 중에는 토큰 수와 시간에 따른 저장 요금이 부과됩니다.
+
+## 지원 모델
+
+| 계열 | 모델 |
+|---|---|
+| Gemini 3.x Flash | `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3-flash-preview` |
+| Gemini 3.x Flash-Lite | `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite-preview` |
+| Gemini 3.x Pro | `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`, `gemini-3-pro-preview` |
+
+Gemini 4는 명시적 캐시를 지원하지 않으며 생성 시 400 `EXPLICIT_CACHE_UNSUPPORTED`를 반환합니다.
+
+## 명시적 캐시와 암시적 캐시
+
+| | 암시적 캐시(기본) | 명시적 캐시(이 페이지) |
+|---|---|---|
+| 사용 방법 | 변경 불필요. 같은 접두사는 자동 적중할 수 있음 | 캐시를 생성한 뒤 생성 요청에서 이름 참조 |
+| 적중 여부 | 보장되지 않음 | 참조하면 적중 |
+| 쓰기 요금 | 없음 | 캐시 토큰 수에 따라 청구 |
+| 저장 요금 | 없음 | 캐시 토큰 수 × 시간에 따라 청구 |
+| 적합한 용도 | 변경 없이 자연스럽게 재사용 | 일정 기간 같은 긴 접두사를 여러 번 호출 |
+
+## 사용 흐름
+
+1. **생성**: `POST /v1beta/cachedContents`로 접두사를 `contents`, `systemInstruction`, `tools` 중 하나 이상에 넣고 이름 `name`을 받습니다.
+2. **참조**: `POST /v1beta/models/{model}:generateContent`(스트리밍은 `streamGenerateContent`) 본문에 `"cachedContent": "<name>"`을 추가하고 `contents`에는 새 질문만 넣습니다.
+3. **연장**(선택): `PATCH /v1beta/cachedContents/{id}`에 새 `ttl` 또는 `expireTime`을 전달합니다. 추가 기간의 저장 요금을 청구합니다.
+4. **삭제**(선택): 필요 없으면 `DELETE /v1beta/cachedContents/{id}`를 호출합니다. 삭제하지 않아도 만료 시 자동 삭제됩니다. 이미 청구한 저장 요금은 환불하지 않습니다.
+
+캐시는 계정에 귀속됩니다. 같은 계정의 모든 API Key가 참조할 수 있습니다(모델 허용 목록이 있다면 해당 모델 포함 필수). 다른 계정이 같은 이름을 사용하면 404입니다. 참조와 연장은 요청 Key의 현재 사용자 그룹 단가를 적용합니다.
+
+## 생성 요청에서 캐시 참조
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-3.8-flash:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cachedContent": "cachedContents/20261103012026348092000s1oTuB96",
+    "contents": [
+      { "role": "user", "parts": [{ "text": "설명서의 반품 규정은 무엇인가요?" }] }
+    ]
+  }'
+```
+
+응답의 `usageMetadata.cachedContentTokenCount`는 캐시 적중 토큰 수로 적중 단가를 적용합니다. `promptTokenCount`는 이를 포함하며 나머지에는 일반 입력 단가를 적용합니다.
+
+```json
+{
+  "candidates": [
+    { "content": { "role": "model", "parts": [{ "text": "설명서 7장에 따르면…" }] }, "finishReason": "STOP" }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 7541,
+    "cachedContentTokenCount": 7525,
+    "candidatesTokenCount": 212,
+    "totalTokenCount": 7753
+  },
+  "modelVersion": "gemini-3.8-flash"
+}
+```
+
+<Warning>
+캐시를 참조하는 생성 요청에는 **`systemInstruction`, `tools`, `toolConfig`를 다시 넣을 수 없습니다**. 캐시 생성 시 설정해야 하며 다시 전달하면 400입니다. 생성 모델이 캐시 모델과 다르면 400 `CACHE_MODEL_MISMATCH`입니다.
+</Warning>
+
+## 전체 예제(Python)
+
+```python
+import requests
+
+BASE = "https://direct.evolink.ai"
+HEADERS = {"Authorization": "Bearer YOUR_API_KEY", "Content-Type": "application/json"}
+
+# 1. 캐시 생성: 긴 문서 + 시스템 지침, 1시간 보관
+manual = open("manual.txt", encoding="utf-8").read()   # 모델의 최소 캐시 토큰 수 충족 필요
+cache = requests.post(f"{BASE}/v1beta/cachedContents", headers=HEADERS, json={
+    "model": "models/gemini-3.8-flash",
+    "displayName": "product-manual-v3",
+    "systemInstruction": {"parts": [{"text": "제품 설명서 도우미입니다. 설명서 내용에만 근거해 답하세요."}]},
+    "contents": [{"role": "user", "parts": [{"text": manual}]}],
+    "ttl": "3600s",
+}).json()
+name = cache["name"]            # cachedContents/<id>
+cache_id = name.split("/")[-1]  # <id>
+print("cached tokens:", cache["usageMetadata"]["totalTokenCount"], "expire:", cache["expireTime"])
+
+# 2. 반복 참조: 매번 새 질문만 전송
+for question in ["반품 규정은 무엇인가요?", "보증 기간은 얼마인가요?", "해외에서 수리를 위해 보낼 수 있나요?"]:
+    resp = requests.post(f"{BASE}/v1beta/models/gemini-3.8-flash:generateContent", headers=HEADERS, json={
+        "cachedContent": name,
+        "contents": [{"role": "user", "parts": [{"text": question}]}],
+    }).json()
+    print(resp["candidates"][0]["content"]["parts"][0]["text"])
+    print("cache hit tokens:", resp["usageMetadata"].get("cachedContentTokenCount", 0))
+
+# 3. 계속 사용: 지금부터 2시간 더 보관(추가 기간의 저장 요금 청구)
+requests.patch(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS, json={"ttl": "7200s"})
+
+# 4. 사용 후 삭제(청구한 저장 요금은 환불하지 않음)
+requests.delete(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS)
+```
+
+## 요금
+
+| 항목 | 계산 방법 |
+|---|---|
+| 캐시 쓰기 | 캐시 토큰 수 × 쓰기 단가, 생성 시 청구. 쓰기 단가는 모델 입력 단가와 같으며 Pro 캐시가 20만 토큰을 초과하면 긴 컨텍스트 단가 적용 |
+| 캐시 저장 | 토큰 수 × 유효 기간(시간, 초 단위 비례 계산) × 저장 단가(100만 토큰·시간당), 생성 시 전체 기간에 대해 청구 |
+| 캐시를 사용한 생성 | `cachedContentTokenCount`는 적중 단가, 나머지 입력과 출력은 일반 단가. 캐시에 `googleSearch`가 선언되면 검색마다 검색 단가를 별도 청구 |
+| 기간 연장 | 추가 기간의 저장 요금. 1초 미만은 1초로 계산 |
+| 단축 / 삭제 / 만료 | 이미 청구한 저장 요금은 환불하지 않음 |
+| 목록 / 개별 조회 | 무료 |
+
+- 토큰 수는 생성 응답의 `usageMetadata.totalTokenCount`를 기준으로 합니다.
+- 이름의 `<id>`는 생성 요청 ID입니다. 대시보드의 로그에서 검색하면 생성·연장의 과금 내역(토큰 수, 저장 시간, 저장 요금)을 확인할 수 있습니다.
+- 모델별 쓰기·적중·저장 단가는 [요금 페이지](https://evolink.ai/pricing)를 참고하세요.
+- 비용 효율: 저장은 시간별 요금이고 적중마다 입력 비용을 절약합니다. 유효 기간 동안 같은 접두사를 많이 쓸수록 유리하며, 한두 번이면 원문을 보내는 편이 저렴합니다.
+
+## 제한
+
+- **유효 기간**: 최소 60초, 최대 168시간(`604800s`). `ttl`과 `expireTime` 중 하나만 지정하며 둘 다 생략하면 1시간입니다.
+- **내용**: `contents`, `systemInstruction`, `tools` 중 하나 이상 필수. 생성 본문은 최대 10 MB이며 모델의 최소 토큰 수(예: `gemini-3.8-flash`는 4,096)에 미달하면 400입니다.
+- **필드**: 이 페이지에 나열된 필드만 허용합니다. 다른 필드는 이름을 명시해 400을 반환합니다.
+- **tools**: `googleSearch`, `codeExecution`, `functionDeclarations`만 허용합니다.
+- **내용 변경 불가**: 생성 후에는 유효 기간만 변경합니다. 내용을 바꾸려면 새 캐시를 만드세요.
+- **접근 제어**: 생성·연장은 일반 생성 요청과 같은 Key의 IP 허용 목록, 모델 허용 목록, 요청 빈도 제한을 적용합니다.
+
+## 오류 코드
+
+오류는 Gemini 네이티브 형식이며 `error.details[0].reason`이 구체적인 사유 코드입니다.
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "cached content not found",
+    "status": "NOT_FOUND",
+    "details": [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "CACHE_NOT_FOUND", "domain": "evolink.ai" }]
+  }
+}
+```
+
+| HTTP | reason | 의미 |
+|---|---|---|
+| 400 | `INVALID_ARGUMENT` | 내용 없음, `ttl`이 60초~168시간 범위 밖, `ttl`과 `expireTime` 동시 지정, 미지원 필드·도구 등 |
+| 400 | `EXPLICIT_CACHE_UNSUPPORTED` | 명시적 캐시 미지원 모델(Gemini 4, 이미지 모델) |
+| 400 | `NO_AVAILABLE_CHANNEL` | 현재 사용자 그룹에서 이 모델의 캐시 생성 불가 |
+| 400 | `MODEL_PRICE_ERROR` | 이 모델의 명시적 캐시가 현재 사용자 그룹에 미개방 |
+| 400 | `CACHE_EXPIRED` | 처리 중 만료되었거나 남은 유효 기간이 너무 짧음 |
+| 400 | `CACHE_MODEL_MISMATCH` | 생성 모델과 캐시 모델 불일치 |
+| 400 | `INVALID_CACHED_CONTENT` | 잘못된 `cachedContent` 형식 |
+| 4xx | `UPSTREAM_ERROR` | 모델이 내용을 거부함. 사유는 `message`에 표시하며 흔한 원인은 최소 토큰 수 미달 |
+| 402 | `INSUFFICIENT_QUOTA` | 캐시 쓰기 및 저장 요금을 지불할 잔액 부족 |
+| 403 | — | Key에 모델 권한이 없거나 출발지 IP가 허용 목록에 없거나 Key의 사용자 그룹을 더 이상 사용할 수 없음 |
+| 404 | `CACHE_NOT_FOUND` | 캐시가 없거나 만료·삭제되었거나 다른 계정 소유 |
+| 404 | `EXPLICIT_CACHE_DISABLED` | 명시적 캐시 기능이 활성화되지 않음 |
+| 413 | `CACHE_CONTENT_TOO_LARGE` | 요청 본문이 10 MB를 초과함 |
+| 502 | `UPSTREAM_ERROR` | 서비스를 일시적으로 사용할 수 없습니다. 이 요청은 과금되지 않으며 나중에 다시 시도하세요 |
+| 503 | `CACHE_CHANNEL_UNAVAILABLE` | 캐시를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요 |
+| 503 | `INTERNAL` | 서비스를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요 |

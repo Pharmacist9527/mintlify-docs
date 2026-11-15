@@ -1,0 +1,1312 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gemini 명시적 컨텍스트 캐싱 (cachedContents)",
+    "description": "반복해서 사용하는 긴 접두사(문서, 시스템 지침, 도구 정의)를 한 번 캐시로 생성합니다. 이후 생성 요청에는 캐시 이름과 새 질문만 보내며, 캐시 부분에는 캐시 적중 요금이 적용됩니다. 형식은 Gemini 네이티브 cachedContents API와 같습니다.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "프로덕션 (권장)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "대체 주소"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "명시적 컨텍스트 캐싱",
+      "description": "Gemini 명시적 캐시 생성, 조회, 연장 및 삭제"
+    }
+  ],
+  "paths": {
+    "/v1beta/cachedContents": {
+      "post": {
+        "summary": "캐시 생성",
+        "operationId": "geminiCreateCachedContent",
+        "tags": [
+          "명시적 컨텍스트 캐싱"
+        ],
+        "description": "`contents`, `systemInstruction`, `tools` 중 하나 이상으로 캐시를 생성하고 이름 `name`을 받습니다. `toolConfig`도 추가할 수 있습니다.\n\n- **모델**: `model`은 `models/gemini-3.8-flash` 또는 `gemini-3.8-flash` 형식을 모두 허용합니다. 지원 모델은 `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`, `gemini-3-pro-preview`입니다. Gemini 4는 명시적 캐시를 지원하지 않습니다.\n- **유효 기간**: `ttl`(예: `\"3600s\"`) 또는 `expireTime`(RFC 3339) 중 하나만 지정합니다. 둘 다 생략하면 1시간입니다. 최소 60초, 최대 168시간(`604800s`)이며 만료 시 자동 삭제됩니다.\n- **크기**: 요청 본문은 최대 10 MB입니다. 모델의 최소 캐시 토큰 수(예: `gemini-3.8-flash`는 4,096)에 미달하면 400을 반환합니다.\n- **필드**: 문서에 나열된 필드만 허용하며 나머지는 400을 반환합니다.\n- **tools**: `googleSearch`, `codeExecution`, `functionDeclarations`만 허용하며 나머지 도구는 400을 반환합니다.\n- **반환되는 `name`**: `cachedContents/<id>` 형식이며 `<id>`는 생성 요청 ID입니다. 대시보드의 로그 페이지에서 검색하면 생성 요금을 확인할 수 있습니다.\n- **요금**: 생성 시 캐시 쓰기 요금(입력 단가와 동일)과 전체 유효 기간의 저장 요금을 선불로 청구합니다. 단축·삭제·만료 시 저장 요금은 환불하지 않으며 연장 시 추가 기간을 청구합니다. 캐시 생성 페이지의 요금 설명을 참고하세요.\n\n`Authorization: Bearer`로 인증하며 `x-goog-api-key` 헤더도 허용합니다.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCachedContentRequest"
+              },
+              "examples": {
+                "long_document": {
+                  "summary": "긴 문서와 시스템 지침을 1시간 캐시",
+                  "value": {
+                    "model": "models/gemini-3.8-flash",
+                    "displayName": "product-manual-v3",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "제품 설명서 도우미입니다. 제공된 설명서에만 근거해 답하고, 없는 정보는 \"설명서에 언급되지 않았습니다\"라고 답하세요."
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "(제품 설명서 전문을 여기에 넣으세요. 캐시 내용은 최소 4,096토큰이어야 합니다.)"
+                          }
+                        ]
+                      }
+                    ],
+                    "ttl": "3600s"
+                  }
+                },
+                "with_tools": {
+                  "summary": "시스템 지침과 함수 정의를 절대 만료 시각으로 캐시",
+                  "value": {
+                    "model": "gemini-3.8-flash",
+                    "displayName": "support-agent-tools",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "(최소 4,096토큰의 긴 고객 지원 지침을 여기에 넣으세요.)"
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "(이전 지원 티켓 예시…)"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "functionDeclarations": [
+                          {
+                            "name": "lookup_order",
+                            "description": "주문 번호로 주문 상태 조회",
+                            "parameters": {
+                              "type": "object",
+                              "properties": {
+                                "order_id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "order_id"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "캐시가 생성되었습니다. `usageMetadata.totalTokenCount`는 쓰기 및 저장 요금 계산에 사용하는 캐시 토큰 수입니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 매개변수, 명시적 캐시 미지원 모델, 현재 사용자 그룹에 미개방, 또는 최소 캐시 토큰 수 미달",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "ttl must not exceed 604800s (168h)",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key가 없거나 유효하지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "캐시 쓰기 및 저장 요금을 지불할 잔액 부족",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage prepayment",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key에 모델 권한이 없거나 출발지 IP가 허용 목록에 없거나 Key의 사용자 그룹을 더 이상 사용할 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "명시적 캐시 기능이 활성화되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "요청 본문이 10 MB를 초과함",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "cache content exceeds 10485760 bytes; use Cloud Storage fileUri for larger content",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CONTENT_TOO_LARGE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "서비스를 일시적으로 사용할 수 없습니다. 이 요청은 과금되지 않으며 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "캐시 목록 조회",
+        "operationId": "geminiListCachedContents",
+        "tags": [
+          "명시적 컨텍스트 캐싱"
+        ],
+        "description": "현재 계정의 **만료되지 않은** 캐시를 만료 시각 내림차순으로 조회합니다. 계정에 귀속되며 Key는 구분하지 않습니다. 만료되거나 삭제된 캐시는 제외됩니다. 무료입니다.",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "페이지당 항목 수. 기본 50, 최대 200.",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "description": "이전 응답의 `nextPageToken`. 첫 페이지에서는 생략합니다.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "캐시 목록. 다음 페이지가 있으면 `nextPageToken` 포함",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCachedContentsResponse"
+                },
+                "example": {
+                  "cachedContents": [
+                    {
+                      "name": "cachedContents/20261103012026348092000s1oTuB96",
+                      "model": "models/gemini-3.8-flash",
+                      "displayName": "product-manual-v3",
+                      "createTime": "2026-11-03T01:20:27.311Z",
+                      "updateTime": "2026-11-03T01:20:27.311Z",
+                      "expireTime": "2026-11-03T02:20:26.902Z",
+                      "usageMetadata": {
+                        "totalTokenCount": 7525
+                      }
+                    }
+                  ],
+                  "nextPageToken": "50"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 pageToken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "invalid pageToken",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key가 없거나 유효하지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key에 모델 권한이 없거나 출발지 IP가 허용 목록에 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "명시적 캐시 기능이 활성화되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1beta/cachedContents/{id}": {
+      "get": {
+        "summary": "개별 캐시 조회",
+        "operationId": "geminiGetCachedContent",
+        "tags": [
+          "명시적 컨텍스트 캐싱"
+        ],
+        "description": "메타데이터(모델, 토큰 수, 생성/수정/만료 시각)를 반환하며 캐시 내용은 반환하지 않습니다. 만료된 캐시는 존재하지 않는 캐시처럼 404를 반환합니다. 무료입니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "캐시 ID: 생성 시 반환된 `name`에서 `cachedContents/`를 뺀 부분입니다. `cachedContents/20261103012026348092000s1oTuB96`이면 `20261103012026348092000s1oTuB96`을 지정합니다.",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "캐시 메타데이터",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key가 없거나 유효하지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key에 모델 권한이 없거나 출발지 IP가 허용 목록에 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "캐시가 없거나 만료·삭제되었거나 다른 계정 소유임, 또는 명시적 캐시 기능이 활성화되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "서비스를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "유효 기간 연장 또는 단축",
+        "operationId": "geminiUpdateCachedContent",
+        "tags": [
+          "명시적 컨텍스트 캐싱"
+        ],
+        "description": "내용은 바꿀 수 없으며 유효 기간만 변경합니다. `ttl`(**지금부터**의 새 기간, 예: `\"7200s\"`) 또는 `expireTime`(새 절대 만료 시각) 중 하나를 지정합니다.\n\n- 새 만료 시각은 지금부터 최소 60초, 최대 168시간 후여야 합니다.\n- `ttl` 또는 `expireTime`만 허용하며 둘 다 보내거나 다른 필드를 보내면 400입니다.\n- **연장**: 추가 기간의 저장 요금을 초 단위로 청구하며 1초 미만은 1초로 계산합니다. **단축**: 이미 청구한 저장 요금은 환불하지 않습니다.\n- 유료 작업입니다. Key에 모델 권한이 필요하며 현재 사용자 그룹의 단가를 적용합니다. 잔액 부족은 402입니다.\n- 같은 연장 요청을 재시도할 때 `Idempotency-Key` 헤더로 중복 과금을 방지할 수 있습니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "캐시 ID: 생성 시 반환된 `name`에서 `cachedContents/`를 뺀 부분입니다. `cachedContents/20261103012026348092000s1oTuB96`이면 `20261103012026348092000s1oTuB96`을 지정합니다.",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCachedContentRequest"
+              },
+              "examples": {
+                "extend_by_ttl": {
+                  "summary": "지금부터 2시간 더 보관",
+                  "value": {
+                    "ttl": "7200s"
+                  }
+                },
+                "set_expire_time": {
+                  "summary": "절대 만료 시각 지정",
+                  "value": {
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "갱신된 캐시 메타데이터. `expireTime`은 새 만료 시각입니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:35:10.020Z",
+                  "expireTime": "2026-11-03T03:35:10.000Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ttl / expireTime 누락 또는 동시 지정, 다른 필드 전송, 만료 시각 범위 초과, 처리 중 만료(CACHE_EXPIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "new expiry must be at least 60s in the future",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key가 없거나 유효하지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "추가 저장 요금을 지불할 잔액 부족",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage extension",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key에 모델 권한이 없거나 출발지 IP가 허용 목록에 없거나 Key의 사용자 그룹을 더 이상 사용할 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "캐시가 없거나 만료·삭제되었거나 다른 계정 소유임, 또는 명시적 캐시 기능이 활성화되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "서비스를 일시적으로 사용할 수 없습니다. 이 요청은 과금되지 않으며 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "캐시를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "캐시 삭제",
+        "operationId": "geminiDeleteCachedContent",
+        "tags": [
+          "명시적 컨텍스트 캐싱"
+        ],
+        "description": "캐시를 즉시 삭제합니다. 이후 해당 이름을 참조하면 404입니다. 이미 청구한 저장 요금은 환불하지 않습니다. 무료입니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "캐시 ID: 생성 시 반환된 `name`에서 `cachedContents/`를 뺀 부분입니다. `cachedContents/20261103012026348092000s1oTuB96`이면 `20261103012026348092000s1oTuB96`을 지정합니다.",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "삭제됨. 빈 객체 반환",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "API Key가 없거나 유효하지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key에 모델 권한이 없거나 출발지 IP가 허용 목록에 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "캐시가 없거나 만료·삭제되었거나 다른 계정 소유임, 또는 명시적 캐시 기능이 활성화되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한 초과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "캐시를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## 모든 엔드포인트는 Bearer Token 인증이 필요합니다\n\n**API Key 발급:**\n\n[API Key 관리](https://evolink.ai/dashboard/keys)에서 발급받으세요.\n\n**다음 요청 헤더 추가:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\nGemini 네이티브 형식인 `x-goog-api-key: YOUR_API_KEY` 헤더 또는 `?key=YOUR_API_KEY` URL 매개변수도 사용할 수 있습니다."
+      }
+    },
+    "schemas": {
+      "Part": {
+        "type": "object",
+        "description": "콘텐츠 부분: 텍스트, 인라인 데이터(base64), 파일 참조 중 하나",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "텍스트"
+          },
+          "inlineData": {
+            "type": "object",
+            "description": "인라인 바이너리 데이터(이미지, 오디오, PDF 등)",
+            "properties": {
+              "mimeType": {
+                "type": "string",
+                "example": "application/pdf"
+              },
+              "data": {
+                "type": "string",
+                "description": "base64로 인코딩된 데이터"
+              }
+            }
+          },
+          "fileData": {
+            "type": "object",
+            "description": "파일 참조",
+            "properties": {
+              "mimeType": {
+                "type": "string"
+              },
+              "fileUri": {
+                "type": "string",
+                "description": "공개 접근 가능한 URL"
+              }
+            }
+          }
+        }
+      },
+      "Content": {
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "description": "역할. 시스템 지침에는 필요 없음"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "도구 선언. 아래 세 종류만 허용하며 다른 도구는 거부됩니다",
+        "properties": {
+          "googleSearch": {
+            "type": "object",
+            "description": "웹 검색. `{}` 지정"
+          },
+          "codeExecution": {
+            "type": "object",
+            "description": "코드 실행. `{}` 지정"
+          },
+          "functionDeclarations": {
+            "type": "array",
+            "description": "함수 선언(OpenAPI 하위 집합의 매개변수 구조)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateCachedContentRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "모델. `models/gemini-3.8-flash`와 `gemini-3.8-flash` 모두 허용. 지원 모델: `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`, `gemini-3-pro-preview`",
+            "example": "models/gemini-3.8-flash"
+          },
+          "contents": {
+            "type": "array",
+            "description": "캐시할 대화 내용. 배열이어야 하며 참조 시 대화 접두사가 됩니다. `contents`, `systemInstruction`, `tools` 중 하나 이상 필요",
+            "items": {
+              "$ref": "#/components/schemas/Content"
+            }
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "시스템 지침. 캐시한 뒤에는 이를 참조하는 생성 요청에 systemInstruction을 넣을 수 없습니다"
+          },
+          "tools": {
+            "type": "array",
+            "description": "도구 선언. 캐시한 뒤에는 이를 참조하는 생성 요청에 tools를 넣을 수 없습니다",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "도구 호출 설정(functionCallingConfig 등). 캐시한 뒤에는 이를 참조하는 생성 요청에 toolConfig를 넣을 수 없습니다"
+          },
+          "ttl": {
+            "type": "string",
+            "description": "유효 기간(예: `\"3600s\"`). 최소 `60s`, 최대 `604800s`(168시간). expireTime과 상호 배타적이며 동시 지정은 400. 둘 다 생략하면 `3600s`",
+            "example": "3600s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "절대 만료 시각(RFC 3339, UTC). ttl과 상호 배타적이며 동시 지정은 400",
+            "example": "2026-11-03T06:00:00Z"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "관리용 이름. 최대 255자이며 요금에 영향 없음",
+            "example": "product-manual-v3"
+          }
+        }
+      },
+      "UpdateCachedContentRequest": {
+        "type": "object",
+        "description": "ttl 또는 expireTime 중 정확히 하나 필수. 다른 필드는 400",
+        "properties": {
+          "ttl": {
+            "type": "string",
+            "description": "지금부터의 새 유효 기간(예: `\"7200s\"`). 최소 `60s`, 최대 `604800s`",
+            "example": "7200s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "새 절대 만료 시각(RFC 3339, UTC)",
+            "example": "2026-11-03T06:00:00Z"
+          }
+        }
+      },
+      "CachedContent": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "`cachedContents/<id>` 형식의 이름. 생성 요청의 `cachedContent`에 지정하며 `<id>`는 생성 요청 ID이기도 합니다",
+            "example": "cachedContents/20261103012026348092000s1oTuB96"
+          },
+          "model": {
+            "type": "string",
+            "description": "캐시에 연결된 모델. 생성 요청도 같은 모델을 사용해야 함",
+            "example": "models/gemini-3.8-flash"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "생성 시 지정한 이름. 지정하지 않았다면 반환하지 않음"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "생성 시각(UTC)"
+          },
+          "updateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "마지막 수정 시각(UTC)"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "만료 시각(UTC). 만료 후 자동 삭제"
+          },
+          "usageMetadata": {
+            "type": "object",
+            "properties": {
+              "totalTokenCount": {
+                "type": "integer",
+                "description": "캐시의 총 토큰 수. 쓰기 및 저장 요금 계산에 사용",
+                "example": 7525
+              }
+            }
+          }
+        }
+      },
+      "ListCachedContentsResponse": {
+        "type": "object",
+        "properties": {
+          "cachedContents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CachedContent"
+            }
+          },
+          "nextPageToken": {
+            "type": "string",
+            "description": "다음 페이지가 있으면 반환. 다음 요청의 `pageToken`에 그대로 전달"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Gemini 네이티브 오류 형식. `error.details[0].reason`이 구체적인 사유 코드이며 캐시 생성 페이지의 오류 표 참고",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 상태 코드"
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "description": "상태 값(INVALID_ARGUMENT / NOT_FOUND / UNAVAILABLE 등)"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "@type": {
+                      "type": "string",
+                      "example": "type.googleapis.com/google.rpc.ErrorInfo"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "example": "CACHE_NOT_FOUND"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "example": "evolink.ai"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

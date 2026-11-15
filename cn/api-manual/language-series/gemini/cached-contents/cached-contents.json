@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Gemini 显式上下文缓存（cachedContents）",
-    "description": "把反复使用的长前缀（长文档、系统指令、工具定义）一次上传成缓存，后续生成请求只带缓存名和新问题；缓存部分按「缓存命中」单价计费。接口与 Google 原生 cachedContents 同形。",
+    "description": "把反复使用的长前缀（长文档、系统指令、工具定义）一次创建成缓存，后续生成请求只带缓存名和新问题；缓存部分按「缓存命中」单价计费。接口格式与 Gemini 原生 cachedContents 接口一致。",
     "license": {
       "name": "MIT"
     },
@@ -37,7 +37,7 @@
         "tags": [
           "显式上下文缓存"
         ],
-        "description": "把 `contents`（可带 `systemInstruction` / `tools` / `toolConfig`）上传为一份缓存，返回缓存名 `name`。\n\n- **模型**：`model` 写 `models/gemini-3.8-flash` 或 `gemini-3.8-flash` 都可以。当前支持 `gemini-3.8-flash`；Gemini 4 系（`gemini-4-argon`）不支持显式缓存（Google 限制），其它模型陆续开放。\n- **有效期**：`ttl` 形如 `\"3600s\"`（整数秒 + `s`），或 `expireTime`（RFC 3339 时间）；两个都不填默认 1 小时。最短 60 秒，最长 168 小时（`604800s`）。到期自动删除。\n- **大小**：请求体不超过 10 MB。上游要求缓存内容不少于 4,096 token（`gemini-3.8-flash` 实测），不足会返回 400。\n- **tools**：只接受 `googleSearch`、`codeExecution`、`functionDeclarations`，其它工具返回 400。\n- **返回的 `name`**：形如 `cachedContents/<id>`，`<id>` 就是本次请求的请求号。在控制台「日志」页按这个 id 搜索，就能看到创建缓存那笔扣费。\n- **计费**：创建时收「缓存写入费」，并按请求的有效期一次性预收「缓存存储费」。缩短、删除、到期都不退存储费；只延长时补收差额。详见「创建缓存」页面下方的计费说明。\n\n认证通过 `Authorization: Bearer`，也接受 `x-goog-api-key` 请求头。",
+        "description": "把 `contents`、`systemInstruction`、`tools`（至少一项，可另带 `toolConfig`）创建为一份缓存，返回缓存名 `name`。\n\n- **模型**：`model` 写 `models/gemini-3.8-flash` 或 `gemini-3.8-flash` 都可以。支持 `gemini-3.8-flash`、`gemini-3.7-flash`、`gemini-3.6-flash`、`gemini-3.5-flash`、`gemini-3.5-flash-lite`、`gemini-3-flash-preview`、`gemini-3.1-flash-lite-preview`、`gemini-3.1-pro-preview`、`gemini-3.1-pro-preview-customtools`、`gemini-3-pro-preview`；Gemini 4 系列不支持显式缓存。\n- **有效期**：`ttl` 形如 `\"3600s\"`，或 `expireTime`（RFC 3339 时间），两者只能给一个；都不填默认 1 小时。最短 60 秒，最长 168 小时（`604800s`），到期自动删除。\n- **大小**：请求体不超过 10 MB；缓存内容需达到模型要求的最小 token 数（如 `gemini-3.8-flash` 为 4,096 token），不足返回 400。\n- **字段**：只接受本接口列出的字段，传入其它字段返回 400。\n- **tools**：只接受 `googleSearch`、`codeExecution`、`functionDeclarations`，其它工具返回 400。\n- **返回的 `name`**：形如 `cachedContents/<id>`，`<id>` 就是本次请求的请求 ID。在控制台「日志」页按这个 id 搜索，就能看到创建缓存的扣费记录。\n- **计费**：创建时收取「缓存写入费」（单价与输入相同），并按有效期一次收取「缓存存储费」。缩短、删除、到期都不退存储费；延长时按新增时长补收。详见「创建缓存」页面下方的计费说明。\n\n认证使用 `Authorization: Bearer`，也接受 `x-goog-api-key` 请求头。",
         "requestBody": {
           "required": true,
           "content": {
@@ -144,7 +144,7 @@
             }
           },
           "400": {
-            "description": "参数错误；模型不支持显式缓存；当前套餐没有可用线路；上游拒绝（例如内容不足最小 token 数）",
+            "description": "参数错误；模型不支持显式缓存；当前用户组暂未开放；缓存内容不足最小 token 数",
             "content": {
               "application/json": {
                 "schema": {
@@ -185,7 +185,7 @@
             }
           },
           "402": {
-            "description": "余额不足以预付写入费和存储费",
+            "description": "余额不足以支付缓存写入费和存储费",
             "content": {
               "application/json": {
                 "schema": {
@@ -209,7 +209,7 @@
             }
           },
           "403": {
-            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "description": "Key 无权使用该模型、来源 IP 不在 Key 的白名单内，或 Key 所在的用户组已不可用",
             "content": {
               "application/json": {
                 "schema": {
@@ -291,7 +291,7 @@
             }
           },
           "502": {
-            "description": "上游服务异常",
+            "description": "服务暂时不可用，本次不扣费，请稍后重试",
             "content": {
               "application/json": {
                 "schema": {
@@ -346,7 +346,7 @@
         "tags": [
           "显式上下文缓存"
         ],
-        "description": "列出当前账号下所有**未过期**的缓存（按账号归属，不区分 Key）。已过期、已删除的不在列表里。免费。",
+        "description": "列出当前账号下所有**未过期**的缓存（按账号归属，不区分 Key），按到期时间倒序排列。已过期、已删除的不在列表里。免费。",
         "parameters": [
           {
             "name": "pageSize",
@@ -671,7 +671,7 @@
         "tags": [
           "显式上下文缓存"
         ],
-        "description": "只能改有效期，不能改内容。请求体给 `ttl`（从**现在**起算的新有效期，如 `\"7200s\"`）或 `expireTime`（新的绝对到期时间）之一。\n\n- 新到期时间距现在最短 60 秒、最长 168 小时。\n- **延长**：按新增的时长补收存储费。**缩短**：不退已收的存储费。\n- 这是付费操作：Key 需要有该模型的使用权限，余额不足返回 402。\n- 同一条延长请求重试时可带 `Idempotency-Key` 请求头，避免重复扣费。",
+        "description": "只能改有效期，不能改内容。请求体给 `ttl`（从**现在**起算的新有效期，如 `\"7200s\"`）或 `expireTime`（新的绝对到期时间）之一。\n\n- 新到期时间距现在最短 60 秒、最长 168 小时。\n- 只接受 `ttl` 或 `expireTime`；两者同时传入、或传入其它字段，返回 400。\n- **延长**：按新增时长补收存储费（按秒计，不足 1 秒按 1 秒）。**缩短**：不退已收的存储费。\n- 这是付费操作：Key 需要有该模型的使用权限，按该 Key 当前所在用户组的价格计费，余额不足返回 402。\n- 同一条延长请求重试时可带 `Idempotency-Key` 请求头，避免重复扣费。",
         "parameters": [
           {
             "name": "id",
@@ -731,7 +731,7 @@
             }
           },
           "400": {
-            "description": "没有给 ttl / expireTime；新到期时间超出范围；缓存在处理途中刚好过期（CACHE_EXPIRED）",
+            "description": "没有给 ttl / expireTime，或两者同时传入；传入了其它字段；新到期时间超出范围；缓存在处理途中到期（CACHE_EXPIRED）",
             "content": {
               "application/json": {
                 "schema": {
@@ -796,7 +796,7 @@
             }
           },
           "403": {
-            "description": "Key 无权使用该模型，或来源 IP 不在 Key 的白名单内",
+            "description": "Key 无权使用该模型、来源 IP 不在 Key 的白名单内，或 Key 所在的用户组已不可用",
             "content": {
               "application/json": {
                 "schema": {
@@ -854,7 +854,7 @@
             }
           },
           "502": {
-            "description": "上游服务异常，本次未扣费",
+            "description": "服务暂时不可用，本次不扣费，请稍后重试",
             "content": {
               "application/json": {
                 "schema": {
@@ -878,7 +878,7 @@
             }
           },
           "503": {
-            "description": "缓存所在线路暂不可用且自动迁移未成功，请稍后重试",
+            "description": "缓存暂时不可用，请稍后重试",
             "content": {
               "application/json": {
                 "schema": {
@@ -909,7 +909,7 @@
         "tags": [
           "显式上下文缓存"
         ],
-        "description": "立即删除缓存。删除后再引用该缓存名返回 404。已预收的存储费不退；不需要再用时删除可以避免 Google 侧继续占用，但不会产生退款。免费。",
+        "description": "立即删除缓存。删除后再引用该缓存名返回 404。已收的存储费不退。免费。",
         "parameters": [
           {
             "name": "id",
@@ -1010,7 +1010,7 @@
             }
           },
           "503": {
-            "description": "缓存所在线路暂不可用且自动迁移未成功，请稍后重试",
+            "description": "缓存暂时不可用，请稍后重试",
             "content": {
               "application/json": {
                 "schema": {
@@ -1042,7 +1042,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n也接受 Google 原生写法：请求头 `x-goog-api-key: YOUR_API_KEY`，或 URL 参数 `?key=YOUR_API_KEY`。"
+        "description": "##所有接口均需要使用 Bearer Token 进行认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n也接受 Gemini 原生写法：请求头 `x-goog-api-key: YOUR_API_KEY`，或 URL 参数 `?key=YOUR_API_KEY`。"
       }
     },
     "schemas": {
@@ -1140,18 +1140,17 @@
       "CreateCachedContentRequest": {
         "type": "object",
         "required": [
-          "model",
-          "contents"
+          "model"
         ],
         "properties": {
           "model": {
             "type": "string",
-            "description": "模型，`models/gemini-3.8-flash` 或 `gemini-3.8-flash`。当前支持 `gemini-3.8-flash`",
+            "description": "模型，`models/gemini-3.8-flash` 或 `gemini-3.8-flash` 两种写法均可。支持 `gemini-3.8-flash`、`gemini-3.7-flash`、`gemini-3.6-flash`、`gemini-3.5-flash`、`gemini-3.5-flash-lite`、`gemini-3-flash-preview`、`gemini-3.1-flash-lite-preview`、`gemini-3.1-pro-preview`、`gemini-3.1-pro-preview-customtools`、`gemini-3-pro-preview`",
             "example": "models/gemini-3.8-flash"
           },
           "contents": {
             "type": "array",
-            "description": "要缓存的对话内容，不能为空。引用缓存时这些内容会作为对话前缀",
+            "description": "要缓存的对话内容，必须是数组。引用缓存时这些内容会作为对话前缀。`contents`、`systemInstruction`、`tools` 至少提供一项",
             "items": {
               "$ref": "#/components/schemas/Content"
             }
@@ -1173,26 +1172,26 @@
           },
           "ttl": {
             "type": "string",
-            "description": "有效期，整数秒 + `s`，如 `\"3600s\"`。最短 `60s`，最长 `604800s`（168 小时）。与 expireTime 二选一，都不填默认 `3600s`",
+            "description": "有效期，如 `\"3600s\"`。最短 `60s`，最长 `604800s`（168 小时）。与 expireTime 二选一，同时传入返回 400；都不填默认 `3600s`",
             "example": "3600s"
           },
           "expireTime": {
             "type": "string",
             "format": "date-time",
-            "description": "绝对到期时间（RFC 3339，UTC），与 ttl 二选一；ttl 优先",
+            "description": "绝对到期时间（RFC 3339，UTC），与 ttl 二选一，同时传入返回 400",
             "example": "2026-11-03T06:00:00Z"
           },
           "displayName": {
             "type": "string",
             "maxLength": 255,
-            "description": "给自己看的名字，最长 255 个字符，不参与路由与计费",
+            "description": "给自己看的名字，最长 255 个字符，不影响计费",
             "example": "product-manual-v3"
           }
         }
       },
       "UpdateCachedContentRequest": {
         "type": "object",
-        "description": "ttl 与 expireTime 二选一，至少给一个",
+        "description": "ttl 与 expireTime 二选一，必须且只能给一个；传入其它字段返回 400",
         "properties": {
           "ttl": {
             "type": "string",
@@ -1244,7 +1243,7 @@
             "properties": {
               "totalTokenCount": {
                 "type": "integer",
-                "description": "缓存的 token 总数，写入费、存储费、命中费都按它算",
+                "description": "缓存的 token 总数，缓存写入费与存储费按它计算",
                 "example": 7525
               }
             }
@@ -1268,7 +1267,7 @@
       },
       "ErrorResponse": {
         "type": "object",
-        "description": "Google 原生错误格式。`error.details[0].reason` 是 EvoLink 的原因码，见「创建缓存」页面的错误码表",
+        "description": "Gemini 原生错误格式。`error.details[0].reason` 是具体原因码，见「创建缓存」页面的错误码表",
         "properties": {
           "error": {
             "type": "object",
@@ -1282,7 +1281,7 @@
               },
               "status": {
                 "type": "string",
-                "description": "Google 风格状态枚举，如 INVALID_ARGUMENT / NOT_FOUND / UNAVAILABLE"
+                "description": "状态枚举，如 INVALID_ARGUMENT / NOT_FOUND / UNAVAILABLE"
               },
               "details": {
                 "type": "array",

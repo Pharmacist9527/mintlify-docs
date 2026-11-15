@@ -1,0 +1,170 @@
+---
+title: "Gemini 明示的コンテキストキャッシュ - キャッシュを作成"
+openapi: '/ja/api-manual/language-series/gemini/cached-contents/cached-contents.json POST /v1beta/cachedContents'
+---
+
+<Note>
+**BaseURL**：デフォルトはテキストモデルと長時間接続への対応が優れた `https://direct.evolink.ai` です。`https://api.evolink.ai` は代替アドレスです。
+</Note>
+
+繰り返し使う長いプレフィックス（文書、システム指示、ツール定義）をキャッシュし、以後の生成リクエストではキャッシュ名と新しい質問だけを送ります。キャッシュ部分にはヒット単価が適用され、保存中はトークン数と時間に応じた保存料金がかかります。
+
+## 対応モデル
+
+| シリーズ | モデル |
+|---|---|
+| Gemini 3.x Flash | `gemini-3.8-flash`、`gemini-3.7-flash`、`gemini-3.6-flash`、`gemini-3.5-flash`、`gemini-3-flash-preview` |
+| Gemini 3.x Flash-Lite | `gemini-3.5-flash-lite`、`gemini-3.1-flash-lite-preview` |
+| Gemini 3.x Pro | `gemini-3.1-pro-preview`、`gemini-3.1-pro-preview-customtools`、`gemini-3-pro-preview` |
+
+Gemini 4 は明示的キャッシュに対応しておらず、作成時に400 `EXPLICIT_CACHE_UNSUPPORTED` を返します。
+
+## 明示的キャッシュと暗黙的キャッシュ
+
+| | 暗黙的キャッシュ（デフォルト） | 明示的キャッシュ（本ページ） |
+|---|---|---|
+| 利用方法 | 変更不要。同じプレフィックスなら自動でヒットする場合がある | キャッシュを作成し、生成時に名前を参照 |
+| ヒット | 保証なし | 参照するとヒット |
+| 書き込み料金 | なし | キャッシュのトークン数に応じて課金 |
+| 保存料金 | なし | キャッシュのトークン数 × 時間で課金 |
+| 適した用途 | 変更なしで自然に再利用 | 一定期間に同じ長いプレフィックスを多数回使用 |
+
+## 利用手順
+
+1. **作成**：`POST /v1beta/cachedContents` で `contents`、`systemInstruction`、`tools` の少なくとも1つにプレフィックスを渡し、キャッシュ名 `name` を取得します。
+2. **参照**：`POST /v1beta/models/{model}:generateContent`（ストリーミングは `streamGenerateContent`）のボディに `"cachedContent": "<name>"` を追加し、`contents` には新しい質問だけを入れます。
+3. **延長**（任意）：`PATCH /v1beta/cachedContents/{id}` に新しい `ttl` または `expireTime` を渡します。追加期間分の保存料金がかかります。
+4. **削除**（任意）：不要になったら `DELETE /v1beta/cachedContents/{id}` を実行します。削除しなくても期限切れで自動削除されます。徴収済みの保存料金は返金されません。
+
+キャッシュはアカウントに所属します。同一アカウントのどの API Key でも参照できます（モデル許可リストがある場合は対象モデルを含める必要があります）。別アカウントが同じ名前を使うと404です。参照・延長はリクエスト元 Key の現在のユーザーグループの料金で課金されます。
+
+## 生成リクエストでキャッシュを参照
+
+```bash
+curl -X POST "https://direct.evolink.ai/v1beta/models/gemini-3.8-flash:generateContent" \
+  -H "Authorization: Bearer $EVOLINK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cachedContent": "cachedContents/20261103012026348092000s1oTuB96",
+    "contents": [
+      { "role": "user", "parts": [{ "text": "マニュアルの返品規定はどうなっていますか？" }] }
+    ]
+  }'
+```
+
+応答の `usageMetadata.cachedContentTokenCount` がヒットしたトークン数で、ヒット単価が適用されます。`promptTokenCount` にはこの分も含まれ、残りは通常の入力単価です。
+
+```json
+{
+  "candidates": [
+    { "content": { "role": "model", "parts": [{ "text": "マニュアル第7章によると……" }] }, "finishReason": "STOP" }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 7541,
+    "cachedContentTokenCount": 7525,
+    "candidatesTokenCount": 212,
+    "totalTokenCount": 7753
+  },
+  "modelVersion": "gemini-3.8-flash"
+}
+```
+
+<Warning>
+キャッシュを参照する生成リクエストに **`systemInstruction`、`tools`、`toolConfig` を再指定できません**。作成時に設定してください。再指定すると400です。生成モデルは作成時と一致する必要があり、不一致は400 `CACHE_MODEL_MISMATCH` です。
+</Warning>
+
+## 完全な例（Python）
+
+```python
+import requests
+
+BASE = "https://direct.evolink.ai"
+HEADERS = {"Authorization": "Bearer YOUR_API_KEY", "Content-Type": "application/json"}
+
+# 1. キャッシュ作成：長い文書 + システム指示、1時間保持
+manual = open("manual.txt", encoding="utf-8").read()   # モデルの最小キャッシュトークン数が必要
+cache = requests.post(f"{BASE}/v1beta/cachedContents", headers=HEADERS, json={
+    "model": "models/gemini-3.8-flash",
+    "displayName": "product-manual-v3",
+    "systemInstruction": {"parts": [{"text": "あなたは製品マニュアルのアシスタントです。マニュアルのみに基づいて回答してください。"}]},
+    "contents": [{"role": "user", "parts": [{"text": manual}]}],
+    "ttl": "3600s",
+}).json()
+name = cache["name"]            # cachedContents/<id>
+cache_id = name.split("/")[-1]  # <id>
+print("cached tokens:", cache["usageMetadata"]["totalTokenCount"], "expire:", cache["expireTime"])
+
+# 2. 繰り返し参照：毎回新しい質問だけを送信
+for question in ["返品規定は？", "保証期間は？", "海外から修理に出せますか？"]:
+    resp = requests.post(f"{BASE}/v1beta/models/gemini-3.8-flash:generateContent", headers=HEADERS, json={
+        "cachedContent": name,
+        "contents": [{"role": "user", "parts": [{"text": question}]}],
+    }).json()
+    print(resp["candidates"][0]["content"]["parts"][0]["text"])
+    print("cache hit tokens:", resp["usageMetadata"].get("cachedContentTokenCount", 0))
+
+# 3. 継続利用：現在からさらに2時間保持（追加期間の保存料金を徴収）
+requests.patch(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS, json={"ttl": "7200s"})
+
+# 4. 利用後に削除（徴収済みの保存料金は返金されません）
+requests.delete(f"{BASE}/v1beta/cachedContents/{cache_id}", headers=HEADERS)
+```
+
+## 料金
+
+| 項目 | 計算方法 |
+|---|---|
+| 書き込み | トークン数 × 書き込み単価、作成時に徴収。書き込み単価はモデルの入力単価と同じ。Pro のキャッシュが20万トークンを超える場合は長文脈単価 |
+| 保存 | トークン数 × 有効期間（時間、秒単位で換算）× 保存単価（100万トークン・1時間あたり）、作成時に全期間分を徴収 |
+| キャッシュを使った生成 | `cachedContentTokenCount` はヒット単価、残りの入力・出力は通常単価。キャッシュで `googleSearch` を宣言した場合は検索ごとに検索単価を別途適用 |
+| 有効期間の延長 | 追加期間分の保存料金。1秒未満は1秒として計算 |
+| 短縮 / 削除 / 期限切れ | 徴収済みの保存料金は返金なし |
+| 一覧 / 単一取得 | 無料 |
+
+- トークン数は作成応答の `usageMetadata.totalTokenCount` を使用します。
+- キャッシュ名の `<id>` は作成リクエストのIDです。ダッシュボードの「ログ」で検索すると、作成・延長の課金明細（トークン数、保存時間、保存料金）を確認できます。
+- 各モデルの書き込み・ヒット・保存単価は[料金ページ](https://evolink.ai/pricing)を参照してください。
+- 費用対効果：保存料金は時間に応じ、ヒットごとに入力料金を節約できます。有効期間内の再利用が多いほど有利ですが、1〜2回のみなら原文を送る方が安価です。
+
+## 制限
+
+- **有効期間**：最短60秒、最長168時間（`604800s`）。`ttl` と `expireTime` は一方のみ指定でき、両方省略時は1時間です。
+- **内容**：`contents`、`systemInstruction`、`tools` の少なくとも1つが必要です。作成ボディは最大10 MBで、モデルの最小トークン数（例：`gemini-3.8-flash` は4,096）未満は400です。
+- **フィールド**：本ページに記載されたフィールドのみ対応します。他のフィールドは名前を示して400を返します。
+- **tools**：`googleSearch`、`codeExecution`、`functionDeclarations` のみ対応します。
+- **内容は変更不可**：作成後は有効期間のみ変更できます。内容を変えるには新規作成してください。
+- **アクセス制御**：作成と延長には、通常の生成と同じ Key のIP許可リスト・モデル許可リスト・レート制限が適用されます。
+
+## エラーコード
+
+エラーは Gemini ネイティブ形式で、`error.details[0].reason` が具体的な理由コードです。
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "cached content not found",
+    "status": "NOT_FOUND",
+    "details": [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "CACHE_NOT_FOUND", "domain": "evolink.ai" }]
+  }
+}
+```
+
+| HTTP | reason | 意味 |
+|---|---|---|
+| 400 | `INVALID_ARGUMENT` | 内容なし、`ttl` が60秒〜168時間の範囲外、`ttl` と `expireTime` の両方指定、非対応フィールド・ツールなど |
+| 400 | `EXPLICIT_CACHE_UNSUPPORTED` | 明示的キャッシュ非対応のモデル（Gemini 4、画像モデル） |
+| 400 | `NO_AVAILABLE_CHANNEL` | 現在のユーザーグループではこのモデルのキャッシュを作成できない |
+| 400 | `MODEL_PRICE_ERROR` | このモデルの明示的キャッシュが現在のユーザーグループでは未提供 |
+| 400 | `CACHE_EXPIRED` | 処理中に期限切れ、または残りの有効期間が短すぎる |
+| 400 | `CACHE_MODEL_MISMATCH` | 生成モデルとキャッシュのモデルが不一致 |
+| 400 | `INVALID_CACHED_CONTENT` | `cachedContent` の形式が不正 |
+| 4xx | `UPSTREAM_ERROR` | 内容がモデルに拒否された。理由は `message` に記載。よくある原因は最小トークン数未満 |
+| 402 | `INSUFFICIENT_QUOTA` | 書き込み料金と保存料金に対する残高不足 |
+| 403 | — | Key にモデル利用権限がない、送信元IPが許可リスト外、または Key のユーザーグループが利用不可 |
+| 404 | `CACHE_NOT_FOUND` | キャッシュが存在しない、期限切れ、削除済み、または別アカウントに所属 |
+| 404 | `EXPLICIT_CACHE_DISABLED` | 明示的キャッシュ機能が有効になっていません |
+| 413 | `CACHE_CONTENT_TOO_LARGE` | リクエストボディが10 MBを超過 |
+| 502 | `UPSTREAM_ERROR` | サービスが一時的に利用できません。このリクエストは課金されません。後ほど再試行してください |
+| 503 | `CACHE_CHANNEL_UNAVAILABLE` | キャッシュが一時的に利用できません。後ほど再試行してください |
+| 503 | `INTERNAL` | サービスが一時的に利用できません。後ほど再試行してください |

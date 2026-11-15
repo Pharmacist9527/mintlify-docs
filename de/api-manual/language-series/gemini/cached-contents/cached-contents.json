@@ -1,0 +1,1312 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gemini: Explizites Kontext-Caching (cachedContents)",
+    "description": "Erstellen Sie einmalig einen Cache für ein wiederverwendbares langes Präfix (Dokumente, Systemanweisungen oder Tool-Definitionen). Nachfolgende Generierungsanfragen senden nur den Cache-Namen und eine neue Frage; gecachte Tokens werden zum Cache-Trefferpreis berechnet. Das Format entspricht der nativen cachedContents-Schnittstelle von Gemini.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "Produktivumgebung (empfohlen)"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Ersatzadresse"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Explizites Kontext-Caching",
+      "description": "Explizite Gemini-Caches erstellen, abfragen, verlängern und löschen"
+    }
+  ],
+  "paths": {
+    "/v1beta/cachedContents": {
+      "post": {
+        "summary": "Cache erstellen",
+        "operationId": "geminiCreateCachedContent",
+        "tags": [
+          "Explizites Kontext-Caching"
+        ],
+        "description": "Erstellen Sie einen Cache aus mindestens einem der Felder `contents`, `systemInstruction` oder `tools`, optional mit `toolConfig`. Zurückgegeben wird der Cache-Name `name`.\n\n- **Modelle**: `model` akzeptiert `models/gemini-3.8-flash` oder `gemini-3.8-flash`. Unterstützt werden `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools` und `gemini-3-pro-preview`. Gemini 4 unterstützt kein explizites Caching.\n- **Gültigkeitsdauer**: Entweder `ttl`, z. B. `\"3600s\"`, oder `expireTime` (RFC 3339), niemals beide. Ohne Angabe gilt 1 Stunde. Minimum 60 Sekunden, Maximum 168 Stunden (`604800s`); nach Ablauf automatische Löschung.\n- **Größe**: Maximal 10 MB pro Anfrage. Der Inhalt muss die Mindestanzahl an Cache-Tokens des Modells erreichen (z. B. 4.096 für `gemini-3.8-flash`), andernfalls folgt 400.\n- **Felder**: Nur die dokumentierten Felder werden akzeptiert; andere führen zu 400.\n- **tools**: Nur `googleSearch`, `codeExecution` und `functionDeclarations` sind zulässig; andere Tools führen zu 400.\n- **Zurückgegebener `name`**: Format `cachedContents/<id>`; `<id>` ist die Anfrage-ID. Suchen Sie danach auf der Seite „Logs“ im Dashboard, um die Erstellungsgebühr zu finden.\n- **Abrechnung**: Bei Erstellung werden die Cache-Schreibgebühr (zum Eingabepreis) und die Speichergebühr für die gesamte Gültigkeitsdauer im Voraus berechnet. Verkürzung, Löschung oder Ablauf führen zu keiner Erstattung; bei Verlängerung wird die zusätzliche Dauer berechnet. Siehe den Abschnitt zur Abrechnung auf der Seite „Cache erstellen“.\n\nAuthentifizierung über `Authorization: Bearer`; der Header `x-goog-api-key` wird ebenfalls akzeptiert.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCachedContentRequest"
+              },
+              "examples": {
+                "long_document": {
+                  "summary": "Langes Dokument und Systemanweisungen für 1 Stunde cachen",
+                  "value": {
+                    "model": "models/gemini-3.8-flash",
+                    "displayName": "product-manual-v3",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "Sie sind ein Assistent für das Produkthandbuch. Antworten Sie nur anhand des bereitgestellten Handbuchs. Fehlt eine Information, antworten Sie „Im Handbuch nicht erwähnt“."
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "(Hier das vollständige Produkthandbuch einfügen. Der Cache-Inhalt muss mindestens 4.096 Tokens enthalten.)"
+                          }
+                        ]
+                      }
+                    ],
+                    "ttl": "3600s"
+                  }
+                },
+                "with_tools": {
+                  "summary": "Systemanweisungen und Funktionsdefinitionen mit absolutem Ablaufzeitpunkt cachen",
+                  "value": {
+                    "model": "gemini-3.8-flash",
+                    "displayName": "support-agent-tools",
+                    "systemInstruction": {
+                      "parts": [
+                        {
+                          "text": "(Hier ausführliche Kundendienstrichtlinien mit mindestens 4.096 Tokens einfügen.)"
+                        }
+                      ]
+                    },
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "(Beispiele früherer Supportanfragen …)"
+                          }
+                        ]
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "functionDeclarations": [
+                          {
+                            "name": "lookup_order",
+                            "description": "Bestellstatus anhand der Bestellnummer abfragen",
+                            "parameters": {
+                              "type": "object",
+                              "properties": {
+                                "order_id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "order_id"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cache erstellt. `usageMetadata.totalTokenCount` ist die Anzahl gecachter Tokens für die Berechnung der Schreib- und Speichergebühren",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültige Parameter; Modell unterstützt kein explizites Caching; für die aktuelle Benutzergruppe nicht freigeschaltet; Mindestanzahl an Cache-Tokens unterschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "ttl must not exceed 604800s (168h)",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API-Key ungültig oder fehlt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Guthaben reicht nicht für Schreib- und Speichergebühren",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage prepayment",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Der Key hat keinen Modellzugriff, die Quell-IP steht nicht auf seiner Positivliste oder seine Benutzergruppe ist nicht mehr verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Explizites Caching ist nicht freigeschaltet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Anfrageinhalt überschreitet 10 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 413,
+                    "message": "cache content exceeds 10485760 bytes; use Cloud Storage fileUri for larger content",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CONTENT_TOO_LARGE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dienst vorübergehend nicht verfügbar. Diese Anfrage wird nicht berechnet; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Caches auflisten",
+        "operationId": "geminiListCachedContents",
+        "tags": [
+          "Explizites Kontext-Caching"
+        ],
+        "description": "Listet alle **nicht abgelaufenen** Caches des aktuellen Kontos auf (kontogebunden, unabhängig vom Key), absteigend nach Ablaufzeit sortiert. Abgelaufene oder gelöschte Caches fehlen. Kostenlos.",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Einträge pro Seite; Standard 50, maximal 200.",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "description": "`nextPageToken` aus der vorherigen Antwort; auf der ersten Seite weglassen.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cache-Liste. Enthält `nextPageToken`, wenn eine weitere Seite vorhanden ist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCachedContentsResponse"
+                },
+                "example": {
+                  "cachedContents": [
+                    {
+                      "name": "cachedContents/20261103012026348092000s1oTuB96",
+                      "model": "models/gemini-3.8-flash",
+                      "displayName": "product-manual-v3",
+                      "createTime": "2026-11-03T01:20:27.311Z",
+                      "updateTime": "2026-11-03T01:20:27.311Z",
+                      "expireTime": "2026-11-03T02:20:26.902Z",
+                      "usageMetadata": {
+                        "totalTokenCount": 7525
+                      }
+                    }
+                  ],
+                  "nextPageToken": "50"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ungültiger pageToken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "invalid pageToken",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API-Key ungültig oder fehlt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Der Key hat keinen Modellzugriff oder die Quell-IP steht nicht auf seiner Positivliste",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Explizites Caching ist nicht freigeschaltet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "explicit context caching is not enabled",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "EXPLICIT_CACHE_DISABLED",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1beta/cachedContents/{id}": {
+      "get": {
+        "summary": "Einzelnen Cache abrufen",
+        "operationId": "geminiGetCachedContent",
+        "tags": [
+          "Explizites Kontext-Caching"
+        ],
+        "description": "Gibt Cache-Metadaten zurück (Modell, Token-Anzahl, Erstellungs-/Änderungs-/Ablaufzeit), ohne den Cache-Inhalt. Abgelaufene Caches liefern wie nicht vorhandene Caches 404. Kostenlos.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Cache-ID: der bei Erstellung zurückgegebene `name` ohne das Präfix `cachedContents/`. Bei `cachedContents/20261103012026348092000s1oTuB96` hier also `20261103012026348092000s1oTuB96` angeben.",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cache-Metadaten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:20:27.311Z",
+                  "expireTime": "2026-11-03T02:20:26.902Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API-Key ungültig oder fehlt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Der Key hat keinen Modellzugriff oder die Quell-IP steht nicht auf seiner Positivliste",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache existiert nicht, ist abgelaufen, gelöscht oder gehört einem anderen Konto; oder explizites Caching ist nicht freigeschaltet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "explicit context caching is temporarily unavailable",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INTERNAL",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Gültigkeitsdauer verlängern oder verkürzen",
+        "operationId": "geminiUpdateCachedContent",
+        "tags": [
+          "Explizites Kontext-Caching"
+        ],
+        "description": "Nur die Gültigkeitsdauer ist änderbar, nicht der Inhalt. Geben Sie entweder `ttl` (neue Dauer ab **jetzt**, z. B. `\"7200s\"`) oder `expireTime` (neuer absoluter Ablaufzeitpunkt) an.\n\n- Der neue Ablauf muss 60 Sekunden bis 168 Stunden in der Zukunft liegen.\n- Nur `ttl` oder `expireTime` wird akzeptiert; beide zusammen oder andere Felder führen zu 400.\n- **Verlängern**: Speichergebühr für die zusätzliche Dauer, in Sekunden; weniger als 1 Sekunde wird als 1 Sekunde berechnet. **Verkürzen**: Bereits berechnete Speichergebühren werden nicht erstattet.\n- Kostenpflichtiger Vorgang: Der Key benötigt Modellzugriff; es gelten die Preise seiner aktuellen Benutzergruppe. Unzureichendes Guthaben führt zu 402.\n- Bei Wiederholung derselben Verlängerungsanfrage verhindert der Header `Idempotency-Key` doppelte Abbuchungen.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Cache-ID: der bei Erstellung zurückgegebene `name` ohne das Präfix `cachedContents/`. Bei `cachedContents/20261103012026348092000s1oTuB96` hier also `20261103012026348092000s1oTuB96` angeben.",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCachedContentRequest"
+              },
+              "examples": {
+                "extend_by_ttl": {
+                  "summary": "Ab jetzt weitere 2 Stunden behalten",
+                  "value": {
+                    "ttl": "7200s"
+                  }
+                },
+                "set_expire_time": {
+                  "summary": "Absoluten Ablaufzeitpunkt festlegen",
+                  "value": {
+                    "expireTime": "2026-11-03T06:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Aktualisierte Cache-Metadaten; `expireTime` ist der neue Ablaufzeitpunkt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachedContent"
+                },
+                "example": {
+                  "name": "cachedContents/20261103012026348092000s1oTuB96",
+                  "model": "models/gemini-3.8-flash",
+                  "displayName": "product-manual-v3",
+                  "createTime": "2026-11-03T01:20:27.311Z",
+                  "updateTime": "2026-11-03T01:35:10.020Z",
+                  "expireTime": "2026-11-03T03:35:10.000Z",
+                  "usageMetadata": {
+                    "totalTokenCount": 7525
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ttl / expireTime fehlt oder beide angegeben; andere Felder übergeben; Ablauf außerhalb des Bereichs; Cache während der Verarbeitung abgelaufen (CACHE_EXPIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 400,
+                    "message": "new expiry must be at least 60s in the future",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INVALID_ARGUMENT",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API-Key ungültig oder fehlt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Guthaben reicht nicht für die zusätzliche Speichergebühr",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 402,
+                    "message": "insufficient quota for cache storage extension",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "INSUFFICIENT_QUOTA",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Der Key hat keinen Modellzugriff, die Quell-IP steht nicht auf seiner Positivliste oder seine Benutzergruppe ist nicht mehr verfügbar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache existiert nicht, ist abgelaufen, gelöscht oder gehört einem anderen Konto; oder explizites Caching ist nicht freigeschaltet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dienst vorübergehend nicht verfügbar. Diese Anfrage wird nicht berechnet; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 502,
+                    "message": "failed to reach upstream for cachedContents",
+                    "status": "INTERNAL",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "UPSTREAM_ERROR",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Cache vorübergehend nicht verfügbar; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cache löschen",
+        "operationId": "geminiDeleteCachedContent",
+        "tags": [
+          "Explizites Kontext-Caching"
+        ],
+        "description": "Löscht den Cache sofort. Weitere Verweise auf seinen Namen liefern 404. Bereits berechnete Speichergebühren werden nicht erstattet. Kostenlos.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Cache-ID: der bei Erstellung zurückgegebene `name` ohne das Präfix `cachedContents/`. Bei `cachedContents/20261103012026348092000s1oTuB96` hier also `20261103012026348092000s1oTuB96` angeben.",
+            "schema": {
+              "type": "string",
+              "example": "20261103012026348092000s1oTuB96"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gelöscht; gibt ein leeres Objekt zurück",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "API-Key ungültig oder fehlt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 401,
+                    "message": "Invalid API key",
+                    "status": "UNAUTHENTICATED"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Der Key hat keinen Modellzugriff oder die Quell-IP steht nicht auf seiner Positivliste",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 403,
+                    "message": "This key is not allowed to use model gemini-3.8-flash",
+                    "status": "PERMISSION_DENIED"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache existiert nicht, ist abgelaufen, gelöscht oder gehört einem anderen Konto; oder explizites Caching ist nicht freigeschaltet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 404,
+                    "message": "cached content not found",
+                    "status": "NOT_FOUND",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_NOT_FOUND",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Anfragelimit überschritten",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 429,
+                    "message": "Rate limit exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Cache vorübergehend nicht verfügbar; bitte später erneut versuchen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": 503,
+                    "message": "the channel holding this cached content is unavailable and rebuilding on another channel failed; please retry later",
+                    "status": "UNAVAILABLE",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "CACHE_CHANNEL_UNAVAILABLE",
+                        "domain": "evolink.ai"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "## Alle Endpunkte erfordern Bearer-Token-Authentifizierung\n\n**API-Key erhalten:**\n\nBesuchen Sie die [API-Key-Verwaltung](https://evolink.ai/dashboard/keys).\n\n**Diesen Anfrageheader hinzufügen:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\nAuch das native Gemini-Format wird akzeptiert: der Header `x-goog-api-key: YOUR_API_KEY` oder der URL-Parameter `?key=YOUR_API_KEY`."
+      }
+    },
+    "schemas": {
+      "Part": {
+        "type": "object",
+        "description": "Inhaltsteil: entweder Text, Inline-Daten (base64) oder Dateiverweis",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text"
+          },
+          "inlineData": {
+            "type": "object",
+            "description": "Binäre Inline-Daten (Bilder, Audio, PDF usw.)",
+            "properties": {
+              "mimeType": {
+                "type": "string",
+                "example": "application/pdf"
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-kodierte Daten"
+              }
+            }
+          },
+          "fileData": {
+            "type": "object",
+            "description": "Dateiverweis",
+            "properties": {
+              "mimeType": {
+                "type": "string"
+              },
+              "fileUri": {
+                "type": "string",
+                "description": "Öffentlich zugängliche URL"
+              }
+            }
+          }
+        }
+      },
+      "Content": {
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "description": "Rolle; für Systemanweisungen nicht erforderlich"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "description": "Tool-Deklarationen. Nur die folgenden drei Typen sind zulässig; andere werden abgelehnt",
+        "properties": {
+          "googleSearch": {
+            "type": "object",
+            "description": "Websuche; `{}` angeben"
+          },
+          "codeExecution": {
+            "type": "object",
+            "description": "Codeausführung; `{}` angeben"
+          },
+          "functionDeclarations": {
+            "type": "array",
+            "description": "Funktionsdeklarationen (Parameterstruktur einer OpenAPI-Teilmenge)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateCachedContentRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Modell; sowohl `models/gemini-3.8-flash` als auch `gemini-3.8-flash` sind zulässig. Unterstützt: `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`, `gemini-3-pro-preview`",
+            "example": "models/gemini-3.8-flash"
+          },
+          "contents": {
+            "type": "array",
+            "description": "Zu cachender Gesprächsinhalt als Array. Er wird beim Verweis auf den Cache zum Gesprächspräfix. Mindestens eines von `contents`, `systemInstruction` oder `tools` angeben",
+            "items": {
+              "$ref": "#/components/schemas/Content"
+            }
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/Content",
+            "description": "Systemanweisungen. Nach dem Cachen darf systemInstruction nicht erneut in Generierungsanfragen mit diesem Cache enthalten sein"
+          },
+          "tools": {
+            "type": "array",
+            "description": "Tool-Deklarationen. Nach dem Cachen darf tools nicht erneut in Generierungsanfragen mit diesem Cache enthalten sein",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "toolConfig": {
+            "type": "object",
+            "description": "Tool-Aufrufkonfiguration (z. B. functionCallingConfig). Nach dem Cachen darf toolConfig nicht erneut in Generierungsanfragen mit diesem Cache enthalten sein"
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Gültigkeitsdauer, z. B. `\"3600s\"`. Minimum `60s`, Maximum `604800s` (168 Stunden). Entweder dies oder expireTime; beide führen zu 400. Ohne beide gilt `3600s`",
+            "example": "3600s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Absoluter Ablaufzeitpunkt (RFC 3339, UTC), alternativ zu ttl; beide zusammen führen zu 400",
+            "example": "2026-11-03T06:00:00Z"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Name zur eigenen Orientierung, maximal 255 Zeichen; ohne Einfluss auf die Abrechnung",
+            "example": "product-manual-v3"
+          }
+        }
+      },
+      "UpdateCachedContentRequest": {
+        "type": "object",
+        "description": "Genau eines von ttl oder expireTime ist erforderlich; andere Felder führen zu 400",
+        "properties": {
+          "ttl": {
+            "type": "string",
+            "description": "Neue Gültigkeitsdauer ab jetzt, z. B. `\"7200s\"`. Minimum `60s`, Maximum `604800s`",
+            "example": "7200s"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Neuer absoluter Ablaufzeitpunkt (RFC 3339, UTC)",
+            "example": "2026-11-03T06:00:00Z"
+          }
+        }
+      },
+      "CachedContent": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Cache-Name im Format `cachedContents/<id>`. Im Feld `cachedContent` der Generierungsanfrage angeben; `<id>` ist zugleich die ID der Erstellungsanfrage",
+            "example": "cachedContents/20261103012026348092000s1oTuB96"
+          },
+          "model": {
+            "type": "string",
+            "description": "An den Cache gebundenes Modell; Generierungsanfragen müssen dasselbe Modell verwenden",
+            "example": "models/gemini-3.8-flash"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Bei Erstellung vergebener Name; fehlt, wenn keiner angegeben wurde"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Erstellungszeit (UTC)"
+          },
+          "updateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zeitpunkt der letzten Änderung (UTC)"
+          },
+          "expireTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Ablaufzeitpunkt (UTC); danach automatisch gelöscht"
+          },
+          "usageMetadata": {
+            "type": "object",
+            "properties": {
+              "totalTokenCount": {
+                "type": "integer",
+                "description": "Gesamtzahl gecachter Tokens für die Berechnung der Schreib- und Speichergebühren",
+                "example": 7525
+              }
+            }
+          }
+        }
+      },
+      "ListCachedContentsResponse": {
+        "type": "object",
+        "properties": {
+          "cachedContents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CachedContent"
+            }
+          },
+          "nextPageToken": {
+            "type": "string",
+            "description": "Bei weiterer Seite vorhanden; unverändert als `pageToken` in der nächsten Anfrage übergeben"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Natives Gemini-Fehlerformat. `error.details[0].reason` enthält den konkreten Grund; siehe Fehlertabelle auf „Cache erstellen“",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP-Statuscode"
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "description": "Statuswert, z. B. INVALID_ARGUMENT / NOT_FOUND / UNAVAILABLE"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "@type": {
+                      "type": "string",
+                      "example": "type.googleapis.com/google.rpc.ErrorInfo"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "example": "CACHE_NOT_FOUND"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "example": "evolink.ai"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
