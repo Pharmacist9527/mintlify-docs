@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Seedance 2.5 Flash Text-to-Video API",
-    "description": "Seedance 2.5 Flash text-to-video API, supports generating videos from text prompts",
+    "description": "Seedance 2.5 Flash text-to-video API, supports generating videos from text prompts with web search for enhanced timeliness",
     "license": {
       "name": "MIT"
     },
@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Flash Text-to-Video",
-        "description": "- Generate videos from text prompts\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly",
+        "description": "- Generate videos from text prompts, supports web search for enhanced timeliness\n- **Now supports AIGC realistic human materials**\n- Asynchronous processing mode, use the returned task ID to [query status](/en/api-manual/task-management/get-task-detail)\n- Generated video links are valid for 24 hours, please save them promptly\n\n**Draft limitation:** Seedance 2.5 Flash does not support `draft: true` or draft-to-final conversion.\n\n**Text-to-video web search:** `model_params.web_search: true` cannot be combined with `content_filter: false`; sending both returns a 400 parameter error. Keep `content_filter: true` (the default) when web search is needed.",
         "operationId": "createSeedance25FlashTextToVideo",
         "tags": [
           "Video Generation"
@@ -44,7 +44,22 @@
                     "duration": 8,
                     "quality": "720p",
                     "aspect_ratio": "16:9",
-                    "generate_audio": true
+                    "generate_audio": true,
+                    "content_filter": true
+                  }
+                },
+                "web_search": {
+                  "summary": "Text-to-video with web search",
+                  "value": {
+                    "model": "seedance-2.5-flash-text-to-video",
+                    "prompt": "Today's New York weather forecast, with city skyline animation and temperature overlay display",
+                    "duration": 8,
+                    "quality": "720p",
+                    "aspect_ratio": "16:9",
+                    "model_params": {
+                      "web_search": true
+                    },
+                    "content_filter": true
                   }
                 }
               }
@@ -163,6 +178,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service temporarily unavailable; please retry later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -193,11 +218,20 @@
           },
           "duration": {
             "type": "integer",
-            "description": "Video duration (seconds), defaults to `5` seconds\n\n**Details:**\n- Supports any integer value between `4`–`30` seconds\n- Automatic duration (`-1`) is not supported; passing it returns a 400 parameter error\n- Duration directly affects billing\n\n**Billing rules:**\n- Billed per second; the billable duration is the output duration (`duration`)",
+            "description": "Video duration (seconds), defaults to `5` seconds\n\n**Details:**\n- Supports any integer value between `4`–`30` seconds\n- `-1`: automatic duration, the model picks a length within `4`–`30` seconds and billing follows the actual output length\n- Duration directly affects billing",
             "default": 5,
             "example": 8,
-            "minimum": 4,
-            "maximum": 30
+            "anyOf": [
+              {
+                "enum": [
+                  -1
+                ]
+              },
+              {
+                "minimum": 4,
+                "maximum": 30
+              }
+            ]
           },
           "quality": {
             "type": "string",
@@ -211,16 +245,17 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video aspect ratio, defaults to `16:9`\n\n**Options:**\n- `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`, `21:9` (ultrawide)\n- Automatic aspect ratio (`adaptive`) is not supported; passing it returns a 400 parameter error\n\n**Pixel values per resolution:**\n\n| Aspect Ratio | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
+            "description": "Video aspect ratio, defaults to `adaptive`\n\n**Options:**\n- `16:9` (landscape), `9:16` (portrait), `1:1` (square), `4:3`, `3:4`, `21:9` (ultrawide)\n- `adaptive`: The model intelligently selects the best aspect ratio based on the prompt\n\n**Pixel values per resolution:**\n\n| Aspect Ratio | 480p | 720p |\n| :------: | :----: | :----: |\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
             "enum": [
               "16:9",
               "9:16",
               "1:1",
               "4:3",
               "3:4",
-              "21:9"
+              "21:9",
+              "adaptive"
             ],
-            "default": "16:9",
+            "default": "adaptive",
             "example": "16:9"
           },
           "generate_audio": {
@@ -228,6 +263,34 @@
             "description": "Whether to generate synchronized audio, defaults to `true`\n\n**Options:**\n- `true`: Video includes synchronized audio (voice, sound effects, background music) at no additional charge. It is recommended to place dialogue within double quotes to optimize audio generation\n- `false`: Output silent video",
             "default": true,
             "example": true
+          },
+          "content_filter": {
+            "type": "boolean",
+            "description": "Content filter, enabled by default `true`\n\n**Options:**\n- `true`: Standard content safety check, this is the default\n- `false`: Relaxes content restrictions, billed at +10% (`1.1x`). Illegal and prohibited content is always enforced regardless of this setting\n\n**Mutually exclusive with web search:**\n- `content_filter: false` and `model_params.web_search: true` cannot be used together; sending both returns a 400 parameter error\n- Keep `content_filter: true` (the default) when web search is needed",
+            "default": true,
+            "example": true
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Output container format, defaults to `mp4`\n\n**Options:**\n- `mp4`: H.264 encoding with the best compatibility and standard color precision, this is the default\n- `mov`: H.264 + yuv444p chroma sampling + PCM audio for higher color fidelity, recommended for color grading, keying and compositing workflows. Browser inline playback may not support it; download and play with VLC / mpv / ffplay. No extra charge",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Model extension parameters",
+            "properties": {
+              "web_search": {
+                "type": "boolean",
+                "description": "Web search, defaults to `false`\n\n**Details:**\n- When enabled, the model autonomously decides whether to search internet content (e.g., products, weather) based on the prompt, improving timeliness\n- May increase latency\n- Fees are only charged when searches are actually triggered; multiple searches may occur once enabled\n\n**Mutually exclusive with the content filter:**\n- Keep `content_filter: true` when web search is enabled; using it together with `content_filter: false` returns a 400 parameter error",
+                "default": false,
+                "example": false
+              }
+            }
           },
           "callback_url": {
             "type": "string",

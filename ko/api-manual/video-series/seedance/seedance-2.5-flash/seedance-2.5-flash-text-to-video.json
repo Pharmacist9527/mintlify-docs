@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Seedance 2.5 Flash Text-to-Video API",
-    "description": "Seedance 2.5 Flash 텍스트-비디오 API, 순수 텍스트 프롬프트로 비디오 생성을 지원합니다",
+    "description": "Seedance 2.5 Flash 텍스트-비디오 API, 순수 텍스트 프롬프트로 비디오 생성을 지원하며, 웹 검색을 통한 시의성 강화를 지원합니다",
     "license": {
       "name": "MIT"
     },
@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Flash Text-to-Video 텍스트-비디오",
-        "description": "- 순수 텍스트 프롬프트로 비디오를 생성합니다\n- 비동기 처리 모드로, 반환된 작업 ID를 사용하여 [조회하세요](/ko/api-manual/task-management/get-task-detail)\n- 생성된 비디오 링크는 24시간 동안 유효하며, 가능한 빨리 저장하세요",
+        "description": "- 순수 텍스트 프롬프트로 비디오를 생성하며, 웹 검색을 통한 시의성 강화를 지원합니다\n- **AIGC 유형 실사 소재 지원**\n- 비동기 처리 모드로, 반환된 작업 ID를 사용하여 [조회하세요](/ko/api-manual/task-management/get-task-detail)\n- 생성된 비디오 링크는 24시간 동안 유효하며, 가능한 빨리 저장하세요\n\n**초안 제한:** Seedance 2.5 Flash는 `draft: true`와 초안을 최종 비디오로 변환하는 기능을 지원하지 않습니다.\n\n**Text-to-Video 웹 검색:** `model_params.web_search: true`와 `content_filter: false`는 함께 사용할 수 없으며 동시 지정 시 400 파라미터 오류입니다. 검색할 때는 `content_filter: true`(기본값)를 유지하세요.",
         "operationId": "createSeedance25FlashTextToVideo",
         "tags": [
           "비디오 생성"
@@ -44,7 +44,22 @@
                     "duration": 8,
                     "quality": "720p",
                     "aspect_ratio": "16:9",
-                    "generate_audio": true
+                    "generate_audio": true,
+                    "content_filter": true
+                  }
+                },
+                "web_search": {
+                  "summary": "웹 검색 텍스트-비디오",
+                  "value": {
+                    "model": "seedance-2.5-flash-text-to-video",
+                    "prompt": "Today's New York weather forecast, with city skyline animation and temperature overlay display",
+                    "duration": 8,
+                    "quality": "720p",
+                    "aspect_ratio": "16:9",
+                    "model_params": {
+                      "web_search": true
+                    },
+                    "content_filter": true
                   }
                 }
               }
@@ -163,6 +178,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "서비스를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -193,11 +218,20 @@
           },
           "duration": {
             "type": "integer",
-            "description": "비디오 길이(초), 기본값은 `5`초\n\n**설명:**\n- `4`~`30`초 사이의 임의의 정수값을 지원합니다\n- `-1`(자동 길이)은 지원하지 않으며, 전달하면 400 파라미터 오류가 반환됩니다\n- 재생 시간은 과금에 직접적으로 영향을 미칩니다\n\n**과금 규칙:**\n- 초 단위로 과금되며, 과금 대상 길이는 출력 길이(`duration`)입니다",
+            "description": "비디오 길이(초), 기본값은 `5`초\n\n**설명:**\n- `4`~`30`초 사이의 임의의 정수값을 지원합니다\n- `-1`: 자동 길이. 모델이 `4`–`30`초 범위에서 결정하며 실제 출력 길이에 따라 과금됩니다\n- 재생 시간은 과금에 직접적으로 영향을 미칩니다",
             "default": 5,
             "example": 8,
-            "minimum": 4,
-            "maximum": 30
+            "anyOf": [
+              {
+                "enum": [
+                  -1
+                ]
+              },
+              {
+                "minimum": 4,
+                "maximum": 30
+              }
+            ]
           },
           "quality": {
             "type": "string",
@@ -211,16 +245,17 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "비디오 화면 비율, 기본값은 `16:9`\n\n**선택 가능한 값:**\n- `16:9`(가로), `9:16`(세로), `1:1`(정사각형), `4:3`, `3:4`, `21:9`(울트라와이드)\n- `adaptive`(자동 비율)는 지원하지 않으며, 전달하면 400 파라미터 오류가 반환됩니다\n\n**각 해상도별 픽셀 값:**\n\n| 화면 비율 | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
+            "description": "비디오 화면 비율, 기본값은 `adaptive`\n\n**선택 가능한 값:**\n- `16:9`(가로), `9:16`(세로), `1:1`(정사각형), `4:3`, `3:4`, `21:9`(울트라와이드)\n- `adaptive`: 모델이 프롬프트에 따라 최적의 화면 비율을 자동 선택\n\n**각 해상도별 픽셀 값:**\n\n| 화면 비율 | 480p | 720p |\n| :------: | :----: | :----: |\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
             "enum": [
               "16:9",
               "9:16",
               "1:1",
               "4:3",
               "3:4",
-              "21:9"
+              "21:9",
+              "adaptive"
             ],
-            "default": "16:9",
+            "default": "adaptive",
             "example": "16:9"
           },
           "generate_audio": {
@@ -228,6 +263,34 @@
             "description": "동기화된 오디오 생성 여부, 기본값은 `true`\n\n**선택 가능한 값:**\n- `true`: 비디오에 동기화된 오디오(음성, 효과음, 배경 음악)가 포함되며, 추가 요금이 없습니다. 오디오 생성 효과를 최적화하려면 대화 부분을 큰따옴표로 감싸는 것을 권장합니다\n- `false`: 무음 비디오 출력",
             "default": true,
             "example": true
+          },
+          "content_filter": {
+            "type": "boolean",
+            "description": "콘텐츠 필터, 기본값은 `true`\n\n**선택 가능한 값:**\n- `true`: 표준 콘텐츠 안전 검사, 기본값입니다\n- `false`: 콘텐츠 제한을 완화하며 +10%(`1.1x`)가 청구됩니다. 불법 및 금지된 콘텐츠는 이 설정과 관계없이 항상 적용됩니다\n\n**웹 검색과 함께 사용할 수 없음:**\n- `content_filter: false`와 `model_params.web_search: true`는 동시에 사용할 수 없으며, 함께 전달하면 400 파라미터 오류가 반환됩니다\n- 웹 검색이 필요한 경우 `content_filter: true`(기본값)를 유지하세요",
+            "default": true,
+            "example": true
+          },
+          "output_format": {
+            "type": "string",
+            "description": "출력 컨테이너 형식, 기본값은 `mp4`\n\n**선택 가능한 값:**\n- `mp4`: H.264 인코딩으로 호환성이 가장 좋고 표준 색상 정밀도를 제공하며, 기본값입니다\n- `mov`: H.264 + yuv444p 크로마 서브샘플링 + PCM 오디오로 색 재현력이 높아 색보정·키잉·합성 등 후반 작업에 적합합니다. 브라우저 내 재생이 지원되지 않을 수 있으므로 다운로드 후 VLC / mpv / ffplay로 재생하세요. 추가 요금 없음",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "모델 확장 파라미터",
+            "properties": {
+              "web_search": {
+                "type": "boolean",
+                "description": "웹 검색, 기본값은 `false`\n\n**설명:**\n- 활성화하면 모델이 프롬프트에 따라 인터넷 콘텐츠(상품, 날씨 등) 검색 여부를 자동 판단하여 시의성을 높일 수 있습니다\n- 일정한 지연이 증가합니다\n- 실제로 검색이 트리거된 경우에만 비용이 발생하며, 활성화 후 여러 번 호출될 수 있습니다\n\n**콘텐츠 필터와 함께 사용할 수 없음:**\n- 웹 검색을 활성화할 때는 `content_filter: true`를 유지해야 하며, `content_filter: false`와 함께 사용하면 400 파라미터 오류가 반환됩니다",
+                "default": false,
+                "example": false
+              }
+            }
           },
           "callback_url": {
             "type": "string",

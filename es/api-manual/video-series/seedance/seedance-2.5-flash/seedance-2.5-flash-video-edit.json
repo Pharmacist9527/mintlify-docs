@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Flash Video Edit",
-        "description": "- Edicion sobre un video de entrada: reemplazar sujetos, agregar o quitar objetos, reestilizar o repintar regiones\n- Describa directamente el cambio en la indicación, por ejemplo: \"Quitar a todos los transeuntes de @video1 y conservar solo al personaje principal\"\n- Ingrese exactamente 1 video para editar (obligatorio, `4`–`30` segundos) + imágenes de referencia opcionales (0–10) + audio de referencia (0–5); la duración y la relación de aspecto de salida siguen al video de entrada\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible",
+        "description": "- Edicion sobre un video de entrada: reemplazar sujetos, agregar o quitar objetos, reestilizar o repintar regiones\n- Describa directamente el cambio en la indicación, por ejemplo: \"Quitar a todos los transeuntes de @video1 y conservar solo al personaje principal\"\n- Ingrese el video que se va a editar (obligatorio) + imagenes de referencia opcionales (0–10) + videos de referencia (hasta 5 en total) + audio de referencia (0–5)\n- **Ahora compatible con materiales realistas de personas generados por IA (AIGC)**\n- Modo de procesamiento asincrono, utilice el ID de tarea devuelto [para consultar](/es/api-manual/task-management/get-task-detail)\n- El enlace del video generado es valido por 24 horas, guardelo lo antes posible\n\n**Limitación de borradores:** Seedance 2.5 Flash no admite `draft: true` ni la conversión de borradores a video final.",
         "operationId": "createSeedance25FlashVideoEdit",
         "tags": [
           "Generacion de video"
@@ -40,25 +40,27 @@
                   "summary": "Editar video (quitar objetos)",
                   "value": {
                     "model": "seedance-2.5-flash-video-edit",
-                    "prompt": "Quitar a todos los transeuntes de @video1 y conservar solo al personaje principal",
+                    "prompt": "Editar el video: quitar a todos los transeuntes de @video1 y conservar solo al personaje principal",
                     "video_urls": [
                       "https://example.com/original.mp4"
                     ],
                     "quality": "720p",
-                    "generate_audio": true
+                    "generate_audio": true,
+                    "content_filter": true
                   }
                 },
                 "replace_subject": {
                   "summary": "Editar video (reemplazar un elemento con referencia de imagen)",
                   "value": {
                     "model": "seedance-2.5-flash-video-edit",
-                    "prompt": "Reemplazar el perfume de la caja de regalo de @video1 por la crema facial de @image1, manteniendo el movimiento de camara",
+                    "prompt": "Editar el video: reemplazar el perfume de la caja de regalo de @video1 por la crema facial de @image1, manteniendo el movimiento de camara",
                     "image_urls": [
                       "https://example.com/cream.jpg"
                     ],
                     "video_urls": [
                       "https://example.com/original.mp4"
                     ],
+                    "duration": -1,
                     "quality": "720p"
                   }
                 }
@@ -178,6 +180,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Servicio no disponible temporalmente; inténtelo más tarde.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -204,30 +216,29 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Indicacion de texto que describe la edicion deseada. Admite chino e ingles; se recomienda no superar 500 caracteres en chino. Longitud maxima de la indicacion: 10000 tokens\n\n**Detalles:**\n- Describa directamente el cambio que desea, por ejemplo: \"Quitar a todos los transeuntes de @video1 y conservar solo al personaje principal\"\n- Puede usar lenguaje natural para indicar el proposito de cada material, por ejemplo: \"reemplazar al personaje de @video1 por la persona de @image1\"\n- El modelo entiende automaticamente la correspondencia entre los numeros de material y su uso previsto",
-            "example": "Quitar a todos los transeuntes de @video1 y conservar solo al personaje principal"
+            "description": "Indicacion de texto que describe la edicion deseada. Admite chino e ingles; se recomienda no superar 500 caracteres en chino. Longitud maxima de la indicacion: 10000 tokens\n\n**Detalles:**\n- La indicacion debe expresar la intencion de edicion, por ejemplo: \"Editar el video: quitar la musica de fondo de @video1\"\n- Puede usar lenguaje natural para indicar el proposito de cada material, por ejemplo: \"reemplazar al personaje de @video1 por la persona de @image1\"\n- El modelo entiende automaticamente la correspondencia entre los numeros de material y su uso previsto",
+            "example": "Editar el video: quitar a todos los transeuntes de @video1 y conservar solo al personaje principal"
           },
           "video_urls": {
             "type": "array",
-            "description": "Arreglo de URL de videos de entrada, **obligatorio; exactamente 1 video**\n\n**Requisito:** proporcione exactamente 1 video, el que se va a editar. La duración y la relación de aspecto de salida siguen a este video.\n\n**Requisitos de video:**\n- Formatos admitidos: `.mp4`, `.mov`\n- Resolucion: 480p, 720p, 1080p, 4K\n- Duración del video: `4` ~ `30` segundos\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Pixeles de imagen (ancho x alto): `409,600` ~ `8,295,044` (ej. 640x640 ~ 3326x2494)\n- Tamano por archivo: no mas de `200MB`\n- Velocidad de fotogramas: `24` ~ `60` FPS\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- La validez del codec, la resolucion y otros detalles del material se comprueba adicionalmente por el modelo\n- Las URLs de video deben ser accesibles directamente por el servidor",
+            "description": "Arreglo de URL de videos de entrada, **obligatorio; de 1 a 5 videos**\n\n**Requisito:** se necesita al menos 1 video, el que se va a editar. El primer video es el objeto de la edicion; los demas actuan como referencia.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Video | `reference_video` | El video que se va a editar (el primero), referencia de movimiento de camara o de accion (los demas) |\n\n**Requisitos de video:**\n- Formatos admitidos: `.mp4`, `.mov`\n- Resolucion: 480p, 720p, 1080p, 4K\n- Duracion por video: `4` ~ `30` segundos (el primer video es el objeto de la edicion), maximo 5, duracion total de todos los videos <= `30` segundos\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Pixeles de imagen (ancho x alto): `409,600` ~ `8,295,044` (ej. 640x640 ~ 3326x2494)\n- Tamano por archivo: no mas de `200MB`\n- Velocidad de fotogramas: `24` ~ `60` FPS\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- La validez del codec, la resolucion y otros detalles del material se comprueba adicionalmente por el modelo\n- El uso de referencia de video aumentara los costos (la duracion del video de entrada se incluye en la facturacion)\n- Las URLs de video deben ser accesibles directamente por el servidor\n\n**Direcciones de medios:** se admiten URL HTTP(S) públicas e identificadores `asset://` accesibles para la cuenta del proveedor seleccionada.",
             "items": {
               "type": "string",
               "format": "uri"
             },
             "minItems": 1,
-            "maxItems": 1,
+            "maxItems": 5,
             "example": [
               "https://example.com/original.mp4"
             ]
           },
           "image_urls": {
             "type": "array",
-            "description": "Array de URLs de imagenes de referencia, **opcional; si se proporciona, debe contener de 1 a 10 imagenes**\n\n**Requisito:** en este modelo `video_urls` es obligatorio; las imagenes son referencias complementarias opcionales.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Imagen | `reference_image` | Referencia de estilo, imagen de producto, sujeto de reemplazo (indicado en el prompt) |\n\n**Requisitos de imagen:**\n- Formatos admitidos: `.jpeg`, `.png`, `.webp`\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Tamano por imagen: no mas de `30MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de imagenes deben ser accesibles directamente por el servidor",
+            "description": "Array de URLs de imagenes de referencia, **opcional; si se proporciona, debe contener de 1 a 10 imagenes**\n\n**Requisito:** en este modelo `video_urls` es obligatorio; las imagenes son referencias complementarias opcionales.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Imagen | `reference_image` | Referencia de estilo, imagen de producto, sujeto de reemplazo (indicado en el prompt) |\n\n**Requisitos de imagen:**\n- Formatos admitidos: `.jpeg`, `.png`, `.webp`\n- Relacion de aspecto (ancho/alto): `0.4` ~ `2.5`\n- Pixeles de ancho/alto: `300` ~ `6000` px\n- Tamano por imagen: no mas de `30MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de imagenes deben ser accesibles directamente por el servidor\n\n**Direcciones de medios:** se admiten URL HTTP(S) públicas e identificadores `asset://` accesibles para la cuenta del proveedor seleccionada.",
             "items": {
               "type": "string",
               "format": "uri"
             },
-            "minItems": 1,
             "maxItems": 10,
             "example": [
               "https://example.com/ref1.jpg",
@@ -236,12 +247,11 @@
           },
           "audio_urls": {
             "type": "array",
-            "description": "Array de URLs de audio de referencia, **opcional; si se proporciona, debe contener de 1 a 5 segmentos**\n\n**Requisito:** en este modelo `video_urls` es obligatorio; el audio es una referencia complementaria opcional.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Audio | `reference_audio` | Musica de fondo, efectos de sonido, referencia de voz/dialogos |\n\n**Requisitos de audio:**\n- Formatos admitidos: `.wav`, `.mp3`\n- Duracion por segmento de audio: `2` ~ `30` segundos, maximo 5 segmentos, duracion total de todo el audio <= `30` segundos\n- Tamano por archivo: no mas de `15MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de audio deben ser accesibles directamente por el servidor",
+            "description": "Array de URLs de audio de referencia, **opcional; si se proporciona, debe contener de 1 a 5 segmentos**\n\n**Requisito:** en este modelo `video_urls` es obligatorio; el audio es una referencia complementaria opcional.\n\n**Descripcion del rol:**\n\n| Tipo de medio | Rol | Uso tipico |\n|---------|------|----------|\n| Audio | `reference_audio` | Musica de fondo, efectos de sonido, referencia de voz/dialogos |\n\n**Requisitos de audio:**\n- Formatos admitidos: `.wav`, `.mp3`\n- Duracion por segmento de audio: `2` ~ `30` segundos, maximo 5 segmentos, duracion total de todo el audio <= `30` segundos\n- Tamano por archivo: no mas de `15MB`\n- El tamano total del cuerpo de la solicitud no debe exceder `64MB`, no use codificacion Base64\n- Las URLs de audio deben ser accesibles directamente por el servidor\n\n**Direcciones de medios:** se admiten URL HTTP(S) públicas e identificadores `asset://` accesibles para la cuenta del proveedor seleccionada.",
             "items": {
               "type": "string",
               "format": "uri"
             },
-            "minItems": 1,
             "maxItems": 5,
             "example": [
               "https://example.com/bgm.mp3"
@@ -249,7 +259,7 @@
           },
           "duration": {
             "type": "integer",
-            "description": "Duracion del video de salida (segundos), valor predeterminado `-1`\n\n**Detalles:**\n- Puede omitir este campo; si se envía, solo se acepta `-1` y la duración de salida sigue al video de entrada\n- No se aceptan duraciones personalizadas",
+            "description": "Duracion del video de salida (segundos), valor predeterminado `-1`\n\n**Detalles:**\n- Solo se admite `-1`: la duracion de salida sigue al video de entrada (puede ser hasta 0,4 s mas corta)\n- No se aceptan duraciones personalizadas\n- La duracion afecta directamente a la facturacion",
             "enum": [
               -1
             ],
@@ -268,7 +278,7 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Relacion de aspecto del video, valor predeterminado `adaptive`\n\n**Valores opcionales:**\n- `adaptive`: la relación de salida sigue al video de entrada; también puede omitir este campo\n- Las relaciones fijas como `16:9` o `9:16` se rechazan",
+            "description": "Relacion de aspecto del video, valor predeterminado `adaptive`\n\n**Valores opcionales:**\n- `adaptive`: la relacion de salida sigue al primer video de entrada; es el unico valor admitido por este modelo\n- Las relaciones fijas como `16:9` o `9:16` se rechazan",
             "enum": [
               "adaptive"
             ],
@@ -277,9 +287,25 @@
           },
           "generate_audio": {
             "type": "boolean",
-            "description": "Si se genera audio sincronizado, valor predeterminado `true`\n\n**Valores opcionales:**\n- `true`: el video incluye audio sincronizado, sin cargo adicional\n- `false`: no se genera audio nuevo",
+            "description": "Si se genera audio sincronizado, valor predeterminado `true`\n\n**Valores opcionales:**\n- `true`: el video incluye audio sincronizado, sin cargo adicional\n- `false`: salida de video sin audio",
             "default": true,
             "example": true
+          },
+          "content_filter": {
+            "type": "boolean",
+            "description": "Filtro de contenido, valor predeterminado `true`\n\n**Valores opcionales:**\n- `true`: verificacion estandar de seguridad de contenido, este es el valor predeterminado\n- `false`: relaja las restricciones de contenido, facturado con +10% (`1.1x`). El contenido ilegal y prohibido siempre se aplica independientemente de esta configuracion\n\n**Incompatible con la busqueda web:**\n- `content_filter: false` y `model_params.web_search: true` no se pueden usar juntos; enviarlos a la vez devuelve un error de parametro 400\n- Mantenga `content_filter: true` (valor predeterminado) cuando necesite la busqueda web",
+            "default": true,
+            "example": true
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Formato de contenedor de salida, valor predeterminado `mp4`\n\n**Valores opcionales:**\n- `mp4`: codificacion H.264, la mejor compatibilidad y precision de color estandar; es el valor predeterminado\n- `mov`: H.264 + submuestreo de croma yuv444p + audio PCM, con mayor fidelidad de color, recomendado para etalonaje, recorte de croma y composicion. Es posible que el navegador no lo reproduzca en linea; descarguelo y reproduzcalo con VLC / mpv / ffplay. Sin cargo adicional",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
           },
           "callback_url": {
             "type": "string",
@@ -369,7 +395,7 @@
           },
           "video_duration": {
             "type": "integer",
-            "description": "Duración del video (segundos). En la edición de video, es la duración del video de entrada redondeada hacia arriba al segundo entero",
+            "description": "Duracion del video (segundos)",
             "example": 8
           }
         }

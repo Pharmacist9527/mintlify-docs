@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Seedance 2.5 Flash Text-to-Video API",
-    "description": "Seedance 2.5 Flash Text-to-Video-API, unterstützt die Videogenerierung aus reinen Textprompts",
+    "description": "Seedance 2.5 Flash Text-to-Video-API, unterstützt die Videogenerierung aus reinen Textprompts mit Websuche zur Verbesserung der Aktualität",
     "license": {
       "name": "MIT"
     },
@@ -23,7 +23,7 @@
     "/v1/videos/generations": {
       "post": {
         "summary": "Seedance 2.5 Flash Text-to-Video",
-        "description": "- Videogenerierung aus reinen Textprompts\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID [zur Abfrage](/de/api-manual/task-management/get-task-detail)\n- Der generierte Video-Link ist 24 Stunden gültig, bitte speichern Sie ihn rechtzeitig",
+        "description": "- Videogenerierung aus reinen Textprompts, unterstützt Websuche zur Verbesserung der Aktualität\n- **Unterstützt jetzt AIGC-Real-Person-Materialien**\n- Asynchroner Verarbeitungsmodus, verwenden Sie die zurückgegebene Aufgaben-ID [zur Abfrage](/de/api-manual/task-management/get-task-detail)\n- Der generierte Video-Link ist 24 Stunden gültig, bitte speichern Sie ihn rechtzeitig\n\n**Entwurfsmodus:** Seedance 2.5 Flash unterstützt weder `draft: true` noch die Konvertierung eines Entwurfs in ein finales Video.\n\n**Websuche bei Text-to-Video:** `model_params.web_search: true` und `content_filter: false` sind nicht kombinierbar; beide zusammen führen zu einem 400-Parameterfehler. Für die Websuche `content_filter: true` (Standard) beibehalten.",
         "operationId": "createSeedance25FlashTextToVideo",
         "tags": [
           "Videogenerierung"
@@ -44,7 +44,22 @@
                     "duration": 8,
                     "quality": "720p",
                     "aspect_ratio": "16:9",
-                    "generate_audio": true
+                    "generate_audio": true,
+                    "content_filter": true
+                  }
+                },
+                "web_search": {
+                  "summary": "Text-to-Video mit Websuche",
+                  "value": {
+                    "model": "seedance-2.5-flash-text-to-video",
+                    "prompt": "Today's New York weather forecast, with city skyline animation and temperature overlay display",
+                    "duration": 8,
+                    "quality": "720p",
+                    "aspect_ratio": "16:9",
+                    "model_params": {
+                      "web_search": true
+                    },
+                    "content_filter": true
                   }
                 }
               }
@@ -163,6 +178,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Dienst vorübergehend nicht verfügbar; bitte später erneut versuchen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -193,11 +218,20 @@
           },
           "duration": {
             "type": "integer",
-            "description": "Videodauer (Sekunden), Standard ist `5` Sekunden\n\n**Hinweise:**\n- Unterstützt beliebige Ganzzahlwerte zwischen `4` und `30` Sekunden\n- Automatische Dauer (`-1`) wird nicht unterstützt; die Angabe führt zu einem 400-Parameterfehler\n- Die Dauer wirkt sich direkt auf die Abrechnung aus\n\n**Abrechnungsregeln:**\n- Abrechnung pro Sekunde; abrechenbare Dauer ist die Ausgabedauer (`duration`)",
+            "description": "Videodauer (Sekunden), Standard ist `5` Sekunden\n\n**Hinweise:**\n- Unterstützt beliebige Ganzzahlwerte zwischen `4` und `30` Sekunden\n- `-1`: automatische Dauer, das Modell wählt eine Länge zwischen `4`–`30` Sekunden, abgerechnet wird nach der tatsächlichen Ausgabelänge\n- Die Dauer wirkt sich direkt auf die Abrechnung aus",
             "default": 5,
             "example": 8,
-            "minimum": 4,
-            "maximum": 30
+            "anyOf": [
+              {
+                "enum": [
+                  -1
+                ]
+              },
+              {
+                "minimum": 4,
+                "maximum": 30
+              }
+            ]
           },
           "quality": {
             "type": "string",
@@ -211,16 +245,17 @@
           },
           "aspect_ratio": {
             "type": "string",
-            "description": "Video-Seitenverhältnis, Standard ist `16:9`\n\n**Verfügbare Werte:**\n- `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`, `21:9` (Ultraweitbild)\n- Automatisches Seitenverhältnis (`adaptive`) wird nicht unterstützt; die Angabe führt zu einem 400-Parameterfehler\n\n**Pixelwerte pro Auflösung:**\n\n| Seitenverhältnis | 480p | 720p |\n|:------:|:----:|:----:|\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
+            "description": "Video-Seitenverhältnis, Standard ist `adaptive`\n\n**Verfügbare Werte:**\n- `16:9` (Querformat), `9:16` (Hochformat), `1:1` (Quadrat), `4:3`, `3:4`, `21:9` (Ultraweitbild)\n- `adaptive`: Das Modell wählt intelligent das beste Seitenverhältnis basierend auf dem Prompt\n\n**Pixelwerte pro Auflösung:**\n\n| Seitenverhältnis | 480p | 720p |\n| :------: | :----: | :----: |\n| 16:9 | 854×480 | 1280×720 |\n| 4:3 | 752×560 | 1112×834 |\n| 1:1 | 640×640 | 960×960 |\n| 3:4 | 560×752 | 834×1112 |\n| 9:16 | 480×854 | 720×1280 |\n| 21:9 | 992×432 | 1470×630 |",
             "enum": [
               "16:9",
               "9:16",
               "1:1",
               "4:3",
               "3:4",
-              "21:9"
+              "21:9",
+              "adaptive"
             ],
-            "default": "16:9",
+            "default": "adaptive",
             "example": "16:9"
           },
           "generate_audio": {
@@ -228,6 +263,34 @@
             "description": "Ob synchronisiertes Audio generiert werden soll, Standard ist `true`\n\n**Verfügbare Werte:**\n- `true`: Video enthält synchronisiertes Audio (Stimmen, Soundeffekte, Hintergrundmusik), keine zusätzlichen Kosten. Es wird empfohlen, Dialogteile in Anführungszeichen zu setzen, um die Audiogenerierung zu optimieren\n- `false`: Stummes Video ausgeben",
             "default": true,
             "example": true
+          },
+          "content_filter": {
+            "type": "boolean",
+            "description": "Inhaltsfilter, Standard ist `true`\n\n**Verfügbare Werte:**\n- `true`: Standardmäßige Inhaltssicherheitsprüfung, dies ist der Standard\n- `false`: Lockert die Inhaltsbeschränkungen, Abrechnung mit +10% (`1.1x`). Illegale und verbotene Inhalte werden unabhängig von dieser Einstellung immer durchgesetzt\n\n**Nicht mit der Websuche kombinierbar:**\n- `content_filter: false` und `model_params.web_search: true` können nicht zusammen verwendet werden; werden beide gesendet, wird ein 400-Parameterfehler zurückgegeben\n- Behalten Sie `content_filter: true` (Standard) bei, wenn die Websuche benötigt wird",
+            "default": true,
+            "example": true
+          },
+          "output_format": {
+            "type": "string",
+            "description": "Ausgabe-Containerformat, Standard ist `mp4`\n\n**Verfügbare Werte:**\n- `mp4`: H.264-Kodierung mit bester Kompatibilität und standardmäßiger Farbpräzision, dies ist der Standard\n- `mov`: H.264 + yuv444p-Chroma-Sampling + PCM-Audio für höhere Farbtreue, empfohlen für Color-Grading-, Keying- und Compositing-Workflows. Die Wiedergabe im Browser wird möglicherweise nicht unterstützt; laden Sie die Datei herunter und spielen Sie sie mit VLC / mpv / ffplay ab. Keine zusätzlichen Kosten",
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "default": "mp4",
+            "example": "mp4"
+          },
+          "model_params": {
+            "type": "object",
+            "description": "Erweiterte Modellparameter",
+            "properties": {
+              "web_search": {
+                "type": "boolean",
+                "description": "Websuche, Standard ist `false`\n\n**Hinweise:**\n- Nach der Aktivierung entscheidet das Modell eigenständig anhand des Prompts, ob Internetinhalte durchsucht werden sollen (z.B. Produkte, Wetter usw.), um die Aktualität zu verbessern\n- Erhöht die Latenz geringfügig\n- Kosten fallen nur an, wenn die Suche tatsächlich ausgelöst wird; nach der Aktivierung können mehrere Aufrufe erfolgen\n\n**Nicht mit dem Inhaltsfilter kombinierbar:**\n- Behalten Sie `content_filter: true` bei, wenn die Websuche aktiviert ist; die Kombination mit `content_filter: false` gibt einen 400-Parameterfehler zurück",
+                "default": false,
+                "example": false
+              }
+            }
           },
           "callback_url": {
             "type": "string",
