@@ -1,0 +1,153 @@
+---
+title: "その他の MCP クライアント"
+description: "その他のリモート MCP クライアント、ローカル stdio、API Key、ツールの検証"
+---
+
+## MCP の接続方法を選ぶ
+
+| 接続 | インストールまたは接続 | 認証 | 対象 |
+|---|---|---|---|
+| リモート MCP | https://mcp.evolink.ai/mcp | ブラウザの OAuth | ウェブのチャットと、ネイティブ MCP クライアント |
+| ローカル MCP | npx が @evolinkai/mcp を起動 | プラットフォームの API Key | stdio クライアントと、許可されたローカルファイルのアップロード |
+
+リモート MCP には、ローカルの MCP パッケージは必要ありません。CLI をインストールしても、ネイティブ MCP サーバーは登録されません。スキルをインストールしても、ログインしたことにも、ツールを接続したことにもなりません。
+
+## 専用のガイドを選ぶ
+
+[Claude](/ja/mcp/claude)、[Codex](/ja/mcp/codex)、[Claude Code](/ja/mcp/claude-code)、[ChatGPT](/ja/mcp/chatgpt)、[Cursor](/ja/mcp/cursor)、[OpenClaw](/ja/mcp/openclaw)、[Hermes](/ja/mcp/hermes-agent) については、それぞれの専用ページを使ってください。このページでは、それ以外のクライアント向けに、汎用のリモート MCP 接続とローカル stdio 接続を扱います。
+
+<span id="cli-install" />
+
+## ターミナルエージェント向けの別の CLI ガイド
+
+ターミナル、スクリプト、Gemini CLI、OpenCode、GitHub Copilot CLI の場合は、インストール、ログイン、スキルのインストール先、無料の検証について、[EvoLink CLI のセットアップ](/ja/cli/setup#cli-install)に従ってください。コマンドを実行できるエージェントは、CLI を使えます。ネイティブ MCP を設定する場合は、下記のリモートまたはローカルの手順に従ってください。
+
+<span id="ssh-login" />
+
+### Linux と SSH でのログイン
+
+CLI はリモートで動作し、ブラウザは手元にあるという場合は、Linux の安全な認証情報ストアの要件を満たしたうえで、[SSH コールバックの転送](/ja/cli/setup#ssh-login)に従ってください。リモート MCP のコールバックはホストが管理しており、CLI の転送手順は使いません。
+
+<span id="local-mcp" />
+
+## API Key を使うローカル stdio MCP
+
+stdio のみに対応するクライアントは、ローカルの MCP プロセスを起動できます。この場合、リモート MCP のブラウザ OAuth ではなく、**Node.js 20 以上**と個人用の API Key が必要です。
+
+<Steps>
+
+<Step title="Node と専用のキーを準備する">
+
+```bash
+node --version
+npx --version
+```
+
+どちらのコマンドも動作し、Node が 20 以降である必要があります。[API Keys](https://evolink.ai/dashboard/keys) で、上限を設定した専用の個人用キーを作成してください。`EVOLINK_API_KEY` は、クライアントの安全な環境設定またはシークレット設定を通じて渡します。エージェントとのチャット、共有するスクリーンショット、リポジトリには含めないでください。
+
+</Step>
+
+<Step title="ローカルの起動設定を行う">
+
+クライアントの MCP 設定で、local/stdio を選びます：
+
+```text
+command: npx
+args: -y @evolinkai/mcp@latest
+```
+
+初回の起動時に、npx がパッケージを取得します。ホストは stdio 経由で通信し、ローカルプロセスがプラットフォームの API を呼び出します。ホストが npx を見つけられることを確認してください。GUI アプリケーションは、ターミナルとは異なる環境で動作していることがあります。下記の `YOUR_API_KEY` は、非公開のローカル設定で置き換えるためのプレースホルダーです。環境変数の継承に対応している場合は、そちらを優先してください。
+
+```json
+{
+  "mcpServers": {
+    "evolink": {
+      "command": "npx",
+      "args": ["-y", "@evolinkai/mcp@latest"],
+      "env": {"EVOLINK_API_KEY": "YOUR_API_KEY"}
+    }
+  }
+}
+```
+
+</Step>
+
+<Step title="ローカルファイルが必要な場合はディレクトリを許可する">
+
+ローカルパスからアップロードするには、プロセスの環境で、`EVOLINK_UPLOAD_ALLOWED_DIRS` に、許可する絶対パスのディレクトリを設定します。複数のディレクトリは、macOS/Linux では `:`、Windows では `;` で区切ります。この設定がない場合、ローカルパスからのアップロードは無効です。リモート MCP は、`file_path` を一切受け付けません。
+
+この設定が制御するのは、ローカルファイルへのアクセスであり、モデルの形式、長さ、サイズの制限ではありません。URL や base64 を使う場合は、ローカルディレクトリへのアクセスは不要です。
+
+</Step>
+
+<Step title="再読み込みして、無料のツールで検証する">
+
+設定を保存し、EvoLink を有効にして、ホストの求める方法で再読み込みするか、新しいセッションを開きます。`check_balance` と `search_models` を呼び出すよう依頼し、実際の結果が返ることを確認してください。プロセスが起動したことや、ツールが一覧に表示されたことだけでは、アカウントの検証に成功したことにはなりません。
+
+ローカル stdio は、リモート用の1回限りのアップロードツールである `prepare_upload` / `get_upload` を提供しません。実際の `tools/list` を確認してください。個人用のキーには、OAuth キーの上限ではなく、そのキー自身の上限が適用されます。
+
+</Step>
+
+</Steps>
+
+### Claude Code と Codex の設定
+
+安全な環境設定を通じてキーがすでに渡されている場合、Claude Code では、JSON の例の代わりに、次のコマンドで登録できます：
+
+```bash
+claude mcp add --scope user evolink -- npx -y @evolinkai/mcp@latest
+```
+
+Codex では、次のセクションをマージすると、起動環境から変数を継承できます：
+
+```toml
+[mcp_servers.evolink]
+command = "npx"
+args = ["-y", "@evolinkai/mcp@latest"]
+env_vars = ["EVOLINK_API_KEY", "EVOLINK_UPLOAD_ALLOWED_DIRS"]
+```
+
+更新したあとは再読み込みし、実際のバージョンを確認してください。`@latest` を指定しても、すでに実行中のプロセスは置き換えられません。起動、キー、ローカルパスに関する失敗については、[総合トラブルシューティング](/ja/mcp/billing#mcp-connection)を参照してください。
+
+<span id="remote-mcp" />
+
+## その他のリモート MCP クライアント
+
+クライアントは、Streamable HTTP、OAuth、ブラウザのコールバックに対応している必要があります。静的なキーまたは stdio にしか対応していないクライアントは、上記のローカル MCP を使ってください。
+
+<Steps>
+
+<Step title="サーバーを追加する">
+
+Streamable HTTP と次の URL を使って、EvoLink という名前の MCP 接続を作成します：
+
+```text
+https://mcp.evolink.ai/mcp
+```
+
+ドキュメントの URL、プラットフォームの `/v1` の URL、npx コマンドは入力しないでください。
+
+</Step>
+
+<Step title="OAuth を完了してツールを有効にする">
+
+OAuth を選択し、クライアントのログイン操作を使って、ブラウザで承認してから戻ります。接続とツールが有効になっていることを確認してください。静的な API Key は、この接続の OAuth トークンではありません。
+
+</Step>
+
+<Step title="無料で検証する">
+
+```text
+EvoLink で残高を確認し、利用可能な画像モデルを検索してください。まだ生成しないでください。
+```
+
+実際の残高とモデルの結果が返ってきたら、[はじめてのメディアワークフロー](/ja/mcp/overview#workflows)に従ってください。ツールが一覧に表示されても、呼び出しが成功していない場合は、認証のトラブルシューティングが必要です。
+
+</Step>
+
+</Steps>
+
+<span id="skills" />
+## スキルとプラグインのリソース
+
+同梱の evolink-cli スキルは、コマンドの実行を案内します。リポジトリの evolink-mcp は、ネイティブツールの使い方を案内します。ソース、ディレクトリ、アップデートについては[エージェント向けリソース](/ja/cli-mcp/agent-resources#skills)を、パッケージ化されたリモート設定については[プラグインガイド](/ja/mcp/plugins)を参照してください。
