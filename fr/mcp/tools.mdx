@@ -1,12 +1,12 @@
 ---
 title: "Référence des outils et de l’API MCP"
-description: "Paramètres, exemples, résultats, protocole et correspondance avec le backend pour 16 outils"
+description: "Paramètres, exemples, résultats, protocole et correspondance avec le backend pour 19 outils"
 ---
 
 <span id="mcp-tools" />
 ## Référence des outils MCP
 
-Cette page décrit les 16 outils de la version **1.12.1** du MCP distant OAuth. La réponse `tools/list` du serveur connecté fait foi. Le stdio local n’expose ni `prepare_upload` ni `get_upload` ; son `upload_file` accepte en outre des chemins situés dans des répertoires explicitement autorisés.
+Cette page décrit les 19 outils de la version **1.13.0** du MCP distant OAuth. Les trois outils de flux de travail (`get_media_workflow`, `analyze_video`, `get_video_analysis`) ne sont proposés qu’aux connexions distantes avec un compte connecté. La réponse `tools/list` du serveur connecté fait foi. Le stdio local n’expose ni `prepare_upload` ni `get_upload` ; son `upload_file` accepte en outre des chemins situés dans des répertoires explicitement autorisés.
 
 Les exemples avec `name` et `arguments` décrivent des appels d’outils MCP, et non des corps de requête REST. Un exemple n’autorise pas une génération payante.
 
@@ -28,6 +28,9 @@ Les exemples avec `name` et `arguments` décrivent des appels d’outils MCP, et
 | upload_file | Importer une référence depuis une URL ou en base64 | Aucuns frais de génération ; les quotas de fichiers s’appliquent |
 | prepare_upload | Préparer une importation à usage unique pour un fichier local | Aucuns frais de génération ; les quotas de fichiers s’appliquent |
 | get_upload | Récupérer l’état et l’URL d’une importation existante | Aucun |
+| get_media_workflow | Lire les règles des étapes d’un flux de travail et un seul total estimé | Aucun |
+| analyze_video | Analyser une vidéo pour une étape d’un flux de travail | Payant, au token |
+| get_video_analysis | Récupérer une analyse vidéo qui était encore en cours | Aucun |
 
 ### search_models
 
@@ -256,6 +259,57 @@ Renvoie upload_id, upload_url, method:PUT, command, max_bytes et expires_at. L�
 
 Les états comprennent waiting/uploading/done/failed/expired/outcome_unknown. N’utilisez file_url qu’après un résultat done confirmé. L’état local au serveur est conservé environ une heure ; les services de fichiers compatibles peuvent fournir des reçus pendant environ 72 heures. Des reçus non pris en charge ou invérifiables peuvent donner outcome_unknown. La consultation n’importe pas le fichier une nouvelle fois ; conservez l’identifiant d’origine et examinez d’abord l’état.
 
+<span id="workflow-tools" />
+### get_media_workflow
+
+Réservé aux connexions distantes avec un compte connecté. Renvoie les règles pas à pas d’un flux de travail EvoLink, une section à la fois, ainsi qu’un seul total estimé pour une exécution prévue. Consultez [Recréer une publicité de référence](/fr/cli-mcp/ad-rebuild).
+
+| Paramètre | Type | Obligatoire | Valeur par défaut / plage |
+|---|---|---|---|
+| workflow | string | Oui | Nom du flux de travail, actuellement `ad-rebuild` |
+| section | string | Non | `overview` par défaut, ou un identifiant de section répertorié par un appel précédent |
+| run_id | string | Non | Renvoyé par le premier appel ; transmettez-le à chaque appel ultérieur de la même exécution |
+| estimate | object | Non | `output_seconds`, `keyframes` et, facultativement, `quality` (480p/720p/1080p), `aspect_ratio`, `creator_images` |
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
+```
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
+```
+
+Le premier appel renvoie la vue d’ensemble, `run_id` et la liste des sections. Avec `estimate` et sans `section`, seule l’estimation est renvoyée : `total_credits`, `total_usd`, ce qu’elle couvre, `valid_until`, et si le solde et toute limite EvoLink MCP la couvrent (`enough_balance`, `short_by_credits`, `enough_limit`). Rien n’est facturé. Le total repose sur les prix publics par défaut et reste valable 24 heures ; la facturation se fait à l’usage réel.
+
+### analyze_video
+
+Réservé aux connexions distantes avec un compte connecté. Analyse une vidéo pour une étape d’un flux de travail. Facturé au token sur le compte connecté, il fait partie du total estimé du flux de travail ; ne l’appelez pas avant que l’utilisateur ait confirmé ce total.
+
+| Paramètre | Type | Obligatoire | Valeur par défaut / plage |
+|---|---|---|---|
+| run_id | string | Oui | Issu de get_media_workflow |
+| step | string | Oui | Nom d’une étape du flux de travail, par exemple `reference_analysis` ou `delivery_check` |
+| purpose | string | Oui | `breakdown`, `sound` ou `compare` |
+| video_url | string | Oui | Un lien de fichier EvoLink (issu d’une importation) ou le lien du résultat d’une tâche vidéo EvoLink ; MP4 ou MOV, 30 secondes au maximum |
+| target | string | Uniquement pour `compare` | Le plan établi auquel la vidéo est comparée |
+| attempt | integer | Non | 1 par défaut ; ne l’augmentez que lorsque la prochaine étape indiquée par une erreur le demande |
+
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
+```
+
+Renvoie `status`, `analysis`, `analysis_id`, `usage` en tokens, `charged` et `charged_again`. Le fichier est vérifié avant toute facturation ; un lien qui ne peut pas être lu, un fichier qui n’est pas une vidéo ou une vidéo trop longue sont refusés, avec le motif. **Les mêmes entrées, dans les 24 heures, renvoient le premier résultat et ne sont pas facturées de nouveau** (`charged_again:false`) ; après une expiration de délai ou une coupure de connexion, envoyez donc exactement le même appel. Une analyse lente renvoie `status:processing` avec un `analysis_id` destiné à get_video_analysis. Chaque compte peut lancer un nombre limité d’analyses par minute et par jour ; l’erreur indique combien de temps attendre. Chaque facturation apparaît dans l’historique de la console comme un appel à un modèle Gemini.
+
+### get_video_analysis
+
+Réservé aux connexions distantes avec un compte connecté. `analysis_id` obligatoire, issu de analyze_video :
+
+```json
+{"name":"get_video_analysis","arguments":{"analysis_id":"ANALYSIS_ID_FROM_RESPONSE"}}
+```
+
+Attend jusqu’à environ 30 secondes et renvoie l’analyse terminée, ou de nouveau `status:processing`. Gratuit. Les résultats sont conservés environ une heure ; lorsqu’un identifiant n’est plus conservé, envoyez à nouveau l’appel analyze_video d’origine avec les mêmes entrées.
+
 ### Résultats et erreurs
 
 Les outils renvoient du texte lisible et structuredContent ; les échecs peuvent inclure isError/error/next_step. Un média terminé peut inclure resource_link et, facultativement, une vignette d’image. La prise en charge des blocs de contenu varie selon les hôtes. L’URL d’origine reste la référence pour la livraison ; les aperçus ne sont pas garantis dans tous les hôtes.
@@ -307,7 +361,7 @@ Les exemples utilisant name / arguments décrivent l’entrée d’un outil, et 
 | upload_file | Service de fichiers, /url ou /base64 ; le stdio local peut lire les répertoires autorisés |
 | prepare_upload, get_upload | URL PUT à usage unique hébergée et état associé ; la récupération des reçus dépend de la prise en charge par le service de fichiers |
 
-Les paramètres du modèle se placent dans arguments.input et sont convertis en requêtes REST par le serveur. media_seconds est une indication pour la facturation ; max_cost_usd ne fait que vérifier les estimations avant la soumission. La version publiée 1.12.1 estime à partir des règles tarifaires publiques (tarifs de référence, sans remises de compte) et n’a toujours pas de plafond de règlement final.
+Les paramètres du modèle se placent dans arguments.input et sont convertis en requêtes REST par le serveur. media_seconds est une indication pour la facturation ; max_cost_usd ne fait que vérifier les estimations avant la soumission. La version publiée 1.13.0 estime à partir des règles tarifaires publiques (tarifs de référence, sans remises de compte) et n’a toujours pas de plafond de règlement final.
 
 ### Importations, reprise et accès
 

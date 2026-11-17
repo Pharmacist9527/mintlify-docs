@@ -1,12 +1,12 @@
 ---
 title: "MCP 도구 및 API 레퍼런스"
-description: "도구 16개의 매개변수, 예시, 결과, 프로토콜, 백엔드 매핑"
+description: "도구 19개의 매개변수, 예시, 결과, 프로토콜, 백엔드 매핑"
 ---
 
 <span id="mcp-tools" />
 ## MCP 도구 레퍼런스
 
-이 페이지는 OAuth 원격 MCP **1.12.1** 릴리스의 도구 16개를 설명합니다. 연결된 서버의 `tools/list`가 기준입니다. 로컬 stdio는 `prepare_upload`와 `get_upload`를 제공하지 않으며, 로컬 stdio의 `upload_file`은 명시적으로 허용된 디렉토리 안의 경로도 받습니다.
+이 페이지는 OAuth 원격 MCP **1.13.0** 릴리스의 도구 19개를 설명합니다. 워크플로 도구 세 개(`get_media_workflow`, `analyze_video`, `get_video_analysis`)는 로그인한 원격 연결에만 제공됩니다. 연결된 서버의 `tools/list`가 기준입니다. 로컬 stdio는 `prepare_upload`와 `get_upload`를 제공하지 않으며, 로컬 stdio의 `upload_file`은 명시적으로 허용된 디렉토리 안의 경로도 받습니다.
 
 `name`과 `arguments`로 된 예시는 MCP 도구 호출을 나타내며, REST 요청 본문이 아닙니다. 예시가 있다고 해서 유료 생성이 승인되는 것은 아닙니다.
 
@@ -28,6 +28,9 @@ description: "도구 16개의 매개변수, 예시, 결과, 프로토콜, 백엔
 | upload_file | URL 또는 base64 참조 파일 업로드 | 생성 요금 없음. 파일 할당량이 적용됩니다 |
 | prepare_upload | 로컬 파일을 위한 일회용 업로드 준비 | 생성 요금 없음. 파일 할당량이 적용됩니다 |
 | get_upload | 기존 업로드의 상태와 URL 다시 확인 | 없음 |
+| get_media_workflow | 워크플로의 단계별 규칙과 예상 합계 하나 읽기 | 없음 |
+| analyze_video | 워크플로의 한 단계를 위한 영상 분석 | 유료, 토큰 기준 |
+| get_video_analysis | 아직 실행 중이던 영상 분석 결과 수집 | 없음 |
 
 ### search_models
 
@@ -256,6 +259,57 @@ upload_id, upload_url, method:PUT, command, max_bytes, expires_at을 반환합�
 
 상태에는 waiting/uploading/done/failed/expired/outcome_unknown이 있습니다. file_url은 done 결과가 확인된 뒤에만 사용하세요. 서버에 저장된 상태는 약 한 시간 동안 유지되며, 호환되는 파일 서비스는 약 72시간 동안 접수 확인을 제공할 수 있습니다. 접수 확인이 지원되지 않거나 검증할 수 없으면 outcome_unknown이 나올 수 있습니다. 조회한다고 파일이 다시 업로드되지는 않습니다. 원래 ID를 보관하고 먼저 상태를 확인하세요.
 
+<span id="workflow-tools" />
+### get_media_workflow
+
+로그인한 원격 연결 전용입니다. EvoLink 워크플로의 단계별 규칙을 한 번에 섹션 하나씩 반환하고, 계획한 실행에 대한 예상 합계 하나를 반환합니다. [참조 광고 재구성하기](/ko/cli-mcp/ad-rebuild)를 참고하세요.
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| workflow | string | 예 | 워크플로 이름. 현재는 `ad-rebuild` |
+| section | string | 아니요 | 기본값 `overview`. 또는 이전 호출에서 나열된 섹션 ID |
+| run_id | string | 아니요 | 첫 호출에서 반환됩니다. 같은 실행에서 이후 호출할 때마다 전달하세요 |
+| estimate | object | 아니요 | `output_seconds`, `keyframes`, 그리고 선택 사항인 `quality`(480p/720p/1080p), `aspect_ratio`, `creator_images` |
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
+```
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
+```
+
+첫 호출은 개요, `run_id`, 섹션 목록을 반환합니다. `estimate`를 지정하고 `section`을 지정하지 않으면 예상 비용만 반환됩니다. 여기에는 `total_credits`, `total_usd`, 포함되는 항목, `valid_until`, 그리고 잔액과 EvoLink MCP 한도(설정한 경우)로 충당할 수 있는지 여부(`enough_balance`, `short_by_credits`, `enough_limit`)가 포함됩니다. 요금은 전혀 부과되지 않습니다. 합계는 공개 기본 가격으로 계산되며 24시간 동안 유효합니다. 요금은 실제 사용량에 따라 부과됩니다.
+
+### analyze_video
+
+로그인한 원격 연결 전용입니다. 워크플로의 한 단계를 위해 영상 하나를 분석합니다. 요금은 로그인한 계정에 토큰 기준으로 부과되며, 워크플로 예상 합계에 포함되는 항목입니다. 사용자가 그 합계를 확인해 주기 전에는 호출하지 마세요.
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| run_id | string | 예 | get_media_workflow에서 받은 값 |
+| step | string | 예 | 워크플로의 단계 이름. 예: `reference_analysis` 또는 `delivery_check` |
+| purpose | string | 예 | `breakdown`, `sound` 또는 `compare` |
+| video_url | string | 예 | EvoLink 파일 링크(업로드로 받은 링크) 또는 EvoLink 영상 작업의 결과 링크. MP4 또는 MOV, 30초 이하 |
+| target | string | `compare`일 때만 | 영상과 대조해 검사할 기준이 되는 계획 |
+| attempt | integer | 아니요 | 기본값 1. 오류의 다음 단계 안내에서 그렇게 하라고 할 때에만 올리세요 |
+
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
+```
+
+`status`, `analysis`, `analysis_id`, 토큰 `usage`, `charged`, `charged_again`을 반환합니다. 요금이 부과되기 전에 먼저 파일을 검사합니다. 읽을 수 없는 링크, 영상이 아닌 파일, 너무 긴 파일은 사유와 함께 거부됩니다. **24시간 이내에 같은 입력으로 호출하면 첫 결과가 반환되며 다시 과금되지 않습니다**(`charged_again:false`). 따라서 시간 초과나 연결 끊김이 발생한 뒤에는 완전히 같은 호출을 다시 보내세요. 분석이 오래 걸리면 `status:processing`과 함께 get_video_analysis에 사용할 `analysis_id`가 반환됩니다. 계정마다 분당, 그리고 하루에 시작할 수 있는 분석 횟수가 제한되어 있으며, 얼마나 기다려야 하는지는 오류에 나옵니다. 부과된 요금은 건마다 콘솔 기록에 Gemini 모델 호출로 표시됩니다.
+
+### get_video_analysis
+
+로그인한 원격 연결 전용입니다. 필수 `analysis_id`: analyze_video에서 받은 값입니다:
+
+```json
+{"name":"get_video_analysis","arguments":{"analysis_id":"ANALYSIS_ID_FROM_RESPONSE"}}
+```
+
+최대 약 30초까지 기다린 뒤 완료된 분석을 반환하거나, 다시 `status:processing`을 반환합니다. 무료입니다. 결과는 약 한 시간 동안 보관됩니다. ID가 더 이상 보관되어 있지 않으면 원래의 analyze_video 호출을 같은 입력으로 다시 보내세요.
+
 ### 결과와 오류
 
 도구는 읽을 수 있는 텍스트와 structuredContent를 반환하며, 실패한 경우 isError/error/next_step이 포함될 수 있습니다. 완료된 미디어에는 resource_link와 선택적인 이미지 썸네일이 포함될 수 있습니다. 콘텐츠 블록 지원 범위는 호스트마다 다릅니다. 전달의 기준은 여전히 원본 URL이며, 모든 호스트에서 미리보기가 보장되지는 않습니다.
@@ -307,7 +361,7 @@ name / arguments를 사용한 예시는 도구 입력을 나타내며, REST 요�
 | upload_file | 파일 서비스의 /url 또는 /base64. 로컬 stdio는 허용된 디렉토리를 읽을 수 있습니다 |
 | prepare_upload, get_upload | 호스팅형 일회용 PUT URL과 상태. 접수 확인을 통한 복구는 파일 서비스의 지원 여부에 따라 다릅니다 |
 
-모델 매개변수는 arguments.input에 넣으며, 서버가 REST 요청으로 변환합니다. media_seconds는 과금 계산용 힌트이고, max_cost_usd는 제출 전에 예상 비용만 검사합니다. 정식 출시된 1.12.1은 공개 가격 규칙으로 예상 비용을 산정하며(참고 가격, 계정 할인 미포함), 여전히 최종 정산 금액의 상한은 없습니다.
+모델 매개변수는 arguments.input에 넣으며, 서버가 REST 요청으로 변환합니다. media_seconds는 과금 계산용 힌트이고, max_cost_usd는 제출 전에 예상 비용만 검사합니다. 정식 출시된 1.13.0은 공개 가격 규칙으로 예상 비용을 산정하며(참고 가격, 계정 할인 미포함), 여전히 최종 정산 금액의 상한은 없습니다.
 
 ### 업로드, 복구, 접근 권한
 
