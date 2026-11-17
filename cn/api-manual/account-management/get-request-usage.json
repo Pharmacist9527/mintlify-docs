@@ -1,0 +1,393 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "查询请求花费接口",
+    "description": "按 Request ID 查询同步接口调用（主要是文本模型）的状态、用量和实际花费",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/requests/{request_id}": {
+      "get": {
+        "summary": "查询请求花费",
+        "description": "按 Request ID 查询一次请求的状态、token 用量和实际扣除的费用。本接口适用于**同步接口调用**，主要是**文本模型**通过 Chat Completions、Messages、Responses 等接口发起的请求。异步任务（图像、视频、音频生成任务）请使用 `GET /v1/tasks/{task_id}` 查询。\n\n- 请求完成后稍等片刻即可查询；请求仍在进行中时返回 404。\n- 只能查询本账户的请求，同一账户下的任意 API Key 都可以查询。\n- 可查询最近 90 天内的请求。",
+        "operationId": "getRequestUsage",
+        "tags": [
+          "账户管理"
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Request ID，取原请求响应头 `X-Request-Id` 的值。查询时请忽略 {}，直接拼接在路径末尾。",
+            "example": "20261117223155519063884QnAx70lK"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestUsageResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "请求成功",
+                    "value": {
+                      "id": "20261117223155519063884QnAx70lK",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "completed",
+                      "finished_at": 1794925917,
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 4,
+                        "cached_tokens": 0,
+                        "credits_used": 0.01,
+                        "cost": {
+                          "credits": 0.01,
+                          "usd": 0.0002,
+                          "cny": 0.001
+                        }
+                      }
+                    }
+                  },
+                  "failed": {
+                    "summary": "请求失败",
+                    "value": {
+                      "id": "202611172231195955330485r1U5XM8",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "failed",
+                      "finished_at": 1794925882,
+                      "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                        "credits_used": 0,
+                        "cost": {
+                          "credits": 0,
+                          "usd": 0,
+                          "cny": 0
+                        }
+                      },
+                      "error": {
+                        "message": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证：API Key 缺失、无效、过期或已禁用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "API key is required (request id: 20261117223236278461833hQoX6gL5)",
+                    "param": null,
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账号已被禁用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "未找到该请求：请求仍在进行中、Request ID 不正确、不属于本账户或已超过 90 天。传入异步任务 ID 时也返回 404，并提示改用 `GET /v1/tasks/{task_id}`。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "未找到请求",
+                    "value": {
+                      "error": {
+                        "message": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  },
+                  "task_id": {
+                    "summary": "传入了异步任务 ID",
+                    "value": {
+                      "error": {
+                        "message": "This is a task ID. Use GET /v1/tasks/{task_id} to query task status and usage.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限（同时返回 Retry-After 响应头）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "查询超时，请稍后重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "query_timeout"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RequestUsageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Request ID",
+            "example": "20261117223155519063884QnAx70lK"
+          },
+          "object": {
+            "type": "string",
+            "description": "对象类型，固定为 `request`",
+            "enum": [
+              "request"
+            ],
+            "example": "request"
+          },
+          "model": {
+            "type": "string",
+            "description": "请求使用的模型",
+            "example": "claude-haiku-5-5"
+          },
+          "status": {
+            "type": "string",
+            "description": "请求状态：\n\n- `completed`：请求成功完成。\n- `failed`：请求失败。失败前已产生用量的（例如流式输出中途中断），usage 中如实返回已扣除的费用。\n- `blocked`：请求在处理前被拒绝，例如账户余额不足、API Key 额度已用完、已禁用、已过期或不允许使用该模型，不产生费用。",
+            "enum": [
+              "completed",
+              "failed",
+              "blocked"
+            ],
+            "example": "completed"
+          },
+          "finished_at": {
+            "type": "integer",
+            "description": "请求结束时间（Unix 时间戳，秒）",
+            "example": 1794925917
+          },
+          "usage": {
+            "type": "object",
+            "description": "用量与费用。始终返回；未产生费用时各项为 0。",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "输入 token 数",
+                "example": 18
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "输出 token 数",
+                "example": 4
+              },
+              "cached_tokens": {
+                "type": "integer",
+                "description": "命中缓存的输入 token 数",
+                "example": 0
+              },
+              "credits_used": {
+                "type": "number",
+                "description": "本次请求实际扣除的 Credits",
+                "example": 0.01
+              },
+              "cost": {
+                "type": "object",
+                "description": "本次请求费用的三种货币表示，由 credits_used 换算得到（向上取整）。美元按扣费时的汇率折算。",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "扣除的 Credits（与 credits_used 相同）",
+                    "example": 0.01
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "折合美元",
+                    "example": 0.0002
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "折合人民币",
+                    "example": 0.001
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "失败原因，仅当 status 为 `failed` 或 `blocked` 时返回。只包含说明文字，不含错误码；需要按错误码处理时，请以原请求返回的错误为准。",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "失败原因说明",
+                "example": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "status",
+          "finished_at",
+          "usage"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "错误码（字符串类型）",
+                "example": "request_not_found"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息。401、429 错误的末尾会附带 \" (request id: ...)\"",
+                "example": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID."
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型",
+                "example": "invalid_request_error"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "相关参数名称；本接口为 null 或空字符串"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "建议重试前等待的秒数（仅 429）",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "请求是否可重试（仅 429）",
+                "example": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key ：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "账户管理",
+      "description": "账户相关接口，包括积分查询、请求花费查询等"
+    }
+  ]
+}

@@ -1,0 +1,393 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API de consulta del coste de solicitudes",
+    "description": "Consultar el estado, el uso y el coste real por Request ID de llamadas síncronas a la API, principalmente a modelos de texto",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Entorno de producción"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/requests/{request_id}": {
+      "get": {
+        "summary": "Consultar el coste de una solicitud",
+        "description": "Consultar el estado, el uso de tokens y el coste realmente descontado de una solicitud mediante su Request ID. Este endpoint está destinado a **llamadas síncronas a la API**, principalmente a **modelos de texto** mediante interfaces como Chat Completions, Messages y Responses. Para tareas asíncronas (generación de imágenes, vídeo o audio), utilice `GET /v1/tasks/{task_id}`.\n\n- Los datos de uso estarán disponibles poco después de que finalice la solicitud. Las solicitudes que siguen en curso devuelven 404.\n- Solo puede consultar solicitudes de su propia cuenta. Puede utilizar cualquier API Key de esa misma cuenta.\n- Se pueden consultar las solicitudes de los últimos 90 días.",
+        "operationId": "getRequestUsage",
+        "tags": [
+          "Gestión de cuenta"
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Request ID obtenido del encabezado `X-Request-Id` de la respuesta original. Omita las llaves (`{}`) y añada el ID directamente al final de la ruta.",
+            "example": "20261117223155519063884QnAx70lK"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Consulta realizada correctamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestUsageResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "Solicitud completada correctamente",
+                    "value": {
+                      "id": "20261117223155519063884QnAx70lK",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "completed",
+                      "finished_at": 1794925917,
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 4,
+                        "cached_tokens": 0,
+                        "credits_used": 0.01,
+                        "cost": {
+                          "credits": 0.01,
+                          "usd": 0.0002,
+                          "cny": 0.001
+                        }
+                      }
+                    }
+                  },
+                  "failed": {
+                    "summary": "Solicitud fallida",
+                    "value": {
+                      "id": "202611172231195955330485r1U5XM8",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "failed",
+                      "finished_at": 1794925882,
+                      "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                        "credits_used": 0,
+                        "cost": {
+                          "credits": 0,
+                          "usd": 0,
+                          "cny": 0
+                        }
+                      },
+                      "error": {
+                        "message": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autenticado: la API Key falta, no es válida, ha caducado o está desactivada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "API key is required (request id: 20261117223236278461833hQoX6gL5)",
+                    "param": null,
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "La cuenta está desactivada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Solicitud no encontrada: sigue en curso, el Request ID es incorrecto, pertenece a otra cuenta o tiene más de 90 días. Si se proporciona el ID de una tarea asíncrona, también se devuelve 404 con un mensaje que indica que debe utilizarse `GET /v1/tasks/{task_id}`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "Solicitud no encontrada",
+                    "value": {
+                      "error": {
+                        "message": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  },
+                  "task_id": {
+                    "summary": "Se proporcionó el ID de una tarea asíncrona",
+                    "value": {
+                      "error": {
+                        "message": "This is a task ID. Use GET /v1/tasks/{task_id} to query task status and usage.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Se ha superado el límite de solicitudes (también se devuelve el encabezado Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor. Inténtelo de nuevo más tarde",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "La consulta ha agotado el tiempo de espera. Inténtelo de nuevo más tarde",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "query_timeout"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RequestUsageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Request ID",
+            "example": "20261117223155519063884QnAx70lK"
+          },
+          "object": {
+            "type": "string",
+            "description": "Tipo de objeto; siempre `request`",
+            "enum": [
+              "request"
+            ],
+            "example": "request"
+          },
+          "model": {
+            "type": "string",
+            "description": "Modelo utilizado en la solicitud",
+            "example": "claude-haiku-5-5"
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la solicitud:\n\n- `completed`: La solicitud se completó correctamente.\n- `failed`: La solicitud falló. Si se produjo uso antes del fallo, por ejemplo, si se interrumpió una respuesta en streaming, `usage` refleja los cargos realmente descontados.\n- `blocked`: La solicitud se rechazó antes de su procesamiento, por ejemplo, por saldo insuficiente, cuota de la API Key agotada, API Key desactivada o caducada, o un modelo no permitido. No se generan cargos.",
+            "enum": [
+              "completed",
+              "failed",
+              "blocked"
+            ],
+            "example": "completed"
+          },
+          "finished_at": {
+            "type": "integer",
+            "description": "Momento de finalización de la solicitud (marca de tiempo Unix en segundos)",
+            "example": 1794925917
+          },
+          "usage": {
+            "type": "object",
+            "description": "Uso y coste. Siempre se devuelve; si no se han generado cargos, todos los valores son 0.",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "Número de tokens de entrada",
+                "example": 18
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "Número de tokens de salida",
+                "example": 4
+              },
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Número de tokens de entrada recuperados de la caché",
+                "example": 0
+              },
+              "credits_used": {
+                "type": "number",
+                "description": "Credits realmente descontados por esta solicitud",
+                "example": 0.01
+              },
+              "cost": {
+                "type": "object",
+                "description": "Coste de la solicitud expresado en tres monedas, convertido a partir de `credits_used` y redondeado al alza. El importe en USD utiliza el tipo de cambio del momento del cargo.",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "Credits descontados (el mismo valor que `credits_used`)",
+                    "example": 0.01
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "Importe equivalente en dólares estadounidenses",
+                    "example": 0.0002
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "Importe equivalente en yuanes chinos",
+                    "example": 0.001
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "Motivo del fallo; solo se devuelve cuando `status` es `failed` o `blocked`. Solo contiene una descripción, sin código de error. Para gestionar errores por código, utilice el error devuelto por la solicitud original.",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "Descripción del motivo del fallo",
+                "example": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "status",
+          "finished_at",
+          "usage"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Código de error (cadena de texto)",
+                "example": "request_not_found"
+              },
+              "message": {
+                "type": "string",
+                "description": "Descripción del error. En los errores 401 y 429 se añade \" (request id: ...)\" al final del mensaje.",
+                "example": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID."
+              },
+              "type": {
+                "type": "string",
+                "description": "Tipo de error",
+                "example": "invalid_request_error"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "Nombre del parámetro relacionado; en este endpoint es null o una cadena vacía"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "Tiempo de espera recomendado, en segundos, antes de reintentar (solo para 429)",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "Indica si se puede reintentar la solicitud (solo para 429)",
+                "example": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Todos los endpoints requieren autenticación mediante Bearer Token.\n\n**Obtener una API Key:**\n\nVisite la [página de gestión de API Keys](https://evolink.ai/dashboard/keys) para obtener su API Key.\n\n**Incluya el siguiente encabezado en la solicitud:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Gestión de cuenta",
+      "description": "Endpoints relacionados con la cuenta, incluidas las consultas del saldo de créditos y del coste de solicitudes"
+    }
+  ]
+}

@@ -1,0 +1,393 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Get Request Cost API",
+    "description": "Query status, usage, and actual cost by Request ID for synchronous API calls, primarily to text models",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "Production Environment"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/requests/{request_id}": {
+      "get": {
+        "summary": "Get Request Cost",
+        "description": "Query the status, token usage, and actual charges of a request by Request ID. This endpoint is for **synchronous API calls**, primarily to **text models** through Chat Completions, Messages, or Responses. For asynchronous tasks (image, video, or audio generation), use `GET /v1/tasks/{task_id}` instead.\n\n- Usage becomes available shortly after the request completes. Requests still in progress return 404.\n- You can only query requests belonging to your account. Any API Key under the same account can be used.\n- Requests from the last 90 days can be queried.",
+        "operationId": "getRequestUsage",
+        "tags": [
+          "Account Management"
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Request ID from the `X-Request-Id` header of the original response. Omit the braces (`{}`) and append the ID directly to the path.",
+            "example": "20261117223155519063884QnAx70lK"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestUsageResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "Successful request",
+                    "value": {
+                      "id": "20261117223155519063884QnAx70lK",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "completed",
+                      "finished_at": 1794925917,
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 4,
+                        "cached_tokens": 0,
+                        "credits_used": 0.01,
+                        "cost": {
+                          "credits": 0.01,
+                          "usd": 0.0002,
+                          "cny": 0.001
+                        }
+                      }
+                    }
+                  },
+                  "failed": {
+                    "summary": "Failed request",
+                    "value": {
+                      "id": "202611172231195955330485r1U5XM8",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "failed",
+                      "finished_at": 1794925882,
+                      "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                        "credits_used": 0,
+                        "cost": {
+                          "credits": 0,
+                          "usd": 0,
+                          "cny": 0
+                        }
+                      },
+                      "error": {
+                        "message": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: the API Key is missing, invalid, expired, or disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "API key is required (request id: 20261117223236278461833hQoX6gL5)",
+                    "param": null,
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account has been disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found: the request is still in progress, the Request ID is incorrect, the request belongs to another account, or it is older than 90 days. Passing an asynchronous task ID also returns 404 with a message directing you to `GET /v1/tasks/{task_id}`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "Request not found",
+                    "value": {
+                      "error": {
+                        "message": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  },
+                  "task_id": {
+                    "summary": "An asynchronous task ID was provided",
+                    "value": {
+                      "error": {
+                        "message": "This is a task ID. Use GET /v1/tasks/{task_id} to query task status and usage.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (the Retry-After response header is also returned)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. Please try again later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The query timed out. Please try again later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "query_timeout"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RequestUsageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Request ID",
+            "example": "20261117223155519063884QnAx70lK"
+          },
+          "object": {
+            "type": "string",
+            "description": "Object type; always `request`",
+            "enum": [
+              "request"
+            ],
+            "example": "request"
+          },
+          "model": {
+            "type": "string",
+            "description": "The model used for the request",
+            "example": "claude-haiku-5-5"
+          },
+          "status": {
+            "type": "string",
+            "description": "Request status:\n\n- `completed`: The request completed successfully.\n- `failed`: The request failed. If usage occurred before the failure (for example, a streaming response was interrupted), `usage` reports the charges actually deducted.\n- `blocked`: The request was rejected before processing, for example because of insufficient account balance, an exhausted API Key quota, a disabled or expired API Key, or a model that is not allowed. No charges are incurred.",
+            "enum": [
+              "completed",
+              "failed",
+              "blocked"
+            ],
+            "example": "completed"
+          },
+          "finished_at": {
+            "type": "integer",
+            "description": "Time the request ended (Unix timestamp in seconds)",
+            "example": 1794925917
+          },
+          "usage": {
+            "type": "object",
+            "description": "Usage and cost. Always returned; all values are 0 if no charges were incurred.",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "Number of input tokens",
+                "example": 18
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "Number of output tokens",
+                "example": 4
+              },
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Number of input tokens served from the cache",
+                "example": 0
+              },
+              "credits_used": {
+                "type": "number",
+                "description": "Credits actually deducted for this request",
+                "example": 0.01
+              },
+              "cost": {
+                "type": "object",
+                "description": "The request cost expressed in three currencies, converted from `credits_used` and rounded up. The USD amount uses the exchange rate at the time of the charge.",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "Credits deducted (the same value as `credits_used`)",
+                    "example": 0.01
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "Equivalent amount in US dollars",
+                    "example": 0.0002
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "Equivalent amount in Chinese yuan",
+                    "example": 0.001
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "The failure reason, returned only when `status` is `failed` or `blocked`. Contains a message only, without an error code. To handle errors by code, use the error returned by the original request.",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "Description of the failure reason",
+                "example": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "status",
+          "finished_at",
+          "usage"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code (string)",
+                "example": "request_not_found"
+              },
+              "message": {
+                "type": "string",
+                "description": "Error description. For 401 and 429 errors, \" (request id: ...)\" is appended to the message.",
+                "example": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID."
+              },
+              "type": {
+                "type": "string",
+                "description": "Error type",
+                "example": "invalid_request_error"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "Name of the related parameter; null or an empty string for this endpoint"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "Suggested wait time in seconds before retrying (429 only)",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "Whether the request can be retried (429 only)",
+                "example": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "All endpoints require Bearer Token authentication.\n\n**Get an API Key:**\n\nVisit the [API Key management page](https://evolink.ai/dashboard/keys) to obtain your API Key.\n\n**Include the following request header:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Account Management",
+      "description": "Account-related endpoints, including credit balance and request cost queries"
+    }
+  ]
+}
