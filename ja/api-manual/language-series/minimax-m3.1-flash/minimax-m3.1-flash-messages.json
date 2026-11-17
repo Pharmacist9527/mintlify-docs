@@ -1,0 +1,931 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MiniMax-M3.1-Flash Anthropic 互換 API",
+    "description": "Anthropic Messages プロトコルで MiniMax-M3.1-Flash を呼び出すための完全 API リファレンス。\n\n**互換性**：\n- パス：`/v1/messages`（Anthropic 標準パス）\n- リクエスト / レスポンスの構造は Anthropic Messages API と同一です\n- 対応フィールド：`model` `messages`（必須）`system` `max_tokens` `temperature` `top_p` `stream` `thinking` `output_config` `tools` `tool_choice` `metadata`\n\n**モデルの機能**：\n- コンテキスト長：**1,000,000 tokens**（1M）\n- 最大出力：**524,288 tokens**（512K）、推奨値は **131,072 tokens**（128K）。思考トークンも含まれます\n- 思考モード：常に有効。`output_config.effort` で思考の深さを調整します。デフォルトは `max`。思考内容は `content[type=thinking]` ブロックとして返されます\n- マルチモーダル入力：テキスト、画像、動画のコンテンツブロックに対応\n- コンテキストキャッシュ：同一のプレフィックスは自動的にキャッシュヒットし、該当部分は `usage.cache_read_input_tokens` に反映されます\n\nマルチターン対話では、`thinking`（`signature` を含む）と `tool_use` を含め、assistant のコンテンツブロック全体をそのまま返してください。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://direct.evolink.ai",
+      "description": "本番環境（推奨）"
+    },
+    {
+      "url": "https://api.evolink.ai",
+      "description": "代替 URL"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "summary": "MiniMax-M3.1-Flash Messages API（Anthropic 互換）",
+        "description": "- Anthropic Messages プロトコルで MiniMax-M3.1-Flash モデルを呼び出します\n- リクエスト / レスポンスの構造は Anthropic API に準拠しています\n- **マルチモーダル対話**：`content` はテキスト、画像、動画のコンテンツブロックに対応します\n- **システムプロンプト**：トップレベルの `system` で渡します\n- **思考モード**：常に有効。`output_config.effort` で思考の深さを調整します。思考内容は `content[type=thinking]` ブロックとして返されます\n- **ストリーミング出力**：SSE イベントストリーム\n- **ツール呼び出し**：Anthropic の `tool_use` / `tool_result` フローと互換性があります\n\n**ストリーミングイベント**：`message_start` → `content_block_start` → `content_block_delta`（`thinking_delta` / `signature_delta` / `text_delta` / `input_json_delta`）→ `content_block_stop` → `message_delta` → `message_stop`。途中で `ping` が送信される場合があります。最終的な使用量は `message_delta` イベントの `usage` を参照してください。",
+        "operationId": "createMessageMiniMaxM31Flash",
+        "tags": [
+          "Messages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              },
+              "examples": {
+                "simple": {
+                  "summary": "最小限の実行可能なリクエスト",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello! How can you help me?"
+                      }
+                    ]
+                  }
+                },
+                "system_prompt": {
+                  "summary": "システムプロンプトの使用",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "system": "You are a technical editor. Keep your answers clear and concise.",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Describe the benefits of clear technical documentation in three sentences."
+                      }
+                    ]
+                  }
+                },
+                "effort": {
+                  "summary": "思考の深さの調整（output_config.effort）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "output_config": {
+                      "effort": "high"
+                    },
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "A bat and a ball cost 1.10 in total. The bat costs 1.00 more than the ball. How much does the ball cost?"
+                      }
+                    ]
+                  }
+                },
+                "image_understanding": {
+                  "summary": "画像理解（マルチモーダル content block）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "What is shown in this image?"
+                          },
+                          {
+                            "type": "image",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/image.jpeg"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "video_understanding": {
+                  "summary": "動画理解（マルチモーダルコンテンツブロック）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Summarize this video."
+                          },
+                          {
+                            "type": "video",
+                            "source": {
+                              "type": "url",
+                              "url": "https://example.com/video.mp4",
+                              "fps": 1
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "tool_use": {
+                  "summary": "ツール呼び出し（Anthropic tool_use スタイル）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Check the stock for product demo-item-001."
+                      }
+                    ],
+                    "tools": [
+                      {
+                        "name": "get_product_stock",
+                        "description": "Get the current stock level for a product.",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "product_id": {
+                              "type": "string",
+                              "description": "Product identifier."
+                            }
+                          },
+                          "required": [
+                            "product_id"
+                          ]
+                        }
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "streaming": {
+                  "summary": "ストリーミング出力（SSE）",
+                  "value": {
+                    "model": "MiniMax-M3.1-Flash",
+                    "max_tokens": 131072,
+                    "stream": true,
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Write a short poem about spring."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "メッセージオブジェクト",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "examples": {
+                  "with_thinking": {
+                    "summary": "思考内容を含むレスポンス（thinking ブロック）",
+                    "value": {
+                      "id": "072514f09a86ce2abb0c5c3930f924fb",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "thinking": "Let the ball cost x. Then 2x + 1 = 1.10, so x = 0.05.",
+                          "signature": "84eddf556420e0cc237f8f50212216543e8add2ddd931c9a271d2a5a95689333",
+                          "type": "thinking"
+                        },
+                        {
+                          "text": "0.05",
+                          "type": "text"
+                        }
+                      ],
+                      "usage": {
+                        "input_tokens": 55,
+                        "output_tokens": 66,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 174,
+                        "output_tokens_details": {
+                          "thinking_tokens": 63
+                        }
+                      },
+                      "stop_reason": "end_turn",
+                      "base_resp": {
+                        "status_code": 0,
+                        "status_msg": ""
+                      }
+                    }
+                  },
+                  "direct_answer": {
+                    "summary": "直接の回答（思考内容なし）",
+                    "value": {
+                      "id": "072514d15927960e42b730074205a1c6",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "text": "Recursion is a technique in which a function calls itself to solve smaller instances of a problem.",
+                          "type": "text"
+                        }
+                      ],
+                      "usage": {
+                        "input_tokens": 23,
+                        "output_tokens": 6,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 184
+                      },
+                      "stop_reason": "end_turn",
+                      "base_resp": {
+                        "status_code": 0,
+                        "status_msg": ""
+                      }
+                    }
+                  },
+                  "tool_use": {
+                    "summary": "ツール呼び出しがトリガー（stop_reason=tool_use）",
+                    "value": {
+                      "id": "072514d3fb0f7ce9f7c9fdd22755fffc",
+                      "type": "message",
+                      "role": "assistant",
+                      "model": "MiniMax-M3.1-Flash",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "call_function_ih2iv0ggec0p_1",
+                          "name": "get_product_stock",
+                          "input": {
+                            "product_id": "demo-item-001"
+                          }
+                        }
+                      ],
+                      "usage": {
+                        "input_tokens": 283,
+                        "output_tokens": 31,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 174
+                      },
+                      "stop_reason": "tool_use",
+                      "base_resp": {
+                        "status_code": 0,
+                        "status_msg": ""
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正です",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "request_id": "req_xxx",
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Invalid request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "認証エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Authentication error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クォータ不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "billing_error",
+                    "message": "Insufficient quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "権限エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "permission_error",
+                    "message": "Permission denied"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "モデルまたはリソースが存在しません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "not_found_error",
+                    "message": "Model not found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "ゲートウェイエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "サービスが一時的に利用できません",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "呼び出すモデル",
+            "enum": [
+              "MiniMax-M3.1-Flash"
+            ],
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "生成する内容の最大トークン数。**思考と回答の両方を含みます**\n\n**説明**：\n- 推奨値は **131,072**（128K）、最大値は **524,288**（512K）\n- 値が小さすぎると、思考中に上限に達し、`stop_reason=max_tokens` となって text コンテンツが返されない場合があります",
+            "minimum": 1,
+            "maximum": 524288,
+            "example": 131072
+          },
+          "messages": {
+            "type": "array",
+            "description": "対話メッセージのリスト。user / assistant をターンごとに交互に並べます\n\n**説明**：\n- 少なくとも 1 件のメッセージを含む必要があります\n- 最後のメッセージは通常 `role=user` です",
+            "items": {
+              "$ref": "#/components/schemas/InputMessage"
+            },
+            "minItems": 1
+          },
+          "system": {
+            "description": "システムプロンプト。AI の役割と振る舞いを設定します。文字列またはテキストコンテンツブロックの配列に対応し、トップレベルの `system` フィールドで渡します。",
+            "oneOf": [
+              {
+                "type": "string",
+                "example": "You are a helpful assistant."
+              },
+              {
+                "type": "array",
+                "description": "コンテンツブロック配列形式のシステムプロンプト",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "サンプリング温度\n\n**説明**：\n- 範囲は `[0, 2]`、デフォルトは 1\n- 値を上げると多様な出力になり、下げると確定的な出力になります\n- temperature と top_p を同時に調整しないことを推奨します",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1,
+            "example": 1
+          },
+          "top_p": {
+            "type": "number",
+            "description": "Nucleus Sampling のしきい値\n\n**説明**：\n- 範囲は `[0, 1]`、デフォルトは 0.95\n- temperature と top_p を同時に調整しないことを推奨します",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.95,
+            "example": 0.95
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "SSE ストリーミングで返すかどうか\n\n- `true`：Server-Sent Events のストリーミング返却\n- `false`：完全なレスポンスを待ってから一括で返します（デフォルト）",
+            "default": false,
+            "example": false
+          },
+          "thinking": {
+            "type": "object",
+            "description": "思考モード。MiniMax-M3.1-Flash は常に思考を行います。`adaptive` のみ対応しており、省略できます。思考内容は `type=\"thinking\"` のブロックとして返され、出力トークンとして課金されます",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "adaptive"
+                ],
+                "default": "adaptive"
+              }
+            }
+          },
+          "output_config": {
+            "type": "object",
+            "description": "出力設定",
+            "properties": {
+              "effort": {
+                "type": "string",
+                "description": "思考の深さ。デフォルトは `max`。深さを上げると、通常は思考トークンの消費量と応答時間が増加します。",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "max",
+                "example": "high"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "ツール定義リスト\n\n**説明**：\n- Anthropic の tool 定義仕様に従います\n- `input_schema` は JSON Schema オブジェクトを使用します",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "description": "ツールの選択方針。`auto` のみ対応しています（ツールを呼び出すかどうかをモデルが判断します）",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto"
+                ]
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "リクエストメタデータ",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "エンドユーザーを表す一意の識別子。ユーザー単位での監視や不正使用の検出に利用できます（ハッシュ化した ID の使用を推奨）"
+              }
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "メッセージ送信者のロール。user / assistant を交互に並べます\n\n- `user`：ユーザーメッセージ（`tool_result` ブロックを返す場合にも使用します）\n- `assistant`：過去のアシスタントの返信（`text` / `thinking` / `tool_use` ブロックを含められます）\n\nシステムプロンプトはトップレベルの `system` フィールドで渡します。"
+          },
+          "content": {
+            "description": "メッセージ内容\n\n**説明**：\n- プレーンテキストの場合は文字列を直接渡します\n- 構造化された内容の場合は content block 配列（`text` / `image` / `video` / `tool_use` / `tool_result` / `thinking`）を渡します",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContentBlock"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlock": {
+        "type": "object",
+        "description": "メッセージのコンテンツブロック\n\n**対応する type**：\n- `text`：テキスト内容\n- `image`：画像入力（URL または base64、JPEG / PNG / GIF / WEBP）\n- `video`：動画入力（URL、base64、または `mm_file://{file_id}`、MP4 / AVI / MOV / MKV）\n- `tool_use`：前のターンの assistant のツール呼び出しをそのまま返します\n- `tool_result`：ツールの実行結果\n- `thinking`：前のターンの assistant の思考内容（`signature` を含む）をそのまま返します",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "tool_use",
+              "tool_result",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト内容"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaSource",
+            "description": "画像または動画のソース。type=`image` または type=`video` の場合に使用します"
+          },
+          "id": {
+            "type": "string",
+            "description": "ツール呼び出し ID（tool_use の場合は必須）"
+          },
+          "name": {
+            "type": "string",
+            "description": "ツール名（tool_use の場合は必須）"
+          },
+          "input": {
+            "type": "object",
+            "description": "ツールの入力パラメータ（tool_use の場合、JSON オブジェクト）"
+          },
+          "tool_use_id": {
+            "type": "string",
+            "description": "対応するツール呼び出し ID（tool_result の場合は必須、tool_use.id に対応）"
+          },
+          "content": {
+            "description": "ツール実行結果（tool_result）。文字列または content block 配列",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "thinking": {
+            "type": "string",
+            "description": "過去のアシスタントメッセージに含まれる思考内容（`type=thinking` の場合に使用）"
+          },
+          "signature": {
+            "type": "string",
+            "description": "思考内容の署名。マルチターン対話では、そのまま返す必要があります"
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "ツール名\n\n**説明**：\n- `a-zA-Z0-9_-` のみ許可されます\n- 最大 64 文字"
+          },
+          "description": {
+            "type": "string",
+            "description": "ツールの機能説明。モデルがいつ呼び出すべきかを判断するのに役立ちます"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "ツール入力パラメータの JSON Schema オブジェクト\n\n**説明**：\n- `type` は `object` である必要があります\n- `properties` と `required` を宣言すべきです"
+          }
+        }
+      },
+      "MediaSource": {
+        "type": "object",
+        "description": "画像または動画のコンテンツブロックのメディアソース\n\n- 画像は JPEG / PNG / GIF / WEBP に対応し、1 枚あたりの上限は 10 MB です\n- 動画は MP4 / AVI / MOV / MKV に対応し、URL / Base64 入力の上限は 50 MB です。より大きな動画は `mm_file://{file_id}` 形式のファイル参照で渡します\n- リクエストボディの上限は 64 MB です",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "url"
+            ],
+            "description": "メディアソースの種類"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "base64 入力の場合は必須。例：`image/png` または `video/mp4`"
+          },
+          "data": {
+            "type": "string",
+            "description": "base64 エンコードされたメディアのバイト列"
+          },
+          "url": {
+            "type": "string",
+            "description": "公開 URL；動画は `mm_file://{file_id}` 形式のファイル参照も使用できます"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "low",
+              "default",
+              "high"
+            ],
+            "default": "default",
+            "description": "理解の精細度。デフォルトは default。解像度が高いほど消費トークンが多くなります"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0.2,
+            "maximum": 5,
+            "default": 1,
+            "description": "動画のフレーム抽出頻度。デフォルトは 1、範囲は [0.2, 5] です。頻度を上げると映像の変化を捉えやすくなりますが、通常はトークン消費量も増加します。"
+          },
+          "max_long_side_pixel": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "画像または動画フレームの最長辺のピクセル上限"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "Anthropic スタイルのメッセージレスポンス",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "メッセージの一意の ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message"
+            ],
+            "description": "レスポンスオブジェクトの種類"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "実際に使用されたモデル",
+            "example": "MiniMax-M3.1-Flash"
+          },
+          "content": {
+            "type": "array",
+            "description": "レスポンスのコンテンツブロックのリスト\n\n**含まれる可能性があるブロックの type**：\n- `thinking`：思考過程（簡単な質問では生成されない場合があります）\n- `text`：最終回答のテキスト\n- `tool_use`：モデルによるツール呼び出し",
+            "items": {
+              "$ref": "#/components/schemas/OutputContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string",
+            "description": "停止理由\n\n- `end_turn`：自然終了\n- `max_tokens`：max_tokens の上限に到達\n- `tool_use`：モデルがツール呼び出しをトリガー",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "tool_use"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AnthropicUsage"
+          },
+          "base_resp": {
+            "type": "object",
+            "description": "ステータスコードとエラー詳細",
+            "properties": {
+              "status_code": {
+                "type": "integer",
+                "description": "ステータスコード。`0` は成功を示します"
+              },
+              "status_msg": {
+                "type": "string",
+                "description": "エラー詳細"
+              }
+            }
+          }
+        }
+      },
+      "OutputContentBlock": {
+        "type": "object",
+        "description": "レスポンス内の content block",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking",
+              "tool_use"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "type=`text` の場合のテキスト"
+          },
+          "thinking": {
+            "type": "string",
+            "description": "type=`thinking` の場合の推論過程テキスト"
+          },
+          "signature": {
+            "type": "string",
+            "description": "type=`thinking` の場合の完全性署名。マルチターン文脈の検証に使用します"
+          },
+          "id": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール呼び出し ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "type=`tool_use` の場合のツール名"
+          },
+          "input": {
+            "type": "object",
+            "description": "type=`tool_use` の場合にモデルが生成した JSON 入力パラメータ"
+          }
+        }
+      },
+      "AnthropicUsage": {
+        "type": "object",
+        "description": "Token 使用統計（Anthropic 規格）",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "キャッシュにヒットしなかった入力トークン数（`cache_read_input_tokens` を含みません）",
+            "example": 55
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "出力 token 数（thinking を含む）",
+            "example": 66
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュ作成に使用された入力トークン数。自動キャッシュでは 0 です",
+            "example": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "description": "キャッシュにヒットした入力トークン数。キャッシュヒット料金が適用されます。入力全体のトークン数は `input_tokens + cache_read_input_tokens` です",
+            "example": 174
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "description": "出力 token の詳細内訳",
+            "properties": {
+              "thinking_tokens": {
+                "type": "integer",
+                "description": "思考で生成されたトークン数（`output_tokens` に含まれます）",
+                "example": 63
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "エラーの種類（例：invalid_request_error / authentication_error / billing_error など）"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラー説明"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "リクエスト追跡 ID"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "すべての API は Bearer Token 認証が必要です\n\n**API キーの取得：**\n\n[API キー管理ページ](https://evolink.ai/dashboard/keys)にアクセスして API キーを取得してください\n\n**リクエストヘッダーに追加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n**備考**：EvoLink は `/v1/messages` に対して一律で Bearer Token 認証を採用しています。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Anthropic Messages プロトコルのエンドポイント"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+---
+title: "Tareas, referencias y resultados"
+description: "Reglas comunes de recuperación de tareas, caducidad de archivos, descarga, vistas previas y pasos para soporte"
+---
+
+Esta página reúne las reglas comunes sobre tareas y archivos. Consulta los [flujos de trabajo de la CLI](/es/cli/workflows) y los [flujos de trabajo de MCP](/es/mcp/overview#workflows) para ver los pasos de ejecución.
+
+<span id="tasks" />
+## Envía una sola vez y conserva el identificador de la tarea
+
+La generación puede devolver los resultados directamente o un task_id. Conserva el identificador, el modelo, las entradas y el estado informado, y consulta la tarea original hasta que se complete o se confirme el fallo. Interpreta los estados que se devuelven realmente; que se agote el tiempo de espera de una herramienta no significa que la generación haya fallado.
+
+| Situación | Acción |
+|---|---|
+| Existe un task_id | Consulta la tarea original o espérala; si hay varios identificadores, consúltalos en lote |
+| Sigue en cola o en ejecución | Sigue consultando; dejar de esperar no cancela la tarea |
+| Estado no verificado: `task_response_invalid`, `task_identity_mismatch` o `task_status_unknown`, con `status_check: unverified` | Conserva el identificador de la tarea original y vuelve a consultarla; la consulta es gratis. Esto no es un fallo, ni un cargo de cero, ni un reembolso, así que no vuelvas a generar |
+| Aceptada (`submission_state: accepted`), pero aún sin estado | La tarea existe; consulta su task_id en lugar de volver a generar |
+| Completada | Guarda todos los originales; informa de la cantidad, el formato, los costos conocidos y la caducidad |
+| Fallo confirmado | Informa del código de error (`error.code`), de su explicación (`error.message`) y de la hora; la tarea no se cobra y los créditos reservados al enviarla se devuelven automáticamente |
+| Envío de resultado desconocido y sin identificador | Recupéralo por la vía original, como se describe más abajo |
+
+Las consultas en lote y de lista conservan las tareas que pudieron verificar y marcan las demás (`partial`, `missing`, `details_missing`). Que falte un detalle no significa que la tarea nunca haya existido; vuelve a consultar esos identificadores. Cuando hay que comprobar un estado, un resultado o un registro de la cuenta, las respuestas incluyen `dashboard_url` y `dashboard_guidance`, este último en inglés. Inicia sesión en la [consola de EvoLink](https://evolink.ai/dashboard) con la misma cuenta de EvoLink y conserva el identificador de la tarea original; el enlace por sí solo no confirma que la tarea se haya completado, ni un cargo, ni un reembolso. Los avisos, los textos de los enlaces y las confirmaciones de generación están en inglés de forma predeterminada; pide al asistente otro idioma si lo prefieres.
+
+Las versiones publicadas de la CLI y de MCP no tienen actualmente ninguna opción pública utilizable para cancelar. Cerrar una terminal, una conversación o una conexión no cancela la tarea ni demuestra que no haya habido cargo.
+
+<span id="recovery" />
+## Recupera tareas con tiempo de espera agotado o resultado desconocido
+
+<Steps>
+  <Step title="Conserva la identidad original y el registro del envío">
+    La CLI conserva el quote_id y su registro de recuperación; MCP conserva el client_request_id, las entradas originales y los errores. Si ya existe un task_id, es preferible consultarlo antes que volver a generar.
+  </Step>
+  <Step title="Recupera el envío por la vía original">
+    Sigue la [recuperación en la CLI](/es/cli/billing#tasks-and-recovery) o la [recuperación en MCP](/es/mcp/billing#tasks-and-recovery). Mantén la identidad, las entradas y el identificador de solicitud originales. No cambies de cuenta, de clave ni de vía (CLI o MCP) para volver a enviar. EvoLink conserva un identificador de solicitud durante 24 horas: dentro de ese plazo, el mismo identificador con las mismas entradas devuelve la tarea original sin un nuevo cargo. En la CLI, `tasks resume` repite el envío con ese identificador dentro de las 23 horas posteriores al primer envío, siempre que la cotización no haya caducado y el precio no haya subido; en caso contrario, no envía nada. Pasadas 24 horas, el identificador ya no impide que se cree una segunda tarea, así que comprueba las tareas recientes antes de volver a enviar.
+  </Step>
+  <Step title="Determina los hechos sobre la tarea y la facturación">
+    Guarda los resultados completados; revisa la facturación tras un fallo confirmado. Si el resultado sigue siendo desconocido, conserva el error y la hora y contacta a soporte. Desconocido no significa que no se haya generado ni cobrado nada.
+  </Step>
+</Steps>
+
+<span id="files" />
+## Haz que el modelo pueda leer las referencias
+
+1. Comprueba los tipos de imagen, video y audio aceptados, las cantidades, los tamaños y las combinaciones de referencias.
+2. Usa un archivo que se pueda leer en el entorno de ejecución o una URL accesible para el servidor. Los archivos adjuntos del chat y las rutas del escritorio no se pueden leer automáticamente de forma remota.
+3. Confirma el comprobante de subida y la URL del archivo antes de añadirla a las entradas del modelo y volver a estimar.
+4. Conserva el upload_id original cuando el resultado sea desconocido. Solicita una subida nueva solo tras un fallo confirmado o tras la caducidad; la disponibilidad de comprobantes depende del despliegue.
+
+| Vía | Ubicación de la entrada y límites | Instrucciones |
+|---|---|---|
+| Archivo local con la CLI | Legible por la CLI; 95 MiB como máximo, y los modelos pueden ser más estrictos | [Referencias en la CLI](/es/cli/workflows#files) |
+| URL o datos incrustados con el MCP remoto | URL legible por el servidor; límite de 1 MiB en base64 | [Herramientas de subida de MCP](/es/mcp/tools) |
+| Subida de un solo uso con el MCP remoto | prepare_upload, subida desde un entorno con acceso a archivos y después get_upload; límite de 95 MiB | [Referencias en MCP](/es/mcp/overview#files) |
+| stdio local | file_path en el equipo donde se ejecuta el proceso MCP; se aplican los límites del modelo y del servicio de archivos | [MCP local](/es/mcp/other-clients#local-mcp) |
+
+<span id="retention" />
+## Caducidad y almacenamiento
+
+| Elemento | Valor predeterminado actual |
+|---|---|
+| URL original del resultado generado | Normalmente 24 horas; guárdalo cuanto antes |
+| Referencia subida | Normalmente 72 horas; vuelve a subirla cuando caduque |
+| Aprobación de la cotización (`quote_id` en la CLI, `pricing_quote` en MCP) | Es válida durante 24 horas desde la estimación, para la misma entrada y al precio aprobado o a uno inferior; si ha caducado (`quote_expired`), el precio ha subido (`price_changed`) o la entrada ha cambiado (`quote_input_changed`), hacen falta una nueva estimación y una nueva aprobación |
+| Identificador de solicitud (`client_request_id`) | EvoLink lo conserva durante 24 horas desde el primer envío; en la CLI, `tasks resume` repite el envío con él dentro de las primeras 23 horas, solo mientras la cotización no haya caducado y el precio no haya subido |
+| Autorización de subida remota de un solo uso | Normalmente 15 minutos y un solo uso |
+| URL de estado de la subida remota | Normalmente 1 hora; conserva el upload_id original |
+
+Prevalecen los valores que se devuelven realmente. La compatibilidad con los comprobantes depende del despliegue del servicio de archivos. Los originales descargados quedan en el almacenamiento del usuario; las URLs temporales, la documentación y los archivos adjuntos del chat no son un almacenamiento permanente. Vuelve a subir las referencias caducadas y vuelve a confirmar las entradas que hayan cambiado.
+
+<span id="download" />
+## Solución de problemas de descarga y vista previa
+
+1. Consulta la tarea original y confirma que se ha completado. Usa su URL original; los encabezados no arreglan los enlaces caducados, privados o no válidos.
+2. Con la CLI puedes usar download. Con MCP puedes abrir los originales en un navegador o guardarlos desde un entorno con acceso a archivos. Consulta las [descargas con la CLI](/es/cli/reference) y la [entrega en MCP](/es/mcp/overview#delivery).
+3. Comprueba el estado HTTP, el Content-Type y el formato real. Un HTML o JSON de error no es contenido multimedia. Haz que las extensiones coincidan con los formatos reales en lugar de renombrar todas las imágenes como PNG.
+4. Abre el original cuando la vista previa esté gris o solo aparezca un enlace. Si funciona, entrégalo y guárdalo. Las vistas previas del host no deben dar lugar a regeneraciones ni ediciones no aprobadas.
+
+### Solicitudes predeterminadas de Python rechazadas
+
+Cuando un original válido funciona en un navegador o con curl, pero falla con la solicitud predeterminada de Python, el código que controlas puede definir un User-Agent de producto. Este ejemplo con una imagen supone que result_url ya es una URL original válida:
+
+```python
+from urllib.request import Request, urlopen
+from shutil import copyfileobj
+
+request = Request(result_url, headers={"User-Agent": "EvoLinkClient/1.0"})
+with urlopen(request, timeout=60) as response:
+    if not response.headers.get_content_type().startswith("image/"):
+        raise ValueError("Expected an image response")
+    with open("result.png", "xb") as output:
+        copyfileobj(response, output)
+```
+
+El ejemplo rechaza las respuestas que no son imágenes y evita sobrescribir archivos. Cambia la extensión cuando el formato real no sea PNG. El video y el audio necesitan sus propias comprobaciones de MIME, nombres de archivo y una verificación aparte. Este método solo se verificó en casos concretos de metadatos e imágenes, no con todos los clientes, archivos o redes. Las descargas de la CLI ya definen un UA de producto.
+
+<span id="support" />
+## Información para soporte
+
+Indica el sistema operativo, el agente y su versión, la versión de la CLI o de MCP, la vía, la etapa que falló, la hora, el código de error, el comportamiento esperado y el real, el task_id existente, el quote_id o el client_request_id, el upload_id y los diagnósticos con los datos sensibles ocultos. Menciona si usas SSH, contenedores o proxies.
+
+Oculta los tokens de OAuth, las claves, los enlaces de autorización completos, las URLs de subida de un solo uso, las URLs privadas firmadas y los archivos privados. No compartas archivos de credenciales ni volcados completos del entorno. Empieza por la [solución de problemas de la CLI](/es/cli/billing#faq) o la [solución de problemas de MCP](/es/mcp/billing#faq) para localizar la etapa.
