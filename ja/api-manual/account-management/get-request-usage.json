@@ -1,0 +1,393 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "リクエスト料金照会 API",
+    "description": "Request ID を指定して、主にテキストモデルの同期 API 呼び出しの状態、使用量、実際の料金を照会します",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "本番環境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/requests/{request_id}": {
+      "get": {
+        "summary": "リクエスト料金の照会",
+        "description": "Request ID を指定して、リクエストの状態、トークン使用量、実際に差し引かれた料金を照会します。このエンドポイントは**同期 API 呼び出し**を対象とし、主に Chat Completions、Messages、Responses などのインターフェース経由の**テキストモデル**呼び出しに使用します。非同期タスク（画像、動画、音声の生成）については、`GET /v1/tasks/{task_id}` を使用してください。\n\n- 使用量はリクエスト完了後、少し待つと照会できるようになります。処理中のリクエストは 404 を返します。\n- 自分のアカウントに属するリクエストのみ照会できます。同じアカウントの任意の API Key を使用できます。\n- 過去 90 日以内のリクエストを照会できます。",
+        "operationId": "getRequestUsage",
+        "tags": [
+          "アカウント管理"
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "元のレスポンスヘッダー `X-Request-Id` の値を Request ID として指定します。波括弧（`{}`）は付けず、パスの末尾に ID をそのまま追加してください。",
+            "example": "20261117223155519063884QnAx70lK"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "照会成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestUsageResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "成功したリクエスト",
+                    "value": {
+                      "id": "20261117223155519063884QnAx70lK",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "completed",
+                      "finished_at": 1794925917,
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 4,
+                        "cached_tokens": 0,
+                        "credits_used": 0.01,
+                        "cost": {
+                          "credits": 0.01,
+                          "usd": 0.0002,
+                          "cny": 0.001
+                        }
+                      }
+                    }
+                  },
+                  "failed": {
+                    "summary": "失敗したリクエスト",
+                    "value": {
+                      "id": "202611172231195955330485r1U5XM8",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "failed",
+                      "finished_at": 1794925882,
+                      "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                        "credits_used": 0,
+                        "cost": {
+                          "credits": 0,
+                          "usd": 0,
+                          "cny": 0
+                        }
+                      },
+                      "error": {
+                        "message": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認証：API Key が未指定、無効、期限切れ、または無効化されています",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "API key is required (request id: 20261117223236278461833hQoX6gL5)",
+                    "param": null,
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "アカウントが無効化されています",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "リクエストが見つかりません。処理中、Request ID が不正、別のアカウントに属している、または 90 日を超えている可能性があります。非同期タスク ID を指定した場合も 404 を返し、`GET /v1/tasks/{task_id}` を使用するよう案内します。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "リクエストが見つからない場合",
+                    "value": {
+                      "error": {
+                        "message": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  },
+                  "task_id": {
+                    "summary": "非同期タスク ID を指定した場合",
+                    "value": {
+                      "error": {
+                        "message": "This is a task ID. Use GET /v1/tasks/{task_id} to query task status and usage.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "リクエストのレート制限を超えました（Retry-After レスポンスヘッダーも返されます）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "サーバー内部エラーです。しばらくしてから再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "照会がタイムアウトしました。しばらくしてから再試行してください",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "query_timeout"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RequestUsageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Request ID",
+            "example": "20261117223155519063884QnAx70lK"
+          },
+          "object": {
+            "type": "string",
+            "description": "オブジェクトの種類。常に `request`",
+            "enum": [
+              "request"
+            ],
+            "example": "request"
+          },
+          "model": {
+            "type": "string",
+            "description": "リクエストで使用したモデル",
+            "example": "claude-haiku-5-5"
+          },
+          "status": {
+            "type": "string",
+            "description": "リクエストの状態：\n\n- `completed`：リクエストが正常に完了しました。\n- `failed`：リクエストが失敗しました。失敗前に使用量が発生していた場合（ストリーミング応答が途中で切断された場合など）、実際に差し引かれた料金を `usage` に返します。\n- `blocked`：残高不足、API Key の利用枠の上限到達、API Key の無効化や期限切れ、許可されていないモデルの指定などにより、処理前にリクエストが拒否されました。料金は発生しません。",
+            "enum": [
+              "completed",
+              "failed",
+              "blocked"
+            ],
+            "example": "completed"
+          },
+          "finished_at": {
+            "type": "integer",
+            "description": "リクエスト終了時刻（Unix タイムスタンプ、秒単位）",
+            "example": 1794925917
+          },
+          "usage": {
+            "type": "object",
+            "description": "使用量と料金。常に返されます。料金が発生していない場合、すべての値は 0 です。",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "入力トークン数",
+                "example": 18
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "出力トークン数",
+                "example": 4
+              },
+              "cached_tokens": {
+                "type": "integer",
+                "description": "キャッシュにヒットした入力トークン数",
+                "example": 0
+              },
+              "credits_used": {
+                "type": "number",
+                "description": "このリクエストで実際に差し引かれた Credits",
+                "example": 0.01
+              },
+              "cost": {
+                "type": "object",
+                "description": "リクエスト料金を 3 種類の通貨単位で表したものです。`credits_used` から換算し、端数を切り上げます。米ドルへの換算には、料金が差し引かれた時点の為替レートを使用します。",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "差し引かれた Credits（`credits_used` と同じ値）",
+                    "example": 0.01
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "米ドル換算額",
+                    "example": 0.0002
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "人民元換算額",
+                    "example": 0.001
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "失敗の理由。`status` が `failed` または `blocked` の場合にのみ返されます。説明文のみを含み、エラーコードは含みません。エラーコードに基づいて処理する場合は、元のリクエストが返したエラーを使用してください。",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "失敗理由の説明",
+                "example": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "status",
+          "finished_at",
+          "usage"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "エラーコード（文字列）",
+                "example": "request_not_found"
+              },
+              "message": {
+                "type": "string",
+                "description": "エラーの説明。401 と 429 のエラーでは、末尾に \" (request id: ...)\" が付加されます。",
+                "example": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID."
+              },
+              "type": {
+                "type": "string",
+                "description": "エラーの種類",
+                "example": "invalid_request_error"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "関連するパラメーター名。このエンドポイントでは null または空文字列"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "再試行までの推奨待機秒数（429 の場合のみ）",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "リクエストを再試行できるかどうか（429 の場合のみ）",
+                "example": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "すべてのエンドポイントで Bearer Token による認証が必要です。\n\n**API Key の取得：**\n\n[API Key 管理ページ](https://evolink.ai/dashboard/keys) にアクセスして API Key を取得してください。\n\n**リクエストヘッダーに次の内容を追加してください：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "アカウント管理",
+      "description": "クレジット残高やリクエスト料金の照会など、アカウント関連のエンドポイント"
+    }
+  ]
+}

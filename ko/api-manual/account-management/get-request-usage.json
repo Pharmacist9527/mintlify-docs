@@ -1,0 +1,393 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "요청 비용 조회 API",
+    "description": "Request ID로 동기 API 호출(주로 텍스트 모델)의 상태, 사용량 및 실제 비용을 조회합니다",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "프로덕션 환경"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/requests/{request_id}": {
+      "get": {
+        "summary": "요청 비용 조회",
+        "description": "Request ID로 요청의 상태, 토큰 사용량 및 실제 차감된 비용을 조회합니다. 이 엔드포인트는 **동기 API 호출**을 위한 것으로, 주로 Chat Completions, Messages, Responses 등의 인터페이스를 통한 **텍스트 모델** 호출에 사용합니다. 비동기 작업(이미지, 동영상, 오디오 생성)은 `GET /v1/tasks/{task_id}`로 조회하세요.\n\n- 요청이 완료된 후 잠시 기다리면 사용량을 조회할 수 있습니다. 아직 진행 중인 요청은 404를 반환합니다.\n- 본인 계정의 요청만 조회할 수 있습니다. 같은 계정에 속한 어떤 API Key로도 조회할 수 있습니다.\n- 최근 90일 이내의 요청을 조회할 수 있습니다.",
+        "operationId": "getRequestUsage",
+        "tags": [
+          "계정 관리"
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "원래 응답의 `X-Request-Id` 헤더 값인 Request ID입니다. 중괄호(`{}`)를 제외하고 ID를 경로 끝에 그대로 붙여 넣으세요.",
+            "example": "20261117223155519063884QnAx70lK"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "조회 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestUsageResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "성공한 요청",
+                    "value": {
+                      "id": "20261117223155519063884QnAx70lK",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "completed",
+                      "finished_at": 1794925917,
+                      "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 4,
+                        "cached_tokens": 0,
+                        "credits_used": 0.01,
+                        "cost": {
+                          "credits": 0.01,
+                          "usd": 0.0002,
+                          "cny": 0.001
+                        }
+                      }
+                    }
+                  },
+                  "failed": {
+                    "summary": "실패한 요청",
+                    "value": {
+                      "id": "202611172231195955330485r1U5XM8",
+                      "object": "request",
+                      "model": "claude-haiku-5-5",
+                      "status": "failed",
+                      "finished_at": 1794925882,
+                      "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                        "credits_used": 0,
+                        "cost": {
+                          "credits": 0,
+                          "usd": 0,
+                          "cny": 0
+                        }
+                      },
+                      "error": {
+                        "message": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음: API Key가 누락되었거나 유효하지 않거나 만료 또는 비활성화되었습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "API key is required (request id: 20261117223236278461833hQoX6gL5)",
+                    "param": null,
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "계정이 비활성화되었습니다",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "user_disabled",
+                    "message": "Your account has been disabled (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "요청을 찾을 수 없습니다. 아직 진행 중이거나, Request ID가 잘못되었거나, 다른 계정에 속하거나, 90일이 지난 요청일 수 있습니다. 비동기 작업 ID를 전달한 경우에도 404를 반환하며 `GET /v1/tasks/{task_id}`를 사용하라는 메시지가 표시됩니다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "요청을 찾을 수 없음",
+                    "value": {
+                      "error": {
+                        "message": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  },
+                  "task_id": {
+                    "summary": "비동기 작업 ID를 전달한 경우",
+                    "value": {
+                      "error": {
+                        "message": "This is a task ID. Use GET /v1/tasks/{task_id} to query task status and usage.",
+                        "type": "invalid_request_error",
+                        "param": "",
+                        "code": "request_not_found"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 빈도 제한을 초과했습니다(Retry-After 응답 헤더도 반환됨)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "You have reached the request limit: max 60 requests per 1 minutes. Retry after 30 seconds. (request id: 20260908103000123456789abcdef)",
+                    "param": null,
+                    "retry_after": 30,
+                    "retryable": true,
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "서버 내부 오류입니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "internal_error"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "조회 시간이 초과되었습니다. 나중에 다시 시도하세요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Failed to query request usage, please retry later",
+                    "type": "api_error",
+                    "param": "",
+                    "code": "query_timeout"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RequestUsageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Request ID",
+            "example": "20261117223155519063884QnAx70lK"
+          },
+          "object": {
+            "type": "string",
+            "description": "객체 유형. 항상 `request`",
+            "enum": [
+              "request"
+            ],
+            "example": "request"
+          },
+          "model": {
+            "type": "string",
+            "description": "요청에 사용된 모델",
+            "example": "claude-haiku-5-5"
+          },
+          "status": {
+            "type": "string",
+            "description": "요청 상태:\n\n- `completed`: 요청이 성공적으로 완료되었습니다.\n- `failed`: 요청이 실패했습니다. 실패 전에 사용량이 발생한 경우(예: 스트리밍 응답이 중간에 끊긴 경우), `usage`에 실제 차감된 비용이 반환됩니다.\n- `blocked`: 잔액 부족, API Key 한도 소진, API Key 비활성화 또는 만료, 허용되지 않은 모델 등의 이유로 처리 전에 요청이 거부되었습니다. 비용은 발생하지 않습니다.",
+            "enum": [
+              "completed",
+              "failed",
+              "blocked"
+            ],
+            "example": "completed"
+          },
+          "finished_at": {
+            "type": "integer",
+            "description": "요청 종료 시각(Unix 타임스탬프, 초 단위)",
+            "example": 1794925917
+          },
+          "usage": {
+            "type": "object",
+            "description": "사용량과 비용. 항상 반환되며, 비용이 발생하지 않은 경우 모든 값은 0입니다.",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "입력 토큰 수",
+                "example": 18
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "출력 토큰 수",
+                "example": 4
+              },
+              "cached_tokens": {
+                "type": "integer",
+                "description": "캐시에서 제공된 입력 토큰 수",
+                "example": 0
+              },
+              "credits_used": {
+                "type": "number",
+                "description": "이 요청에서 실제로 차감된 Credits",
+                "example": 0.01
+              },
+              "cost": {
+                "type": "object",
+                "description": "`credits_used`를 환산하고 올림하여 세 가지 통화 단위로 표시한 요청 비용입니다. 미국 달러 환산에는 차감 시점의 환율이 적용됩니다.",
+                "properties": {
+                  "credits": {
+                    "type": "number",
+                    "description": "차감된 Credits(`credits_used`와 동일한 값)",
+                    "example": 0.01
+                  },
+                  "usd": {
+                    "type": "number",
+                    "description": "미국 달러 환산 금액",
+                    "example": 0.0002
+                  },
+                  "cny": {
+                    "type": "number",
+                    "description": "위안화 환산 금액",
+                    "example": 0.001
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "실패 사유. `status`가 `failed` 또는 `blocked`일 때만 반환됩니다. 설명 문구만 포함하며 오류 코드는 포함하지 않습니다. 오류 코드별로 처리해야 하는 경우 원래 요청에서 반환된 오류를 사용하세요.",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "실패 사유 설명",
+                "example": "The selected model does not support the web_search tool. Remove web_search_20250305 from the request or choose a model that supports it, then try again."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "status",
+          "finished_at",
+          "usage"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "오류 코드(문자열)",
+                "example": "request_not_found"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 설명. 401 및 429 오류 메시지 끝에는 \" (request id: ...)\"가 추가됩니다.",
+                "example": "Request not found. Usage becomes available shortly after the response completes; use the X-Request-Id response header as the request ID."
+              },
+              "type": {
+                "type": "string",
+                "description": "오류 유형",
+                "example": "invalid_request_error"
+              },
+              "param": {
+                "type": "string",
+                "nullable": true,
+                "description": "관련 매개변수 이름. 이 엔드포인트에서는 null 또는 빈 문자열"
+              },
+              "retry_after": {
+                "type": "integer",
+                "description": "재시도 전 권장 대기 시간(초, 429에만 해당)",
+                "example": 30
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "요청을 재시도할 수 있는지 여부(429에만 해당)",
+                "example": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "모든 엔드포인트는 Bearer Token 인증이 필요합니다.\n\n**API Key 받기:**\n\n[API Key 관리 페이지](https://evolink.ai/dashboard/keys)에서 API Key를 발급받으세요.\n\n**요청 헤더에 다음 내용을 추가하세요:**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "계정 관리",
+      "description": "크레딧 잔액 조회, 요청 비용 조회 등 계정 관련 엔드포인트"
+    }
+  ]
+}
