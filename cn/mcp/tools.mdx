@@ -1,12 +1,12 @@
 ---
 title: "MCP 工具与接口参考"
-description: "16 个工具的参数、示例、结果、协议与后台接口映射"
+description: "19 个工具的参数、示例、结果、协议与后台接口映射"
 ---
 
 <span id="mcp-tools" />
 ## MCP 工具参考
 
-本页对应远程 OAuth MCP **1.12.1** 的 16 个工具。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
+本页对应远程 OAuth MCP **1.13.0** 的 19 个工具。三个工作流工具（`get_media_workflow`、`analyze_video`、`get_video_analysis`）只提供给已登录的远程连接。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
 
 JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 REST 请求体；它们也不代表已批准费用。
 
@@ -28,6 +28,9 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 | upload_file | URL/base64 参考上传 | 无，受文件配额限制 |
 | prepare_upload | 本地大文件的一次性上传地址 | 无，受文件配额限制 |
 | get_upload | 原上传状态与链接 | 无 |
+| get_media_workflow | 读取工作流的分步规则和一个预估总价 | 无 |
+| analyze_video | 为工作流的某一步分析视频 | 有，按 token |
+| get_video_analysis | 取回还在进行的视频分析 | 无 |
 
 ### search_models
 
@@ -256,6 +259,57 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 
 状态有 waiting/uploading/done/failed/expired/outcome_unknown；done 才能使用已确认的 file_url。当前服务内状态约保留 1 小时，兼容文件服务可提供约 72 小时回执；若后端不支持或无法核实，可能返回 outcome_unknown。此查询不会重传原件；保留原 ID，先查状态与文件。
 
+<span id="workflow-tools" />
+### get_media_workflow
+
+仅限已登录的远程连接。返回 EvoLink 工作流的分步规则（每次一个小节），以及计划中这一次运行的一个预估总价。见[复刻参考广告](/cn/cli-mcp/ad-rebuild)。
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| workflow | string | 是 | 工作流名称，目前是 `ad-rebuild` |
+| section | string | 否 | 默认 `overview`，或之前的调用列出的小节 ID |
+| run_id | string | 否 | 第一次调用时返回；同一次运行之后的每次调用都要带上 |
+| estimate | object | 否 | `output_seconds`、`keyframes`，可选 `quality`（480p/720p/1080p）、`aspect_ratio`、`creator_images` |
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
+```
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
+```
+
+第一次调用返回总览、`run_id` 和小节列表。带 `estimate` 而不带 `section` 时，只返回估价：`total_credits`、`total_usd`、包含的内容、`valid_until`，以及余额和 EvoLink MCP 额度上限（如果设了）是否够用（`enough_balance`、`short_by_credits`、`enough_limit`）。不产生任何费用。总价按公开默认价格计算，24 小时内有效；实际扣费以实际用量为准。
+
+### analyze_video
+
+仅限已登录的远程连接。为工作流的某一步分析一条视频。按 token 向已登录的账户计费，属于工作流预估总价的一部分；用户确认这个总价之前不要调用。
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| run_id | string | 是 | 来自 get_media_workflow |
+| step | string | 是 | 工作流的步骤名，例如 `reference_analysis` 或 `delivery_check` |
+| purpose | string | 是 | `breakdown`、`sound` 或 `compare` |
+| video_url | string | 是 | EvoLink 文件链接（上传得到）或 EvoLink 视频任务的结果链接；MP4 或 MOV，不超过 30 秒 |
+| target | string | 仅 `compare` 需要 | 用来对照检查视频的计划 |
+| attempt | integer | 否 | 默认 1；只有报错的下一步提示这样做时才加大 |
+
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
+```
+
+返回 `status`、`analysis`、`analysis_id`、token `usage`、`charged` 和 `charged_again`。扣费之前会先检查文件；读不到的链接、不是视频的文件、过长的文件都会被拒绝并说明原因。**同样的输入在 24 小时内再次调用，返回第一次的结果，不再扣费**（`charged_again:false`），所以超时或连接断开后，原样再发一次同一个调用即可。分析较慢时返回 `status:processing` 和一个 `analysis_id`，交给 get_video_analysis。每个账户每分钟、每天能发起的分析次数有限；报错会说明要等多久。每一笔扣费在控制台历史记录里显示为一次 Gemini 模型调用。
+
+### get_video_analysis
+
+仅限已登录的远程连接。必填 `analysis_id`，来自 analyze_video：
+
+```json
+{"name":"get_video_analysis","arguments":{"analysis_id":"ANALYSIS_ID_FROM_RESPONSE"}}
+```
+
+最多等待约 30 秒，返回已完成的分析，或者再次返回 `status:processing`。免费。结果保留约 1 小时；ID 已经不在时，用同样的输入把原来的 analyze_video 调用再发一次。
+
 ### 返回格式与错误
 
 工具返回可读 text 和 structuredContent，失败可带 isError/error/next_step。完成媒体也可附 resource_link、可选 image 缩略图。不同客户端需支持这些内容；原件链接始终是交付依据，不保证所有宿主都显示预览。
@@ -305,7 +359,7 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 | upload_file | 文件服务 /url 或 /base64；本地 stdio 可读允许目录 |
 | prepare_upload、get_upload | 托管 MCP 的一次性 PUT 地址与状态；回执恢复依文件服务支持 |
 
-模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。已发布 1.12.1 按公开价格规则估价（参考价，不含账户折扣），仍没有最终结算硬上限。
+模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。已发布 1.13.0 按公开价格规则估价（参考价，不含账户折扣），仍没有最终结算硬上限。
 
 ### 上传、恢复与权限
 

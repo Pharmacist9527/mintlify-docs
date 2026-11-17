@@ -1,12 +1,12 @@
 ---
 title: "MCP-Werkzeug- und API-Referenz"
-description: "Parameter, Beispiele, Ergebnisse, Protokoll und Backend-Zuordnung für 16 Werkzeuge"
+description: "Parameter, Beispiele, Ergebnisse, Protokoll und Backend-Zuordnung für 19 Werkzeuge"
 ---
 
 <span id="mcp-tools" />
 ## MCP-Werkzeugreferenz
 
-Diese Seite beschreibt die 16 Werkzeuge der Version **1.12.1** des Remote-MCP mit OAuth. Maßgeblich ist `tools/list` des verbundenen Servers. Lokales stdio stellt `prepare_upload` und `get_upload` nicht bereit; sein `upload_file` akzeptiert zusätzlich Pfade in ausdrücklich erlaubten Verzeichnissen.
+Diese Seite beschreibt die 19 Werkzeuge der Version **1.13.0** des Remote-MCP mit OAuth. Die drei Workflow-Werkzeuge (`get_media_workflow`, `analyze_video`, `get_video_analysis`) werden nur angemeldeten Remote-Verbindungen angeboten. Maßgeblich ist `tools/list` des verbundenen Servers. Lokales stdio stellt `prepare_upload` und `get_upload` nicht bereit; sein `upload_file` akzeptiert zusätzlich Pfade in ausdrücklich erlaubten Verzeichnissen.
 
 Die Beispiele mit `name` und `arguments` beschreiben MCP-Werkzeugaufrufe, keine REST-Anfragekörper. Ein Beispiel berechtigt nicht zu einer kostenpflichtigen Generierung.
 
@@ -28,6 +28,9 @@ Die Beispiele mit `name` und `arguments` beschreiben MCP-Werkzeugaufrufe, keine 
 | upload_file | Eine Referenz per URL oder base64 hochladen | Keine Kosten für die Generierung; es gelten Dateikontingente |
 | prepare_upload | Einen einmaligen Upload für eine lokale Datei vorbereiten | Keine Kosten für die Generierung; es gelten Dateikontingente |
 | get_upload | Status und URL eines vorhandenen Uploads erneut abrufen | Keine |
+| get_media_workflow | Schritt-für-Schritt-Regeln eines Workflows und eine geschätzte Gesamtsumme lesen | Keine |
+| analyze_video | Ein Video für einen Workflow-Schritt analysieren | Kostenpflichtig, nach Tokens |
+| get_video_analysis | Eine Videoanalyse abholen, die noch lief | Keine |
 
 ### search_models
 
@@ -256,6 +259,57 @@ Erforderlich ist `upload_id` aus dem ursprünglichen Ergebnis von prepare:
 
 Zu den Status gehören waiting/uploading/done/failed/expired/outcome_unknown. Verwenden Sie file_url erst nach einem bestätigten Ergebnis done. Der serverlokale Status bleibt etwa eine Stunde erhalten; kompatible Dateidienste können Belege etwa 72 Stunden lang bereitstellen. Nicht unterstützte oder nicht verifizierbare Belege können outcome_unknown ergeben. Die Abfrage lädt die Datei nicht erneut hoch; behalten Sie die ursprüngliche Kennung und prüfen Sie zuerst den Status.
 
+<span id="workflow-tools" />
+### get_media_workflow
+
+Nur für angemeldete Remote-Verbindungen. Liefert die Schritt-für-Schritt-Regeln eines EvoLink-Workflows, jeweils einen Abschnitt, und eine geschätzte Gesamtsumme für einen geplanten Durchlauf. Siehe [Referenz-Werbevideo nachbauen](/de/cli-mcp/ad-rebuild).
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| workflow | string | Ja | Name des Workflows, derzeit `ad-rebuild` |
+| section | string | Nein | Standard `overview` oder eine Abschnittskennung, die ein früherer Aufruf aufgelistet hat |
+| run_id | string | Nein | Wird vom ersten Aufruf zurückgegeben; bei jedem späteren Aufruf desselben Durchlaufs übergeben |
+| estimate | object | Nein | `output_seconds`, `keyframes` und optional `quality` (480p/720p/1080p), `aspect_ratio`, `creator_images` |
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
+```
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
+```
+
+Der erste Aufruf liefert die Übersicht, `run_id` und die Liste der Abschnitte. Mit `estimate` und ohne `section` wird nur die Kostenschätzung zurückgegeben: `total_credits`, `total_usd`, was sie abdeckt, `valid_until` und ob das Guthaben und ein etwaiges Limit für EvoLink MCP dafür ausreichen (`enough_balance`, `short_by_credits`, `enough_limit`). Es wird nichts abgebucht. Die Gesamtsumme beruht auf den öffentlichen Standardpreisen und gilt 24 Stunden; abgerechnet wird nach tatsächlicher Nutzung.
+
+### analyze_video
+
+Nur für angemeldete Remote-Verbindungen. Analysiert ein Video für einen Workflow-Schritt. Wird nach Tokens über das angemeldete Konto abgerechnet und ist Teil der geschätzten Gesamtsumme des Workflows; rufen Sie das Werkzeug nicht auf, bevor der Benutzer diese Gesamtsumme bestätigt hat.
+
+| Parameter | Typ | Erforderlich | Standard / Bereich |
+|---|---|---|---|
+| run_id | string | Ja | Aus get_media_workflow |
+| step | string | Ja | Name eines Schritts des Workflows, zum Beispiel `reference_analysis` oder `delivery_check` |
+| purpose | string | Ja | `breakdown`, `sound` oder `compare` |
+| video_url | string | Ja | Ein EvoLink-Dateilink (aus einem Upload) oder der Ergebnislink eines EvoLink-Videoauftrags; MP4 oder MOV, höchstens 30 Sekunden lang |
+| target | string | Nur für `compare` | Der Plan, gegen den das Video geprüft wird |
+| attempt | integer | Nein | Standard 1; nur erhöhen, wenn der in einem Fehler genannte nächste Schritt das verlangt |
+
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
+```
+
+Liefert `status`, `analysis`, `analysis_id`, die Token-Nutzung `usage`, `charged` und `charged_again`. Die Datei wird geprüft, bevor etwas abgebucht wird; ein Link, der sich nicht lesen lässt, eine Datei, die kein Video ist, oder eine zu lange Datei wird unter Angabe des Grundes abgelehnt. **Dieselben Eingaben liefern innerhalb von 24 Stunden das erste Ergebnis, und es wird nicht erneut abgebucht** (`charged_again:false`); senden Sie daher nach einer Zeitüberschreitung oder einem Verbindungsabbruch genau denselben Aufruf erneut. Eine langsame Analyse liefert `status:processing` mit einer `analysis_id` für get_video_analysis. Jedes Konto kann pro Minute und pro Tag eine begrenzte Anzahl von Analysen starten; der Fehler gibt an, wie lange zu warten ist. Jede Abbuchung erscheint im Verlauf des Dashboards als Gemini-Modellaufruf.
+
+### get_video_analysis
+
+Nur für angemeldete Remote-Verbindungen. Erforderlich ist `analysis_id` aus analyze_video:
+
+```json
+{"name":"get_video_analysis","arguments":{"analysis_id":"ANALYSIS_ID_FROM_RESPONSE"}}
+```
+
+Wartet bis zu etwa 30 Sekunden und liefert die fertige Analyse oder erneut `status:processing`. Kostenlos. Ergebnisse werden etwa eine Stunde aufbewahrt; wird eine Kennung nicht mehr vorgehalten, senden Sie den ursprünglichen Aufruf von analyze_video mit denselben Eingaben erneut.
+
 ### Ergebnisse und Fehler
 
 Werkzeuge liefern lesbaren Text und structuredContent; Fehlschläge können isError/error/next_step enthalten. Abgeschlossene Medien können resource_link und ein optionales Vorschaubild enthalten. Hosts unterstützen Inhaltsblöcke unterschiedlich. Die Original-URL bleibt die Grundlage der Übergabe; Vorschauen sind nicht in jedem Host garantiert.
@@ -307,7 +361,7 @@ Beispiele mit name / arguments beschreiben Werkzeugeingaben, keine REST-Anfragek
 | upload_file | Dateidienst /url oder /base64; lokales stdio kann erlaubte Verzeichnisse lesen |
 | prepare_upload, get_upload | Gehostete einmalige PUT-URL und Status; die Wiederaufnahme über Belege hängt von der Unterstützung durch den Dateidienst ab |
 
-Modellparameter gehören in arguments.input und werden vom Server in REST-Anfragen umgewandelt. media_seconds ist ein Hinweis für die Abrechnung; max_cost_usd prüft nur Kostenschätzungen vor dem Absenden. Die veröffentlichte Version 1.12.1 schätzt anhand der öffentlichen Preisregeln (Referenzpreise, ohne Kontorabatte) und hat weiterhin keine Obergrenze für die endgültige Abrechnung.
+Modellparameter gehören in arguments.input und werden vom Server in REST-Anfragen umgewandelt. media_seconds ist ein Hinweis für die Abrechnung; max_cost_usd prüft nur Kostenschätzungen vor dem Absenden. Die veröffentlichte Version 1.13.0 schätzt anhand der öffentlichen Preisregeln (Referenzpreise, ohne Kontorabatte) und hat weiterhin keine Obergrenze für die endgültige Abrechnung.
 
 ### Uploads, Wiederaufnahme und Zugriff
 

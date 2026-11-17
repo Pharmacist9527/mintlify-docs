@@ -1,12 +1,12 @@
 ---
 title: "MCP tool and API reference"
-description: "Parameters, examples, results, protocol, and backend mapping for 16 tools"
+description: "Parameters, examples, results, protocol, and backend mapping for 19 tools"
 ---
 
 <span id="mcp-tools" />
 ## MCP tool reference
 
-This page describes the 16 tools in the **1.12.1** OAuth remote MCP release. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+This page describes the 19 tools in the **1.13.0** OAuth remote MCP release. The three workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`) are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
 
 The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
 
@@ -28,6 +28,9 @@ The `name` and `arguments` examples describe MCP tool calls, not REST request bo
 | upload_file | Upload a URL or base64 reference | No generation charge; file quotas apply |
 | prepare_upload | Prepare a one-use upload for a local file | No generation charge; file quotas apply |
 | get_upload | Recover an existing upload's status and URL | None |
+| get_media_workflow | Read a workflow's step rules and one estimated total | None |
+| analyze_video | Analyze a video for a workflow step | Paid, by tokens |
+| get_video_analysis | Collect a video analysis that was still running | None |
 
 ### search_models
 
@@ -256,6 +259,57 @@ Required `upload_id`, from the original prepare result:
 
 States include waiting/uploading/done/failed/expired/outcome_unknown. Use file_url only after a confirmed done result. Server-local state lasts about one hour; compatible file services can provide receipts for approximately 72 hours. Unsupported or unverifiable receipts can yield outcome_unknown. Querying does not upload the file again; retain the original ID and inspect status first.
 
+<span id="workflow-tools" />
+### get_media_workflow
+
+Signed-in remote connections only. Returns the step-by-step rules of an EvoLink workflow, one section at a time, and one estimated total for a planned run. See [Rebuild a reference ad](/en/cli-mcp/ad-rebuild).
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| workflow | string | Yes | Workflow name, currently `ad-rebuild` |
+| section | string | No | `overview` by default, or a section ID listed by an earlier call |
+| run_id | string | No | Returned by the first call; pass it on every later call of the same run |
+| estimate | object | No | `output_seconds`, `keyframes`, and optional `quality` (480p/720p/1080p), `aspect_ratio`, `creator_images` |
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
+```
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
+```
+
+The first call returns the overview, `run_id` and the list of sections. With `estimate` and no `section`, only the estimate is returned: `total_credits`, `total_usd`, what it covers, `valid_until`, and whether the balance and any EvoLink MCP limit cover it (`enough_balance`, `short_by_credits`, `enough_limit`). Nothing is charged. The total uses public default prices and holds for 24 hours; charges follow actual usage.
+
+### analyze_video
+
+Signed-in remote connections only. Analyzes one video for a workflow step. Billed by tokens to the signed-in account and part of the workflow's estimated total; do not call it before the user has confirmed that total.
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| run_id | string | Yes | From get_media_workflow |
+| step | string | Yes | A step name of the workflow, for example `reference_analysis` or `delivery_check` |
+| purpose | string | Yes | `breakdown`, `sound` or `compare` |
+| video_url | string | Yes | An EvoLink file link (from an upload) or the result link of an EvoLink video task; MP4 or MOV, 30 seconds or shorter |
+| target | string | Only for `compare` | The plan the video is checked against |
+| attempt | integer | No | 1 by default; raise it only when an error's next step says so |
+
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
+```
+
+Returns `status`, `analysis`, `analysis_id`, token `usage`, `charged` and `charged_again`. The file is checked before anything is charged; a link that cannot be read, a file that is not a video or one that is too long is refused with the reason. **The same inputs within 24 hours return the first result and are not charged again** (`charged_again:false`), so after a timeout or a dropped connection, send exactly the same call. A slow analysis returns `status:processing` with an `analysis_id` for get_video_analysis. Each account can start a limited number of analyses per minute and per day; the error says how long to wait. Each charge appears in the dashboard history as a Gemini model call.
+
+### get_video_analysis
+
+Signed-in remote connections only. Required `analysis_id`, from analyze_video:
+
+```json
+{"name":"get_video_analysis","arguments":{"analysis_id":"ANALYSIS_ID_FROM_RESPONSE"}}
+```
+
+Waits up to about 30 seconds and returns the finished analysis, or `status:processing` again. Free. Results are kept for about an hour; when an ID is no longer held, send the original analyze_video call again with the same inputs.
+
 ### Results and errors
 
 Tools return readable text and structuredContent; failures can include isError/error/next_step. Completed media can include resource_link and an optional image thumbnail. Hosts differ in content-block support. The original URL remains the delivery reference; previews are not guaranteed in every host.
@@ -305,7 +359,7 @@ Examples using name / arguments describe tool input, not REST request bodies. To
 | upload_file | File service /url or /base64; local stdio can read allowed directories |
 | prepare_upload, get_upload | Hosted single-use PUT URL and status; receipt recovery depends on file-service support |
 
-Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.12.1 estimates from the public pricing rules (reference rates, no account discounts) and still has no final settlement cap.
+Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.13.0 estimates from the public pricing rules (reference rates, no account discounts) and still has no final settlement cap.
 
 ### Uploads, recovery, and access
 

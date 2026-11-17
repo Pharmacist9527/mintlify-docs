@@ -1,12 +1,12 @@
 ---
 title: "MCP ツールと API のリファレンス"
-description: "16個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
+description: "19個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
 ---
 
 <span id="mcp-tools" />
 ## MCP ツールリファレンス
 
-このページでは、OAuth を使うリモート MCP のリリース **1.12.1** に含まれる16個のツールを説明します。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
+このページでは、OAuth を使うリモート MCP のリリース **1.13.0** に含まれる19個のツールを説明します。3つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`）は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
 
 `name` と `arguments` を使った例は、MCP のツール呼び出しを表すもので、REST のリクエストボディではありません。例があるからといって、有料生成が許可されるわけではありません。
 
@@ -28,6 +28,9 @@ description: "16個のツールのパラメータ、例、結果、プロトコ�
 | upload_file | URL または base64 の参照素材をアップロードする | 生成料金なし。ファイルのクォータが適用されます |
 | prepare_upload | ローカルファイル用に、1回限りのアップロードを準備する | 生成料金なし。ファイルのクォータが適用されます |
 | get_upload | 既存のアップロードの状態と URL を取得し直す | なし |
+| get_media_workflow | ワークフローのステップのルールと、1つの見積もり合計額を読む | なし |
+| analyze_video | ワークフローのステップ用に動画を分析する | 有料（トークン課金） |
+| get_video_analysis | まだ実行中だった動画分析を取得する | なし |
 
 ### search_models
 
@@ -256,6 +259,57 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 
 状態には waiting/uploading/done/failed/expired/outcome_unknown があります。file_url は、done の結果が確認できてから使ってください。サーバー側のローカルな状態は、約1時間保持されます。互換性のあるファイルサービスでは、約72時間、レシートを取得できます。レシートに対応していない場合や検証できない場合は、outcome_unknown になることがあります。照会しても、ファイルがもう一度アップロードされることはありません。元の ID を保持し、まず状態を確認してください。
 
+<span id="workflow-tools" />
+### get_media_workflow
+
+ログイン済みのリモート接続でのみ利用できます。EvoLink のワークフローのステップごとのルールを、1セクションずつ返します。また、予定している実行に対する見積もり合計額を1つ返します。[参照広告を作り直す](/ja/cli-mcp/ad-rebuild)を参照してください。
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| workflow | string | はい | ワークフロー名。現在は `ad-rebuild` |
+| section | string | いいえ | デフォルトは `overview`。または、以前の呼び出しで一覧に示されたセクション ID |
+| run_id | string | いいえ | 最初の呼び出しで返されます。同じ実行のその後の呼び出しでは、毎回これを渡してください |
+| estimate | object | いいえ | `output_seconds`、`keyframes`。任意で `quality`（480p/720p/1080p）、`aspect_ratio`、`creator_images` |
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
+```
+
+```json
+{"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
+```
+
+最初の呼び出しでは、概要、`run_id`、セクションの一覧が返されます。`estimate` を指定し、`section` を指定しない場合は、見積もりだけが返されます。見積もりには、`total_credits`、`total_usd`、含まれるもの、`valid_until` のほか、残高と EvoLink MCP の上限（設定されている場合）でその額をまかなえるかどうか（`enough_balance`、`short_by_credits`、`enough_limit`）が示されます。課金は発生しません。合計額は公開のデフォルト価格に基づいており、24時間有効です。課金は、実際の使用量に基づいて行われます。
+
+### analyze_video
+
+ログイン済みのリモート接続でのみ利用できます。ワークフローのステップ用に、動画を1本分析します。ログイン中のアカウントにトークン数に基づいて課金され、その料金はワークフローの見積もり合計額に含まれています。ユーザーがその合計額を承認するまでは、呼び出さないでください。
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| run_id | string | はい | get_media_workflow から取得します |
+| step | string | はい | ワークフローのステップ名。たとえば `reference_analysis` や `delivery_check` |
+| purpose | string | はい | `breakdown`、`sound`、`compare` のいずれか |
+| video_url | string | はい | EvoLink のファイルリンク（アップロードで得たもの）、または EvoLink の動画タスクの結果のリンク。MP4 または MOV で、30秒以内 |
+| target | string | `compare` の場合のみ | 動画を照らし合わせる対象のプラン |
+| attempt | integer | いいえ | デフォルトは 1。エラーに示された次の手順で、そうするよう指示された場合にだけ、値を上げます |
+
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
+```
+
+`status`、`analysis`、`analysis_id`、トークンの `usage`、`charged`、`charged_again` を返します。ファイルは、課金が発生する前に確認されます。読み取れないリンク、動画ではないファイル、長すぎるファイルは、理由を示したうえで拒否されます。**24時間以内の同じ入力に対しては、最初の結果が返され、もう一度課金されることはありません**（`charged_again:false`）。そのため、タイムアウトしたあとや接続が切れたあとは、まったく同じ呼び出しを送信してください。分析に時間がかかる場合は、`status:processing` と、get_video_analysis に渡す `analysis_id` が返されます。各アカウントが開始できる分析の数には、1分あたりと1日あたりの上限があります。どれだけ待てばよいかは、エラーに示されます。課金はそれぞれ、ダッシュボードの履歴に Gemini モデルの呼び出しとして表示されます。
+
+### get_video_analysis
+
+ログイン済みのリモート接続でのみ利用できます。必須の `analysis_id`：analyze_video から取得します：
+
+```json
+{"name":"get_video_analysis","arguments":{"analysis_id":"ANALYSIS_ID_FROM_RESPONSE"}}
+```
+
+最大で約30秒待機し、完了した分析を返すか、もう一度 `status:processing` を返します。無料です。結果は約1時間保持されます。ID が保持されなくなっている場合は、元の analyze_video の呼び出しを、同じ入力でもう一度送信してください。
+
 ### 結果とエラー
 
 ツールは、読める形式のテキストと structuredContent を返します。失敗した場合は、isError/error/next_step が含まれることがあります。完了したメディアには、resource_link と、任意で画像のサムネイルが含まれることがあります。コンテンツブロックへの対応状況は、ホストによって異なります。受け渡しの基準になるのは、あくまでオリジナルの URL です。プレビューは、すべてのホストで保証されるわけではありません。
@@ -307,7 +361,7 @@ name / arguments を使った例は、ツールの入力を表すもので、RES
 | upload_file | ファイルサービスの /url または /base64。ローカル stdio は、許可されたディレクトリを読み取れます |
 | prepare_upload、get_upload | ホスト型の1回限りの PUT URL と状態。レシートによる復旧ができるかどうかは、ファイルサービスの対応状況によります |
 
-モデルのパラメータは arguments.input に指定し、サーバーが REST リクエストに変換します。media_seconds は課金のためのヒントです。max_cost_usd は、送信前に見積もりをチェックするだけです。公開済みの 1.12.1 は、公開の価格ルール（参考価格で、アカウントの割引は含みません）から見積もりを行い、最終的な精算額の上限は依然としてありません。
+モデルのパラメータは arguments.input に指定し、サーバーが REST リクエストに変換します。media_seconds は課金のためのヒントです。max_cost_usd は、送信前に見積もりをチェックするだけです。公開済みの 1.13.0 は、公開の価格ルール（参考価格で、アカウントの割引は含みません）から見積もりを行い、最終的な精算額の上限は依然としてありません。
 
 ### アップロード、復旧、アクセス
 
