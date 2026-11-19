@@ -17,7 +17,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 | search_docs | 搜索版本化官方模型参考索引 | 无 |
 | get_model | 参数、schema、参考输入和价格 | 无 |
 | estimate_cost | 检查输入与估价 | 无 |
-| get_pricing_rules | 读取公开默认价格规则（参考价，不是报价） | 无 |
+| get_pricing_rules | 读取价格规则：登录或使用 API Key 时是你账户自己的价格，否则是公开默认价（参考价，不是报价） | 无 |
 | generate_image | 图片生成/编辑 | 有 |
 | generate_video | 视频生成/编辑/延长 | 有 |
 | generate_audio | 音乐、歌曲或语音 | 有 |
@@ -84,7 +84,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 {"name":"get_model","arguments":{"model":"z-image-turbo"}}
 ```
 
-返回规范型号、参数要求、示例、公开价格、reference_inputs、parameters_source，存在时给出 input_schema 及 schema 来源。参数与 schema 随版本维护，当前账户可用性实时查询；有缺失信息时遵循警告，不自行推断默认值。
+返回规范型号、参数要求、示例、价格（登录或使用 API Key 时按你账户自己的价格）、reference_inputs、parameters_source，存在时给出 input_schema 及 schema 来源。参数与 schema 随版本维护，当前账户可用性实时查询；有缺失信息时遵循警告，不自行推断默认值。
 
 ### estimate_cost
 
@@ -101,7 +101,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-返回 input_valid、problems、warnings、estimate、pricing_scope、final_budget_enforced，以及能读取时的余额/额度。estimate.status 可为 estimated、partial、token_billed、needs_input、no_price；token_billed 带参考价，按实际 token 结算。价格取决于输入里没有的用量时，估价不给金额，也不给 `pricing_quote`：`total_known` 为 false，`missing_usage` 列出缺少的每一项，`usage_help` 说明怎么补。见[费用说明](/cn/mcp/billing)。查询成功不等于输入有效或报价完整。
+返回 input_valid、problems、warnings、estimate、pricing_scope（`account` 是你账户自己的价格，`public_default` 是不含账户折扣的公开默认价）、final_budget_enforced，以及能读取时的余额/额度。estimate.status 可为 estimated、partial、token_billed、needs_input、no_price；token_billed 带参考价，按实际 token 结算。价格取决于输入里没有的用量时，估价不给金额，也不给 `pricing_quote`：`total_known` 为 false，`missing_usage` 列出缺少的每一项，`usage_help` 说明怎么补。见[费用说明](/cn/mcp/billing)。查询成功不等于输入有效或报价完整。
 
 可以确认的估价还会返回 `pricing_quote`，也就是这次输入的批准凭证。用户批准后，把它和同样的输入一起传给生成工具。凭证从估价时起 24 小时内有效（`expires_at`），价格不高于批准时的价格：生成工具会重新估价，价格没变或更低就提交，价格规则更新过也一样。价格变高会被拒绝（`price_changed`），输入变了是 `quote_input_changed`，凭证过期是 `quote_expired`；这三种情况都要重新估价、重新确认。传 `inputs` 时，结果列出每个输入的估价和总价，一个 `pricing_quote` 只批准这几个输入，并且按这个顺序。它不能批准单个输入，单个输入的 `pricing_quote` 也不能批准一整批。
 
@@ -122,7 +122,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 {"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
 ```
 
-返回公开默认价格规则：各计费组件的单价（十进制字符串）、最低收费、档位和完整表达式，以及 price_scope、price_selection。这是参考价，不含账户折扣，不是任务报价、账单或最终花费上限；不要把单价直接乘成账单。某次生成的预计费用仍用 `estimate_cost`，它按同一套规则对实际输入计算。结果为空只表示没有匹配的公开规则，不表示免费。查整份目录时，个别模型的规则读不出或不完整，会被略过并列在 `rejected_models`，`warnings` 里写出这些 ID，其余模型照常返回；被略过不表示免费。查单个模型时规则读不出仍直接报错。
+返回价格规则：各计费组件的单价（十进制字符串）、最低收费、档位和完整表达式，以及 price_scope、price_selection。登录或使用 API Key 时是你账户自己的价格（`price_scope: account`），否则是不含账户折扣的公开默认价（`price_scope: public_default`）。这是参考价，不是任务报价、账单或最终花费上限；不要把单价直接乘成账单。某次生成的预计费用仍用 `estimate_cost`，它按同一套规则对实际输入计算。结果为空只表示没有匹配的规则，不表示免费。查整份目录时，个别模型的规则读不出或不完整，会被略过并列在 `rejected_models`，`warnings` 里写出这些 ID，其余模型照常返回；被略过不表示免费。查单个模型时规则读不出仍直接报错。
 
 ### generate_image、generate_video、generate_audio
 
@@ -279,7 +279,7 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
 ```
 
-第一次调用返回总览、`run_id` 和小节列表。带 `estimate` 而不带 `section` 时，只返回估价：`total_credits`、`total_usd`、包含的内容、`valid_until`，以及余额和 EvoLink MCP 额度上限（如果设了）是否够用（`enough_balance`、`short_by_credits`、`enough_limit`）。不产生任何费用。总价按公开默认价格计算，24 小时内有效；实际扣费以实际用量为准。
+第一次调用返回总览、`run_id` 和小节列表。带 `estimate` 而不带 `section` 时，只返回估价：`total_credits`、`total_usd`、包含的内容、`valid_until`，以及余额和 EvoLink MCP 额度上限（如果设了）是否够用（`enough_balance`、`short_by_credits`、`enough_limit`）。不产生任何费用。总价按你账户自己的价格计算（读不到时改用公开默认价格，估价里会写明），24 小时内有效；实际扣费以实际用量为准。
 
 ### analyze_video
 
@@ -359,7 +359,7 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 | upload_file | 文件服务 /url 或 /base64；本地 stdio 可读允许目录 |
 | prepare_upload、get_upload | 托管 MCP 的一次性 PUT 地址与状态；回执恢复依文件服务支持 |
 
-模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。MCP 按公开价格规则估价（参考价，不含账户折扣），仍没有最终结算硬上限。
+模型参数放在 `arguments.input`；服务按模型生成 REST 请求。`media_seconds` 只提示计费，`max_cost_usd` 只做提交前估价检查。登录或使用 API Key 时，MCP 按你账户自己的价格估价；否则按公开默认价格规则估价（参考价，不含账户折扣）。仍没有最终结算硬上限。
 
 ### 上传、恢复与权限
 
