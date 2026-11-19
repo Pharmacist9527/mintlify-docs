@@ -6,7 +6,7 @@ description: "Parameters, examples, results, protocol, and backend mapping for 1
 <span id="mcp-tools" />
 ## MCP tool reference
 
-This page describes the 19 tools in the **1.13.0** OAuth remote MCP release. The three workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`) are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+This page describes the 19 tools of the OAuth remote MCP. The three workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`) are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
 
 The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
 
@@ -17,7 +17,7 @@ The `name` and `arguments` examples describe MCP tool calls, not REST request bo
 | search_docs | Search the versioned official model-reference index | None |
 | get_model | Inspect parameters, schema, references, and pricing | None |
 | estimate_cost | Validate inputs and estimate cost | None |
-| get_pricing_rules | Read public default pricing rules (reference rates, not a quote) | None |
+| get_pricing_rules | Read pricing rules: your account's own prices with your login or API key, otherwise public default ones (reference rates, not a quote) | None |
 | generate_image | Generate or edit images | Paid |
 | generate_video | Generate, edit, or extend video | Paid |
 | generate_audio | Generate music, songs, or speech | Paid |
@@ -84,7 +84,7 @@ Required `model`: a string of 1–128 characters, using a returned canonical ID 
 {"name":"get_model","arguments":{"model":"z-image-turbo"}}
 ```
 
-Returns the canonical model, requirements, examples, public pricing, reference_inputs, parameters_source, and, when available, input_schema with its source. Parameter references are versioned; account availability is queried live. Follow missing-information warnings rather than inventing defaults.
+Returns the canonical model, requirements, examples, prices (your account's own with your login or API key), reference_inputs, parameters_source, and, when available, input_schema with its source. Parameter references are versioned; account availability is queried live. Follow missing-information warnings rather than inventing defaults.
 
 ### estimate_cost
 
@@ -101,7 +101,7 @@ Returns the canonical model, requirements, examples, public pricing, reference_i
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-Returns input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced, and balance/limits when available. The estimate status can be estimated, partial, token_billed, needs_input, or no_price; token_billed carries a reference price billed by actual tokens. When the price depends on usage the input does not give, the estimate has no amount and no `pricing_quote`: `total_known` is false, `missing_usage` names each missing value and `usage_help` says how to supply it. See [billing](/en/mcp/billing). A successful query does not prove valid input or a complete quote.
+Returns input_valid, problems, warnings, estimate, pricing_scope (`account`: your account's own prices; `public_default`: public default prices without account discounts), final_budget_enforced, and balance/limits when available. The estimate status can be estimated, partial, token_billed, needs_input, or no_price; token_billed carries a reference price billed by actual tokens. When the price depends on usage the input does not give, the estimate has no amount and no `pricing_quote`: `total_known` is false, `missing_usage` names each missing value and `usage_help` says how to supply it. See [billing](/en/mcp/billing). A successful query does not prove valid input or a complete quote.
 
 An estimate that can be approved also returns `pricing_quote`, the approval record for exactly this input. After the user approves, pass it with the same input to the generation tool. It holds for 24 hours from the estimate (`expires_at`), at the approved price or lower: the generation tool estimates again and submits when the price is unchanged or lower, also under later pricing rules. A higher price is refused with `price_changed`, a changed input with `quote_input_changed`, and an expired `pricing_quote` with `quote_expired`; each needs a new estimate and approval. With `inputs`, the result lists each input's estimate and the total, and one `pricing_quote` approves exactly those inputs in that order. It never approves a single input, and a single input's `pricing_quote` never approves a batch.
 
@@ -122,7 +122,7 @@ This tool has no `max_cost_usd` argument and does not produce the CLI's local qu
 {"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
 ```
 
-Returns the public default pricing rules: each billing component's unit rate (decimal strings), minimum charge, tiers and full expressions, plus price_scope and price_selection. These are reference rates without account discounts, not a task quote, a bill or a final spending cap; do not multiply unit rates into a bill. Use `estimate_cost` for the expected cost of a specific generation; it evaluates the same rules for the actual input. An empty result means no matching public rules, not a free model. In a list, a model whose rules cannot be read or are incomplete is left out, listed in `rejected_models` and named in `warnings`; the other models are returned as usual, and a left-out model is not free. A single-model lookup still fails when its rules cannot be read.
+Returns pricing rules: each billing component's unit rate (decimal strings), minimum charge, tiers and full expressions, plus price_scope and price_selection. With your login or API key they are your account's own prices (`price_scope: account`), otherwise the public default ones without account discounts (`price_scope: public_default`). These are reference rates, not a task quote, a bill or a final spending cap; do not multiply unit rates into a bill. Use `estimate_cost` for the expected cost of a specific generation; it evaluates the same rules for the actual input. An empty result means no matching rules, not a free model. In a list, a model whose rules cannot be read or are incomplete is left out, listed in `rejected_models` and named in `warnings`; the other models are returned as usual, and a left-out model is not free. A single-model lookup still fails when its rules cannot be read.
 
 ### generate_image, generate_video, generate_audio
 
@@ -279,7 +279,7 @@ Signed-in remote connections only. Returns the step-by-step rules of an EvoLink 
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
 ```
 
-The first call returns the overview, `run_id` and the list of sections. With `estimate` and no `section`, only the estimate is returned: `total_credits`, `total_usd`, what it covers, `valid_until`, and whether the balance and any EvoLink MCP limit cover it (`enough_balance`, `short_by_credits`, `enough_limit`). Nothing is charged. The total uses public default prices and holds for 24 hours; charges follow actual usage.
+The first call returns the overview, `run_id` and the list of sections. With `estimate` and no `section`, only the estimate is returned: `total_credits`, `total_usd`, what it covers, `valid_until`, and whether the balance and any EvoLink MCP limit cover it (`enough_balance`, `short_by_credits`, `enough_limit`). Nothing is charged. The total uses your account's own prices (public default prices if those cannot be read, as the estimate then says) and holds for 24 hours; charges follow actual usage.
 
 ### analyze_video
 
@@ -298,7 +298,7 @@ Signed-in remote connections only. Analyzes one video for a workflow step. Bille
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-Returns `status`, `analysis`, `analysis_id`, token `usage`, `charged` and `charged_by_this_call`. The file is checked before anything is charged; a link that cannot be read, a file that is not a video or one that is too long is refused with the reason. **The same inputs within 24 hours return the first result and are not charged again** (`charged_again:false`), so after a timeout or a dropped connection, send exactly the same call. A slow analysis returns `status:processing` with an `analysis_id` for get_video_analysis. Each account can start a limited number of analyses per minute and per day; the error says how long to wait. Each charge appears in the dashboard history as a Gemini model call.
+Returns `status`, `analysis`, `analysis_id`, token `usage`, `charged` and `charged_by_this_call`. The file is checked before anything is charged; a link that cannot be read, a file that is not a video or one that is too long is refused with the reason. **The same inputs within 24 hours return the first result and are not charged again** (`charged_by_this_call:false`), so after a timeout or a dropped connection, send exactly the same call. A slow analysis returns `status:processing` with an `analysis_id` for get_video_analysis. Each account can start a limited number of analyses per minute and per day; the error says how long to wait. Each charge appears in the dashboard history as a Gemini model call.
 
 ### get_video_analysis
 
@@ -359,7 +359,7 @@ Examples using name / arguments describe tool input, not REST request bodies. To
 | upload_file | File service /url or /base64; local stdio can read allowed directories |
 | prepare_upload, get_upload | Hosted single-use PUT URL and status; receipt recovery depends on file-service support |
 
-Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. Published 1.13.0 estimates from the public pricing rules (reference rates, no account discounts) and still has no final settlement cap.
+Model parameters belong in arguments.input and are converted to REST requests by the server. media_seconds is a billing hint; max_cost_usd only checks estimates before submission. With your login or API key, MCP estimates at your account's own prices; otherwise from the public default pricing rules (reference rates, no account discounts). It still has no final settlement cap.
 
 ### Uploads, recovery, and access
 

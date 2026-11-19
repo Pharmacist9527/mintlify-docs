@@ -6,7 +6,7 @@ description: "Paramètres, exemples, résultats, protocole et correspondance ave
 <span id="mcp-tools" />
 ## Référence des outils MCP
 
-Cette page décrit les 19 outils de la version **1.13.0** du MCP distant OAuth. Les trois outils de flux de travail (`get_media_workflow`, `analyze_video`, `get_video_analysis`) ne sont proposés qu’aux connexions distantes avec un compte connecté. La réponse `tools/list` du serveur connecté fait foi. Le stdio local n’expose ni `prepare_upload` ni `get_upload` ; son `upload_file` accepte en outre des chemins situés dans des répertoires explicitement autorisés.
+Cette page décrit les 19 outils du MCP distant OAuth. Les trois outils de flux de travail (`get_media_workflow`, `analyze_video`, `get_video_analysis`) ne sont proposés qu’aux connexions distantes avec un compte connecté. La réponse `tools/list` du serveur connecté fait foi. Le stdio local n’expose ni `prepare_upload` ni `get_upload` ; son `upload_file` accepte en outre des chemins situés dans des répertoires explicitement autorisés.
 
 Les exemples avec `name` et `arguments` décrivent des appels d’outils MCP, et non des corps de requête REST. Un exemple n’autorise pas une génération payante.
 
@@ -17,7 +17,7 @@ Les exemples avec `name` et `arguments` décrivent des appels d’outils MCP, et
 | search_docs | Rechercher dans l’index officiel versionné des références de modèles | Aucun |
 | get_model | Examiner les paramètres, le schéma, les références et la tarification | Aucun |
 | estimate_cost | Valider les entrées et estimer le coût | Aucun |
-| get_pricing_rules | Lire les règles tarifaires publiques par défaut (tarifs de référence, pas un devis) | Aucun |
+| get_pricing_rules | Lire les règles tarifaires : avec une connexion ou une clé API, les prix appliqués à votre compte, sinon les prix publics par défaut (tarifs de référence, pas un devis) | Aucun |
 | generate_image | Générer ou éditer des images | Payant |
 | generate_video | Générer, éditer ou prolonger des vidéos | Payant |
 | generate_audio | Générer de la musique, des chansons ou de la voix | Payant |
@@ -84,7 +84,7 @@ Renvoie documents, total_matches, scope et la version de la source. L’outil re
 {"name":"get_model","arguments":{"model":"z-image-turbo"}}
 ```
 
-Renvoie le modèle canonique, les exigences, des exemples, la tarification publique, reference_inputs, parameters_source et, lorsqu’il est disponible, input_schema avec sa source. Les références de paramètres sont versionnées ; la disponibilité pour le compte est interrogée en temps réel. Suivez les avertissements signalant des informations manquantes au lieu d’inventer des valeurs par défaut.
+Renvoie le modèle canonique, les exigences, des exemples, les prix (avec une connexion ou une clé API, ceux appliqués à votre compte), reference_inputs, parameters_source et, lorsqu’il est disponible, input_schema avec sa source. Les références de paramètres sont versionnées ; la disponibilité pour le compte est interrogée en temps réel. Suivez les avertissements signalant des informations manquantes au lieu d’inventer des valeurs par défaut.
 
 ### estimate_cost
 
@@ -101,7 +101,7 @@ Renvoie le modèle canonique, les exigences, des exemples, la tarification publi
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-Renvoie input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced, ainsi que le solde et les limites lorsqu’ils sont disponibles. L’état de l’estimation peut être estimated, partial, token_billed, needs_input ou no_price ; token_billed comporte un prix de référence, la facturation se faisant aux tokens réels. Lorsque le prix dépend d’un usage que l’entrée n’indique pas, l’estimation n’a ni montant ni `pricing_quote` : `total_known` vaut false, `missing_usage` nomme chaque valeur manquante et `usage_help` explique comment la fournir. Consultez [Facturation](/fr/mcp/billing). Une consultation réussie ne prouve ni que l’entrée est valide ni que le devis est complet.
+Renvoie input_valid, problems, warnings, estimate, pricing_scope (`account` : les prix appliqués à votre compte ; `public_default` : les prix publics par défaut, sans remises de compte), final_budget_enforced, ainsi que le solde et les limites lorsqu’ils sont disponibles. L’état de l’estimation peut être estimated, partial, token_billed, needs_input ou no_price ; token_billed comporte un prix de référence, la facturation se faisant aux tokens réels. Lorsque le prix dépend d’un usage que l’entrée n’indique pas, l’estimation n’a ni montant ni `pricing_quote` : `total_known` vaut false, `missing_usage` nomme chaque valeur manquante et `usage_help` explique comment la fournir. Consultez [Facturation](/fr/mcp/billing). Une consultation réussie ne prouve ni que l’entrée est valide ni que le devis est complet.
 
 Une estimation qui peut être approuvée renvoie aussi `pricing_quote`, l’enregistrement de l’accord pour cette entrée précise. Une fois l’accord de l’utilisateur obtenu, transmettez-le avec la même entrée à l’outil de génération. Il reste valable 24 heures à compter de l’estimation (`expires_at`), au prix approuvé ou à un prix inférieur : l’outil de génération refait l’estimation et soumet lorsque le prix est inchangé ou inférieur, y compris si les règles tarifaires ont été mises à jour entre-temps. Un prix plus élevé est refusé avec `price_changed`, une entrée modifiée avec `quote_input_changed` et un `pricing_quote` expiré avec `quote_expired` ; chacun de ces cas exige une nouvelle estimation et un nouvel accord. Avec `inputs`, le résultat indique l’estimation de chaque entrée et le total, et un seul `pricing_quote` approuve exactement ces entrées, dans cet ordre. Il n’approuve jamais une entrée isolée, et le `pricing_quote` d’une entrée isolée n’approuve jamais un lot.
 
@@ -122,7 +122,7 @@ Cet outil n’a pas d’argument `max_cost_usd` et ne produit pas le quote_id lo
 {"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
 ```
 
-Renvoie les règles tarifaires publiques par défaut : pour chaque composante de facturation, le tarif unitaire (chaînes décimales), le montant minimal facturé, les paliers et les expressions complètes, ainsi que price_scope et price_selection. Ce sont des tarifs de référence sans remises de compte, et non un devis de tâche, une facture ou un plafond de dépenses final ; ne multipliez pas des tarifs unitaires pour en déduire une facture. Utilisez `estimate_cost` pour connaître le coût prévu d’une génération précise ; il applique les mêmes règles à l’entrée réelle. Un résultat vide signifie qu’aucune règle publique ne correspond, et non que le modèle est gratuit. Dans une liste, un modèle dont les règles ne peuvent pas être lues ou sont incomplètes est écarté, répertorié dans `rejected_models` et nommé dans `warnings` ; les autres modèles sont renvoyés comme d’habitude, et un modèle écarté n’est pas gratuit pour autant. La consultation d’un seul modèle échoue toujours lorsque ses règles ne peuvent pas être lues.
+Renvoie les règles tarifaires : pour chaque composante de facturation, le tarif unitaire (chaînes décimales), le montant minimal facturé, les paliers et les expressions complètes, ainsi que price_scope et price_selection. Avec une connexion ou une clé API, ce sont les prix appliqués à votre compte (`price_scope: account`) ; sinon, les prix publics par défaut, sans remises de compte (`price_scope: public_default`). Ce sont des tarifs de référence, et non un devis de tâche, une facture ou un plafond de dépenses final ; ne multipliez pas des tarifs unitaires pour en déduire une facture. Utilisez `estimate_cost` pour connaître le coût prévu d’une génération précise ; il applique les mêmes règles à l’entrée réelle. Un résultat vide signifie qu’aucune règle ne correspond, et non que le modèle est gratuit. Dans une liste, un modèle dont les règles ne peuvent pas être lues ou sont incomplètes est écarté, répertorié dans `rejected_models` et nommé dans `warnings` ; les autres modèles sont renvoyés comme d’habitude, et un modèle écarté n’est pas gratuit pour autant. La consultation d’un seul modèle échoue toujours lorsque ses règles ne peuvent pas être lues.
 
 ### generate_image, generate_video, generate_audio
 
@@ -279,7 +279,7 @@ Réservé aux connexions distantes avec un compte connecté. Renvoie les règles
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
 ```
 
-Le premier appel renvoie la vue d’ensemble, `run_id` et la liste des sections. Avec `estimate` et sans `section`, seule l’estimation est renvoyée : `total_credits`, `total_usd`, ce qu’elle couvre, `valid_until`, et si le solde et toute limite EvoLink MCP la couvrent (`enough_balance`, `short_by_credits`, `enough_limit`). Rien n’est facturé. Le total repose sur les prix publics par défaut et reste valable 24 heures ; la facturation se fait à l’usage réel.
+Le premier appel renvoie la vue d’ensemble, `run_id` et la liste des sections. Avec `estimate` et sans `section`, seule l’estimation est renvoyée : `total_credits`, `total_usd`, ce qu’elle couvre, `valid_until`, et si le solde et toute limite EvoLink MCP la couvrent (`enough_balance`, `short_by_credits`, `enough_limit`). Rien n’est facturé. Le total repose sur les prix appliqués à votre compte (s’ils ne peuvent pas être lus, sur les prix publics par défaut, ce que l’estimation indique alors) et reste valable 24 heures ; la facturation se fait à l’usage réel.
 
 ### analyze_video
 
@@ -298,7 +298,7 @@ Réservé aux connexions distantes avec un compte connecté. Analyse une vidéo 
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-Renvoie `status`, `analysis`, `analysis_id`, `usage` en tokens, `charged` et `charged_by_this_call`. Le fichier est vérifié avant toute facturation ; un lien qui ne peut pas être lu, un fichier qui n’est pas une vidéo ou une vidéo trop longue sont refusés, avec le motif. **Les mêmes entrées, dans les 24 heures, renvoient le premier résultat et ne sont pas facturées de nouveau** (`charged_again:false`) ; après une expiration de délai ou une coupure de connexion, envoyez donc exactement le même appel. Une analyse lente renvoie `status:processing` avec un `analysis_id` destiné à get_video_analysis. Chaque compte peut lancer un nombre limité d’analyses par minute et par jour ; l’erreur indique combien de temps attendre. Chaque facturation apparaît dans l’historique de la console comme un appel à un modèle Gemini.
+Renvoie `status`, `analysis`, `analysis_id`, `usage` en tokens, `charged` et `charged_by_this_call`. Le fichier est vérifié avant toute facturation ; un lien qui ne peut pas être lu, un fichier qui n’est pas une vidéo ou une vidéo trop longue sont refusés, avec le motif. **Les mêmes entrées, dans les 24 heures, renvoient le premier résultat et ne sont pas facturées de nouveau** (`charged_by_this_call:false`) ; après une expiration de délai ou une coupure de connexion, envoyez donc exactement le même appel. Une analyse lente renvoie `status:processing` avec un `analysis_id` destiné à get_video_analysis. Chaque compte peut lancer un nombre limité d’analyses par minute et par jour ; l’erreur indique combien de temps attendre. Chaque facturation apparaît dans l’historique de la console comme un appel à un modèle Gemini.
 
 ### get_video_analysis
 
@@ -361,7 +361,7 @@ Les exemples utilisant name / arguments décrivent l’entrée d’un outil, et 
 | upload_file | Service de fichiers, /url ou /base64 ; le stdio local peut lire les répertoires autorisés |
 | prepare_upload, get_upload | URL PUT à usage unique hébergée et état associé ; la récupération des reçus dépend de la prise en charge par le service de fichiers |
 
-Les paramètres du modèle se placent dans arguments.input et sont convertis en requêtes REST par le serveur. media_seconds est une indication pour la facturation ; max_cost_usd ne fait que vérifier les estimations avant la soumission. La version publiée 1.13.0 estime à partir des règles tarifaires publiques (tarifs de référence, sans remises de compte) et n’a toujours pas de plafond de règlement final.
+Les paramètres du modèle se placent dans arguments.input et sont convertis en requêtes REST par le serveur. media_seconds est une indication pour la facturation ; max_cost_usd ne fait que vérifier les estimations avant la soumission. Avec une connexion ou une clé API, le MCP estime avec les prix appliqués à votre compte ; sinon, à partir des règles tarifaires publiques par défaut (tarifs de référence, sans remises de compte). Il n’a toujours pas de plafond de règlement final.
 
 ### Importations, reprise et accès
 

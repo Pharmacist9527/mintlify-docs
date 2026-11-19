@@ -6,7 +6,7 @@ description: "19個のツールのパラメータ、例、結果、プロトコ�
 <span id="mcp-tools" />
 ## MCP ツールリファレンス
 
-このページでは、OAuth を使うリモート MCP のリリース **1.13.0** に含まれる19個のツールを説明します。3つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`）は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
+このページでは、OAuth を使うリモート MCP の19個のツールを説明します。3つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`）は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
 
 `name` と `arguments` を使った例は、MCP のツール呼び出しを表すもので、REST のリクエストボディではありません。例があるからといって、有料生成が許可されるわけではありません。
 
@@ -17,7 +17,7 @@ description: "19個のツールのパラメータ、例、結果、プロトコ�
 | search_docs | バージョン管理された公式モデルリファレンスの索引を検索する | なし |
 | get_model | パラメータ、スキーマ、参照入力、価格を確認する | なし |
 | estimate_cost | 入力を検証し、料金を見積もる | なし |
-| get_pricing_rules | 公開のデフォルト価格ルールを読む（参考価格であり、見積書ではない） | なし |
+| get_pricing_rules | 価格ルールを読む。ログイン中または API Key 使用時はアカウントに適用される価格、それ以外は公開のデフォルト価格（参考価格であり、見積書ではない） | なし |
 | generate_image | 画像を生成または編集する | 有料 |
 | generate_video | 動画を生成、編集、または延長する | 有料 |
 | generate_audio | 音楽、歌、読み上げ音声を生成する | 有料 |
@@ -84,7 +84,7 @@ documents、total_matches、scope、ソースのバージョンを返します�
 {"name":"get_model","arguments":{"model":"z-image-turbo"}}
 ```
 
-正式なモデル、要件、例、公開価格、reference_inputs、parameters_source を返し、利用できる場合は input_schema とその出典も返します。パラメータのリファレンスはバージョン管理されており、アカウントでの利用可否はリアルタイムで照会されます。情報が不足しているという警告が出た場合は、デフォルト値を勝手に作らず、警告に従ってください。
+正式なモデル、要件、例、価格（ログイン中または API Key 使用時はアカウントに適用される価格）、reference_inputs、parameters_source を返し、利用できる場合は input_schema とその出典も返します。パラメータのリファレンスはバージョン管理されており、アカウントでの利用可否はリアルタイムで照会されます。情報が不足しているという警告が出た場合は、デフォルト値を勝手に作らず、警告に従ってください。
 
 ### estimate_cost
 
@@ -101,7 +101,7 @@ documents、total_matches、scope、ソースのバージョンを返します�
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-input_valid、problems、warnings、estimate、pricing_scope、final_budget_enforced を返し、利用できる場合は balance/limits も返します。見積もりの状態は、estimated、partial、token_billed、needs_input、no_price のいずれかです。token_billed には参考価格が付き、課金は実際のトークン数に基づきます。価格が、入力からは分からない使用量によって決まる場合、見積もりには金額も `pricing_quote` もありません。`total_known` は false になり、`missing_usage` に不足している値がそれぞれ示され、`usage_help` にその指定方法が示されます。[課金](/ja/mcp/billing)を参照してください。照会が成功しても、入力が有効であることや、完全な見積書であることの証明にはなりません。
+input_valid、problems、warnings、estimate、pricing_scope（`account` はアカウントに適用される価格、`public_default` はアカウントの割引を含まない公開のデフォルト価格）、final_budget_enforced を返し、利用できる場合は balance/limits も返します。見積もりの状態は、estimated、partial、token_billed、needs_input、no_price のいずれかです。token_billed には参考価格が付き、課金は実際のトークン数に基づきます。価格が、入力からは分からない使用量によって決まる場合、見積もりには金額も `pricing_quote` もありません。`total_known` は false になり、`missing_usage` に不足している値がそれぞれ示され、`usage_help` にその指定方法が示されます。[課金](/ja/mcp/billing)を参照してください。照会が成功しても、入力が有効であることや、完全な見積書であることの証明にはなりません。
 
 承認できる見積もりは、`pricing_quote` も返します。これは、この入力そのものに対する承認記録です。ユーザーが承認したら、同じ入力とともに生成ツールに渡してください。承認済みの価格以下である限り、見積もりから24時間有効です（`expires_at`）。生成ツールはもう一度見積もりを行い、価格が変わっていないか下がっていれば、その後に価格ルールが変更されていても送信します。価格が上がっていれば `price_changed`、入力が変わっていれば `quote_input_changed`、`pricing_quote` の有効期限が切れていれば `quote_expired` で拒否されます。いずれの場合も、新しい見積もりと承認が必要です。`inputs` を指定した場合、結果には各入力の見積もりと合計額が示され、1つの `pricing_quote` が、それらの入力をその順序どおりに承認するものになります。それが単一の入力だけを承認することはなく、単一の入力の `pricing_quote` がバッチを承認することもありません。
 
@@ -122,7 +122,7 @@ input_valid、problems、warnings、estimate、pricing_scope、final_budget_enfo
 {"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
 ```
 
-公開のデフォルト価格ルールを返します。課金要素ごとの単価（十進数の文字列）、最低料金、料金段階、完全な計算式に加えて、price_scope と price_selection が含まれます。これらはアカウントの割引を含まない参考価格であり、タスクの見積書でも、請求書でも、最終的な支出の上限でもありません。単価を掛け合わせて請求額を算出しないでください。特定の生成で見込まれる料金を知るには、`estimate_cost` を使ってください。実際の入力に対して、同じルールを評価します。結果が空の場合は、一致する公開ルールがないという意味であり、モデルが無料という意味ではありません。一覧では、ルールを読み取れない、またはルールが不完全なモデルは除外され、`rejected_models` に列挙されて、`warnings` に示されます。ほかのモデルは通常どおり返されます。除外されたモデルが無料というわけではありません。単一のモデルを指定した照会は、そのルールを読み取れない場合、これまでどおり失敗します。
+価格ルールを返します。課金要素ごとの単価（十進数の文字列）、最低料金、料金段階、完全な計算式に加えて、price_scope と price_selection が含まれます。ログイン中または API Key 使用時はアカウントに適用される価格（`price_scope: account`）、それ以外はアカウントの割引を含まない公開のデフォルト価格（`price_scope: public_default`）です。これらは参考価格であり、タスクの見積書でも、請求書でも、最終的な支出の上限でもありません。単価を掛け合わせて請求額を算出しないでください。特定の生成で見込まれる料金を知るには、`estimate_cost` を使ってください。実際の入力に対して、同じルールを評価します。結果が空の場合は、一致するルールがないという意味であり、モデルが無料という意味ではありません。一覧では、ルールを読み取れない、またはルールが不完全なモデルは除外され、`rejected_models` に列挙されて、`warnings` に示されます。ほかのモデルは通常どおり返されます。除外されたモデルが無料というわけではありません。単一のモデルを指定した照会は、そのルールを読み取れない場合、これまでどおり失敗します。
 
 ### generate_image、generate_video、generate_audio
 
@@ -279,7 +279,7 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
 ```
 
-最初の呼び出しでは、概要、`run_id`、セクションの一覧が返されます。`estimate` を指定し、`section` を指定しない場合は、見積もりだけが返されます。見積もりには、`total_credits`、`total_usd`、含まれるもの、`valid_until` のほか、残高と EvoLink MCP の上限（設定されている場合）でその額をまかなえるかどうか（`enough_balance`、`short_by_credits`、`enough_limit`）が示されます。課金は発生しません。合計額は公開のデフォルト価格に基づいており、24時間有効です。課金は、実際の使用量に基づいて行われます。
+最初の呼び出しでは、概要、`run_id`、セクションの一覧が返されます。`estimate` を指定し、`section` を指定しない場合は、見積もりだけが返されます。見積もりには、`total_credits`、`total_usd`、含まれるもの、`valid_until` のほか、残高と EvoLink MCP の上限（設定されている場合）でその額をまかなえるかどうか（`enough_balance`、`short_by_credits`、`enough_limit`）が示されます。課金は発生しません。合計額はアカウントに適用される価格に基づいており（読み取れない場合は公開のデフォルト価格を使い、見積もりにそのことが示されます）、24時間有効です。課金は、実際の使用量に基づいて行われます。
 
 ### analyze_video
 
@@ -298,7 +298,7 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-`status`、`analysis`、`analysis_id`、トークンの `usage`、`charged`、`charged_by_this_call` を返します。ファイルは、課金が発生する前に確認されます。読み取れないリンク、動画ではないファイル、長すぎるファイルは、理由を示したうえで拒否されます。**24時間以内の同じ入力に対しては、最初の結果が返され、もう一度課金されることはありません**（`charged_again:false`）。そのため、タイムアウトしたあとや接続が切れたあとは、まったく同じ呼び出しを送信してください。分析に時間がかかる場合は、`status:processing` と、get_video_analysis に渡す `analysis_id` が返されます。各アカウントが開始できる分析の数には、1分あたりと1日あたりの上限があります。どれだけ待てばよいかは、エラーに示されます。課金はそれぞれ、ダッシュボードの履歴に Gemini モデルの呼び出しとして表示されます。
+`status`、`analysis`、`analysis_id`、トークンの `usage`、`charged`、`charged_by_this_call` を返します。ファイルは、課金が発生する前に確認されます。読み取れないリンク、動画ではないファイル、長すぎるファイルは、理由を示したうえで拒否されます。**24時間以内の同じ入力に対しては、最初の結果が返され、もう一度課金されることはありません**（`charged_by_this_call:false`）。そのため、タイムアウトしたあとや接続が切れたあとは、まったく同じ呼び出しを送信してください。分析に時間がかかる場合は、`status:processing` と、get_video_analysis に渡す `analysis_id` が返されます。各アカウントが開始できる分析の数には、1分あたりと1日あたりの上限があります。どれだけ待てばよいかは、エラーに示されます。課金はそれぞれ、ダッシュボードの履歴に Gemini モデルの呼び出しとして表示されます。
 
 ### get_video_analysis
 
@@ -361,7 +361,7 @@ name / arguments を使った例は、ツールの入力を表すもので、RES
 | upload_file | ファイルサービスの /url または /base64。ローカル stdio は、許可されたディレクトリを読み取れます |
 | prepare_upload、get_upload | ホスト型の1回限りの PUT URL と状態。レシートによる復旧ができるかどうかは、ファイルサービスの対応状況によります |
 
-モデルのパラメータは arguments.input に指定し、サーバーが REST リクエストに変換します。media_seconds は課金のためのヒントです。max_cost_usd は、送信前に見積もりをチェックするだけです。公開済みの 1.13.0 は、公開の価格ルール（参考価格で、アカウントの割引は含みません）から見積もりを行い、最終的な精算額の上限は依然としてありません。
+モデルのパラメータは arguments.input に指定し、サーバーが REST リクエストに変換します。media_seconds は課金のためのヒントです。max_cost_usd は、送信前に見積もりをチェックするだけです。ログイン中または API Key 使用時の MCP は、アカウントに適用される価格で見積もります。それ以外の場合は、公開のデフォルト価格ルール（参考価格で、アカウントの割引は含みません）から見積もります。最終的な精算額の上限は依然としてありません。
 
 ### アップロード、復旧、アクセス
 
