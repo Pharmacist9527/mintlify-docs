@@ -1,12 +1,12 @@
 ---
 title: "MCP 工具与接口参考"
-description: "19 个工具的参数、示例、结果、协议与后台接口映射"
+description: "20 个工具的参数、示例、结果、协议与后台接口映射"
 ---
 
 <span id="mcp-tools" />
 ## MCP 工具参考
 
-本页说明远程 OAuth MCP 的 19 个工具。三个工作流工具（`get_media_workflow`、`analyze_video`、`get_video_analysis`）只提供给已登录的远程连接。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
+本页说明远程 OAuth MCP 的 20 个工具。三个工作流工具（`get_media_workflow`、`analyze_video`、`get_video_analysis`）和 `make_frames` 只提供给已登录的远程连接。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
 
 JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 REST 请求体；它们也不代表已批准费用。
 
@@ -31,6 +31,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 | get_media_workflow | 读取工作流的分步规则和一个预估总价 | 无 |
 | analyze_video | 为工作流的某一步分析视频 | 有，按 token |
 | get_video_analysis | 取回还在进行的视频分析 | 无 |
+| make_frames | 为不能运行命令的助手抽帧、裁剪、做视频总览图和带编号的拼图 | 无 |
 
 ### search_models
 
@@ -175,6 +176,8 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 
 返回状态、进度、结果、已报告费用或错误。仍未完成时继续同一 ID。任务失败时返回错误码（`error.code`）、错误说明（`error.message`，与 API 返回的一致）和 `billing_note`：这个任务不收费，提交时预扣的积分会自动退回。原件通常 24 小时内保存，缩略图是否展示由客户端决定。
 
+已完成的 Seedance 2.5 草稿还会返回 `draft_expires_at`：在这个时间之前，可以用 `seedance-2.5-draft-to-video` 转换它。由草稿转换出来的任务会返回 `source_task_id`，也就是那个草稿的任务 ID。
+
 ### list_tasks
 
 | 参数 | 类型 | 必填 | 默认/范围 |
@@ -269,7 +272,7 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 | workflow | string | 是 | 工作流名称，目前是 `ad-rebuild` |
 | section | string | 否 | 默认 `overview`，或之前的调用列出的小节 ID |
 | run_id | string | 否 | 第一次调用时返回；同一次运行之后的每次调用都要带上 |
-| estimate | object | 否 | `output_seconds`、`keyframes`，可选 `quality`（480p/720p/1080p）、`aspect_ratio`、`creator_images` |
+| estimate | object | 否 | `output_seconds`、`keyframes`，可选 `quality`（480p/720p/1080p/4k）、`aspect_ratio`、`creator_images` |
 
 ```json
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
@@ -309,6 +312,35 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 ```
 
 最多等待约 30 秒，返回已完成的分析，或者再次返回 `status:processing`。免费。结果保留约 1 小时；ID 已经不在时，用同样的输入把原来的 analyze_video 调用再发一次。
+
+### make_frames
+
+仅限已登录的远程连接，和工作流工具一起提供。免费。它让不能运行命令的助手也能查看视频的画面、准备图片；能运行命令的助手在自己的机器上用 ffmpeg 做同样的事，速度更快。
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| action | string | 是 | `contact_sheet`、`frame`、`crop` 或 `board` |
+| video_url | string | `contact_sheet` 和 `frame` 需要 | EvoLink 文件链接（上传得到）或 EvoLink 任务的结果链接；MP4 或 MOV，不超过 60 秒、200 MB |
+| start_seconds | number | 否 | `contact_sheet`：这一段从第几秒开始；默认 0 |
+| end_seconds | number | 否 | `contact_sheet`：这一段到第几秒结束；默认到视频结尾，最多从开始算起 30 秒；大于 1440p 的视频（例如 4K）最多 15 秒 |
+| fps | integer | 否 | `contact_sheet`：每秒取几帧，1–10；默认 4 |
+| tile_width | integer | 否 | `contact_sheet`：每一格的宽度（像素），120–512；默认用放得下的最大格子 |
+| time_seconds | number | `frame` 需要 | 要取的那一帧的时间，从开头算起的秒数 |
+| image_url | string | `crop` 需要 | PNG、JPEG 或 WebP 图片的 EvoLink 文件链接或结果链接，不超过 20 MB、3600 万像素 |
+| x, y, width, height | integer | `crop` 需要 | 要裁出的矩形，单位是原图的像素；x 和 y 是它的左上角 |
+| image_urls | string[] | `board` 需要 | 2–24 个 EvoLink 图片链接，按编号顺序排列 |
+| save | boolean | 否 | `contact_sheet`、`board`：同时保存图片，并返回一个用户能打开的链接；单帧和裁剪的结果总是会保存 |
+
+```json
+{"name":"make_frames","arguments":{"action":"contact_sheet","video_url":"https://files.evolink.ai/YOUR_FILE.mp4","fps":2}}
+```
+
+- `contact_sheet`：按固定帧率取出视频的画面，拼成一张图，每一格标出时间；同时给出每一帧和前一帧相差多少（0 到 1），用来找剪切点。一张图最多看 30 秒，大于 1440p 的视频最多 15 秒；`next_start_seconds` 说明下一张从哪里开始。
+- `frame`：`time_seconds` 那一刻的原尺寸画面，保存为 PNG 文件链接，可以当作图片输入使用，例如做封面。如果存成 PNG 会超过 16 MB（细节很多的 4K 画面可能这样），就改存为同样尺寸的高质量 JPEG。
+- `crop`：从图片里精确裁出一个矩形，不缩放，保存为 PNG 文件链接。
+- `board`：把 2 到 24 张图片并排拼在一起，按给出的顺序编号，方便一起查看。
+
+不产生任何费用（`charged: "no"`）。素材只能是 EvoLink 的文件链接或结果链接，其他链接会被拒绝。每个账户每分钟最多调用 `make_frames` 10 次；报错会说明要等多久。保存的图片和其他上传的文件一样会过期。
 
 ### 返回格式与错误
 

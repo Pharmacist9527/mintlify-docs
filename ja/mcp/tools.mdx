@@ -1,12 +1,12 @@
 ---
 title: "MCP ツールと API のリファレンス"
-description: "19個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
+description: "20個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
 ---
 
 <span id="mcp-tools" />
 ## MCP ツールリファレンス
 
-このページでは、OAuth を使うリモート MCP の19個のツールを説明します。3つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`）は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
+このページでは、OAuth を使うリモート MCP の20個のツールを説明します。3つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`）と `make_frames` は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
 
 `name` と `arguments` を使った例は、MCP のツール呼び出しを表すもので、REST のリクエストボディではありません。例があるからといって、有料生成が許可されるわけではありません。
 
@@ -31,6 +31,7 @@ description: "19個のツールのパラメータ、例、結果、プロトコ�
 | get_media_workflow | ワークフローのステップのルールと、1つの見積もり合計額を読む | なし |
 | analyze_video | ワークフローのステップ用に動画を分析する | 有料（トークン課金） |
 | get_video_analysis | まだ実行中だった動画分析を取得する | なし |
+| make_frames | コマンドを実行できないアシスタント向けの、動画のフレーム、切り抜き、一覧シートと、番号付きの画像ボード | なし |
 
 ### search_models
 
@@ -175,6 +176,8 @@ input_valid、problems、warnings、estimate、pricing_scope（`account` はア�
 
 status、progress、results、報告された料金、または error を返します。実行中は、同じ ID の照会を続けてください。失敗したタスクは、エラーコード（`error.code`）、API も返す説明（`error.message`）、そして `billing_note` を返します。このタスクは課金されず、送信時に仮押さえされたクレジットは自動的に返還されます。オリジナルの結果は、通常24時間保持されます。プレビューの表示は、ホストのクライアントによって異なります。
 
+完成した Seedance 2.5 の下書きは、`draft_expires_at` も返します。これは、`seedance-2.5-draft-to-video` で変換できる期限の時刻です。下書きから変換されたタスクは、元の下書きのタスク ID である `source_task_id` を返します。
+
 ### list_tasks
 
 | パラメータ | 型 | 必須 | デフォルト／範囲 |
@@ -269,7 +272,7 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 | workflow | string | はい | ワークフロー名。現在は `ad-rebuild` |
 | section | string | いいえ | デフォルトは `overview`。または、以前の呼び出しで一覧に示されたセクション ID |
 | run_id | string | いいえ | 最初の呼び出しで返されます。同じ実行のその後の呼び出しでは、毎回これを渡してください |
-| estimate | object | いいえ | `output_seconds`、`keyframes`。任意で `quality`（480p/720p/1080p）、`aspect_ratio`、`creator_images` |
+| estimate | object | いいえ | `output_seconds`、`keyframes`。任意で `quality`（480p/720p/1080p/4k）、`aspect_ratio`、`creator_images` |
 
 ```json
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
@@ -309,6 +312,35 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 ```
 
 最大で約30秒待機し、完了した分析を返すか、もう一度 `status:processing` を返します。無料です。結果は約1時間保持されます。ID が保持されなくなっている場合は、元の analyze_video の呼び出しを、同じ入力でもう一度送信してください。
+
+### make_frames
+
+ログイン済みのリモート接続でのみ、ワークフローツールと一緒に提供されます。無料です。コマンドを実行できないアシスタントでも、動画のフレームを見たり、画像を準備したりできます。ターミナルのあるアシスタントは、自身のマシン上の ffmpeg で、同じ作業をより速く行えます。
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| action | string | はい | `contact_sheet`、`frame`、`crop`、`board` のいずれか |
+| video_url | string | `contact_sheet` と `frame` の場合 | EvoLink のファイルリンク（アップロードで得たもの）、または EvoLink のタスクの結果のリンク。MP4 または MOV で、60秒以内、200 MB 以内 |
+| start_seconds | number | いいえ | `contact_sheet`：区間の開始位置。デフォルトは 0 |
+| end_seconds | number | いいえ | `contact_sheet`：区間の終了位置。デフォルトは動画の終わりで、開始から最大30秒。1440p より大きい動画（4K など）では最大15秒 |
+| fps | integer | いいえ | `contact_sheet`：毎秒のフレーム数、1–10。デフォルトは 4 |
+| tile_width | integer | いいえ | `contact_sheet`：各マスの幅（ピクセル）、120–512。デフォルトは、収まる最大のマス |
+| time_seconds | number | `frame` の場合 | 取り出すフレームの時刻（先頭からの秒数） |
+| image_url | string | `crop` の場合 | PNG、JPEG、WebP 画像の EvoLink のファイルリンクまたは結果のリンク。20 MB 以内、3,600万画素以内 |
+| x, y, width, height | integer | `crop` の場合 | 切り抜く長方形。元の画像のピクセル単位で指定し、x と y は左上の角です |
+| image_urls | string[] | `board` の場合 | EvoLink の画像リンクを 2–24 個、番号を付ける順に指定 |
+| save | boolean | いいえ | `contact_sheet`、`board`：画像を保存し、ユーザーが開けるリンクも返します。フレームと切り抜きは、常に保存されます |
+
+```json
+{"name":"make_frames","arguments":{"action":"contact_sheet","video_url":"https://files.evolink.ai/YOUR_FILE.mp4","fps":2}}
+```
+
+- `contact_sheet`：動画のフレームを一定のレートで取り出し、各マスに時刻を入れて、ひとつの画像に並べます。各フレームが直前のフレームとどれだけ違うか（0〜1）も返すので、カットの位置がわかります。シートごとに扱えるのは最大30秒で、1440p より大きい動画では最大15秒です。次のシートの開始位置は `next_start_seconds` で示されます。
+- `frame`：`time_seconds` の時点の元のサイズのフレームを、PNG ファイルのリンクとして保存します。このリンクは、たとえば表紙用など、画像の入力として使えます。細部の多い 4K のフレームなどで PNG が 16 MB を超える場合は、同じサイズの高画質の JPEG として保存されます。
+- `crop`：画像から正確な長方形を、拡大縮小せずに切り抜き、PNG ファイルのリンクとして保存します。
+- `board`：2〜24枚の画像を横に並べ、指定した順に番号を付けます。まとめて確認するためのものです。
+
+課金は発生しません（`charged: "no"`）。ソースは EvoLink のファイルリンクまたは結果のリンクでなければならず、それ以外のリンクは拒否されます。各アカウントが `make_frames` を呼び出せるのは、毎分10回までです。どれだけ待てばよいかは、エラーに示されます。保存された画像は、ほかのアップロードと同じように有効期限が切れます。
 
 ### 結果とエラー
 

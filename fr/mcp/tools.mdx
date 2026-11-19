@@ -1,12 +1,12 @@
 ---
 title: "Référence des outils et de l’API MCP"
-description: "Paramètres, exemples, résultats, protocole et correspondance avec le backend pour 19 outils"
+description: "Paramètres, exemples, résultats, protocole et correspondance avec le backend pour 20 outils"
 ---
 
 <span id="mcp-tools" />
 ## Référence des outils MCP
 
-Cette page décrit les 19 outils du MCP distant OAuth. Les trois outils de flux de travail (`get_media_workflow`, `analyze_video`, `get_video_analysis`) ne sont proposés qu’aux connexions distantes avec un compte connecté. La réponse `tools/list` du serveur connecté fait foi. Le stdio local n’expose ni `prepare_upload` ni `get_upload` ; son `upload_file` accepte en outre des chemins situés dans des répertoires explicitement autorisés.
+Cette page décrit les 20 outils du MCP distant OAuth. Les trois outils de flux de travail (`get_media_workflow`, `analyze_video`, `get_video_analysis`) et `make_frames` ne sont proposés qu’aux connexions distantes avec un compte connecté. La réponse `tools/list` du serveur connecté fait foi. Le stdio local n’expose ni `prepare_upload` ni `get_upload` ; son `upload_file` accepte en outre des chemins situés dans des répertoires explicitement autorisés.
 
 Les exemples avec `name` et `arguments` décrivent des appels d’outils MCP, et non des corps de requête REST. Un exemple n’autorise pas une génération payante.
 
@@ -31,6 +31,7 @@ Les exemples avec `name` et `arguments` décrivent des appels d’outils MCP, et
 | get_media_workflow | Lire les règles des étapes d’un flux de travail et un seul total estimé | Aucun |
 | analyze_video | Analyser une vidéo pour une étape d’un flux de travail | Payant, au token |
 | get_video_analysis | Récupérer une analyse vidéo qui était encore en cours | Aucun |
+| make_frames | Images, recadrages et planches d’images d’une vidéo, ainsi que planches d’images numérotées, pour les assistants qui ne peuvent pas exécuter de commandes | Aucun |
 
 ### search_models
 
@@ -175,6 +176,8 @@ Aucun élément ne démarre plus de 25 secondes après le début de l’appel, e
 
 Renvoie l’état, la progression, les résultats, le coût indiqué ou l’erreur. Continuez à interroger le même identifiant tant que la tâche est en cours. Une tâche échouée renvoie son code d’erreur (`error.code`), l’explication que l’API renvoie également (`error.message`) et un `billing_note` : la tâche n’est pas facturée, et les crédits réservés à la soumission sont restitués automatiquement. Les résultats originaux sont généralement conservés 24 heures. L’affichage des aperçus dépend du client hôte.
 
+Un brouillon Seedance 2.5 terminé renvoie aussi `draft_expires_at`, l’heure jusqu’à laquelle il peut être converti avec `seedance-2.5-draft-to-video`. Une tâche issue de la conversion d’un brouillon renvoie `source_task_id`, l’identifiant de tâche de ce brouillon.
+
 ### list_tasks
 
 | Paramètre | Type | Obligatoire | Valeur par défaut / plage |
@@ -269,7 +272,7 @@ Réservé aux connexions distantes avec un compte connecté. Renvoie les règles
 | workflow | string | Oui | Nom du flux de travail, actuellement `ad-rebuild` |
 | section | string | Non | `overview` par défaut, ou un identifiant de section répertorié par un appel précédent |
 | run_id | string | Non | Renvoyé par le premier appel ; transmettez-le à chaque appel ultérieur de la même exécution |
-| estimate | object | Non | `output_seconds`, `keyframes` et, facultativement, `quality` (480p/720p/1080p), `aspect_ratio`, `creator_images` |
+| estimate | object | Non | `output_seconds`, `keyframes` et, facultativement, `quality` (480p/720p/1080p/4k), `aspect_ratio`, `creator_images` |
 
 ```json
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
@@ -309,6 +312,35 @@ Réservé aux connexions distantes avec un compte connecté. `analysis_id` oblig
 ```
 
 Attend jusqu’à environ 30 secondes et renvoie l’analyse terminée, ou de nouveau `status:processing`. Gratuit. Les résultats sont conservés environ une heure ; lorsqu’un identifiant n’est plus conservé, envoyez à nouveau l’appel analyze_video d’origine avec les mêmes entrées.
+
+### make_frames
+
+Réservé aux connexions distantes avec un compte connecté, proposé avec les outils de flux de travail. Gratuit. Il permet à un assistant qui ne peut pas exécuter de commandes de regarder les images d’une vidéo et de préparer des images ; un assistant doté d’un terminal fait le même travail plus rapidement avec ffmpeg sur sa propre machine.
+
+| Paramètre | Type | Obligatoire | Valeur par défaut / plage |
+|---|---|---|---|
+| action | string | Oui | `contact_sheet`, `frame`, `crop` ou `board` |
+| video_url | string | Pour `contact_sheet` et `frame` | Un lien de fichier EvoLink (issu d’une importation) ou le lien du résultat d’une tâche EvoLink ; MP4 ou MOV, 60 secondes et 200 MB au maximum |
+| start_seconds | number | Non | `contact_sheet` : début de l’extrait ; 0 par défaut |
+| end_seconds | number | Non | `contact_sheet` : fin de l’extrait ; par défaut la fin de la vidéo, au plus 30 secondes après le début, ou 15 secondes pour une vidéo de plus de 1440p, comme la 4K |
+| fps | integer | Non | `contact_sheet` : images par seconde, 1–10 ; 4 par défaut |
+| tile_width | integer | Non | `contact_sheet` : largeur d’une vignette en pixels, 120–512 ; par défaut les plus grandes vignettes qui tiennent |
+| time_seconds | number | Pour `frame` | L’instant de l’image, en secondes depuis le début |
+| image_url | string | Pour `crop` | Un lien de fichier ou de résultat EvoLink d’une image PNG, JPEG ou WebP, 20 MB et 36 mégapixels au maximum |
+| x, y, width, height | integer | Pour `crop` | Le rectangle, en pixels de l’image ; x et y désignent son coin supérieur gauche |
+| image_urls | string[] | Pour `board` | 2–24 liens d’images EvoLink, dans l’ordre de leur numérotation |
+| save | boolean | Non | `contact_sheet`, `board` : enregistre aussi l’image et renvoie un lien que l’utilisateur peut ouvrir ; une image extraite et un recadrage sont toujours enregistrés |
+
+```json
+{"name":"make_frames","arguments":{"action":"contact_sheet","video_url":"https://files.evolink.ai/YOUR_FILE.mp4","fps":2}}
+```
+
+- `contact_sheet` : des images d’une vidéo à cadence fixe, assemblées en une seule image avec l’instant indiqué sur chaque vignette, ainsi que l’écart entre chaque image et la précédente (de 0 à 1), qui montre où se trouvent les coupes. Une planche couvre au plus 30 secondes, ou 15 secondes pour une vidéo de plus de 1440p ; `next_start_seconds` indique où commence la planche suivante.
+- `frame` : l’image en taille réelle à `time_seconds`, enregistrée comme lien de fichier PNG utilisable comme image d’entrée, par exemple comme image de couverture. Si le PNG devait dépasser 16 MB, comme cela peut arriver pour une image 4K très détaillée, elle est enregistrée en JPEG de haute qualité aux mêmes dimensions.
+- `crop` : un rectangle exact d’une image, sans mise à l’échelle, enregistré comme lien de fichier PNG.
+- `board` : de 2 à 24 images côte à côte, numérotées dans l’ordre donné, pour les examiner ensemble.
+
+Rien n’est facturé (`charged: "no"`). Les sources doivent être des liens de fichiers ou de résultats EvoLink ; les autres liens sont refusés. Chaque compte peut appeler `make_frames` 10 fois par minute ; l’erreur indique combien de temps attendre. Les images enregistrées expirent comme les autres importations.
 
 ### Résultats et erreurs
 

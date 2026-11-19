@@ -1,12 +1,12 @@
 ---
 title: "MCP tool and API reference"
-description: "Parameters, examples, results, protocol, and backend mapping for 19 tools"
+description: "Parameters, examples, results, protocol, and backend mapping for 20 tools"
 ---
 
 <span id="mcp-tools" />
 ## MCP tool reference
 
-This page describes the 19 tools of the OAuth remote MCP. The three workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`) are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+This page describes the 20 tools of the OAuth remote MCP. The three workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`) and `make_frames` are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
 
 The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
 
@@ -31,6 +31,7 @@ The `name` and `arguments` examples describe MCP tool calls, not REST request bo
 | get_media_workflow | Read a workflow's step rules and one estimated total | None |
 | analyze_video | Analyze a video for a workflow step | Paid, by tokens |
 | get_video_analysis | Collect a video analysis that was still running | None |
+| make_frames | Frames, crops and contact sheets of a video, and numbered image boards, for assistants that cannot run commands | None |
 
 ### search_models
 
@@ -175,6 +176,8 @@ No item starts more than 25 seconds after the call began, and a started submissi
 
 Returns status, progress, results, reported cost, or error. Continue querying the same ID while it runs. A failed task returns its error code (`error.code`), the explanation the API also returns (`error.message`), and a `billing_note`: the task is not charged, and the credits reserved at submission are returned automatically. Original results are generally retained for 24 hours. Preview rendering depends on the host client.
 
+A completed Seedance 2.5 draft also returns `draft_expires_at`, the time until which it can be converted with `seedance-2.5-draft-to-video`. A task converted from a draft returns `source_task_id`, the task ID of that draft.
+
 ### list_tasks
 
 | Parameter | Type | Required | Default / range |
@@ -269,7 +272,7 @@ Signed-in remote connections only. Returns the step-by-step rules of an EvoLink 
 | workflow | string | Yes | Workflow name, currently `ad-rebuild` |
 | section | string | No | `overview` by default, or a section ID listed by an earlier call |
 | run_id | string | No | Returned by the first call; pass it on every later call of the same run |
-| estimate | object | No | `output_seconds`, `keyframes`, and optional `quality` (480p/720p/1080p), `aspect_ratio`, `creator_images` |
+| estimate | object | No | `output_seconds`, `keyframes`, and optional `quality` (480p/720p/1080p/4k), `aspect_ratio`, `creator_images` |
 
 ```json
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild"}}
@@ -309,6 +312,35 @@ Signed-in remote connections only. Required `analysis_id`, from analyze_video:
 ```
 
 Waits up to about 30 seconds and returns the finished analysis, or `status:processing` again. Free. Results are kept for about an hour; when an ID is no longer held, send the original analyze_video call again with the same inputs.
+
+### make_frames
+
+Signed-in remote connections only, offered together with the workflow tools. Free. It lets an assistant that cannot run commands look at the frames of a video and prepare images; an assistant with a terminal does the same work faster with ffmpeg on its own machine.
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| action | string | Yes | `contact_sheet`, `frame`, `crop` or `board` |
+| video_url | string | For `contact_sheet` and `frame` | An EvoLink file link (from an upload) or the result link of an EvoLink task; MP4 or MOV, up to 60 seconds and 200 MB |
+| start_seconds | number | No | `contact_sheet`: where the stretch starts; default 0 |
+| end_seconds | number | No | `contact_sheet`: where the stretch ends; default the end of the video, at most 30 seconds after the start, or 15 seconds for a video larger than 1440p such as 4K |
+| fps | integer | No | `contact_sheet`: frames per second, 1–10; default 4 |
+| tile_width | integer | No | `contact_sheet`: width of one tile in pixels, 120–512; default the largest tiles that fit |
+| time_seconds | number | For `frame` | The moment of the frame, in seconds from the start |
+| image_url | string | For `crop` | An EvoLink file link or result link of a PNG, JPEG or WebP image, up to 20 MB and 36 megapixels |
+| x, y, width, height | integer | For `crop` | The rectangle, in pixels of the image; x and y are its top left corner |
+| image_urls | string[] | For `board` | 2–24 EvoLink image links, in the order they are numbered |
+| save | boolean | No | `contact_sheet`, `board`: also store the picture and return a link the user can open; a frame and a crop are always stored |
+
+```json
+{"name":"make_frames","arguments":{"action":"contact_sheet","video_url":"https://files.evolink.ai/YOUR_FILE.mp4","fps":2}}
+```
+
+- `contact_sheet`: frames of a video at a fixed rate, tiled into one picture with the time on each tile, plus how much each frame differs from the one before (0 to 1), which shows where the cuts are. One sheet covers at most 30 seconds, or 15 seconds of a video larger than 1440p; `next_start_seconds` says where the next sheet starts.
+- `frame`: the full-size frame at `time_seconds`, stored as a PNG file link that can be used as an image input, for example as a cover. When the PNG would be over 16 MB, as a detailed 4K frame can be, it is stored as a high-quality JPEG of the same size.
+- `crop`: an exact rectangle of an image, not scaled, stored as a PNG file link.
+- `board`: 2 to 24 images side by side, numbered in the order given, to review them together.
+
+Nothing is charged (`charged: "no"`). Sources must be EvoLink file links or result links; other links are refused. Each account can call `make_frames` 10 times a minute; the error says how long to wait. Stored pictures expire like other uploads.
 
 ### Results and errors
 
