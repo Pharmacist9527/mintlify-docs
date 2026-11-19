@@ -17,7 +17,7 @@ Los ejemplos con `name` y `arguments` describen llamadas a herramientas MCP, no 
 | search_docs | Busca en el índice oficial versionado de referencias de modelos | Ninguno |
 | get_model | Consulta los parámetros, el esquema, las referencias y los precios | Ninguno |
 | estimate_cost | Valida las entradas y estima el costo | Ninguno |
-| get_pricing_rules | Lee las reglas de precios públicas predeterminadas (tarifas de referencia, no una cotización) | Ninguno |
+| get_pricing_rules | Lee las reglas de precios: con sesión iniciada o clave API, los precios que se aplican a tu cuenta; si no, los públicos predeterminados (tarifas de referencia, no una cotización) | Ninguno |
 | generate_image | Genera o edita imágenes | De pago |
 | generate_video | Genera, edita o extiende video | De pago |
 | generate_audio | Genera música, canciones o voz | De pago |
@@ -84,7 +84,7 @@ Devuelve documents, total_matches, scope y la versión de la fuente. Busca en lo
 {"name":"get_model","arguments":{"model":"z-image-turbo"}}
 ```
 
-Devuelve el modelo canónico, los requisitos, los ejemplos, los precios públicos, reference_inputs, parameters_source y, cuando está disponible, input_schema con su fuente. Las referencias de parámetros están versionadas; la disponibilidad en la cuenta se consulta en vivo. Sigue las advertencias sobre información que falta en lugar de inventar valores predeterminados.
+Devuelve el modelo canónico, los requisitos, los ejemplos, los precios (con sesión iniciada o clave API, los que se aplican a tu cuenta), reference_inputs, parameters_source y, cuando está disponible, input_schema con su fuente. Las referencias de parámetros están versionadas; la disponibilidad en la cuenta se consulta en vivo. Sigue las advertencias sobre información que falta en lugar de inventar valores predeterminados.
 
 ### estimate_cost
 
@@ -101,7 +101,7 @@ Devuelve el modelo canónico, los requisitos, los ejemplos, los precios público
 {"name":"estimate_cost","arguments":{"model":"z-image-turbo","input":{"prompt":"A cream ceramic coffee cup on a white background"}}}
 ```
 
-Devuelve input_valid, problems, warnings, estimate, pricing_scope, final_budget_enforced y, cuando están disponibles, el saldo y los límites. El estado de la estimación puede ser estimated, partial, token_billed, needs_input o no_price; token_billed lleva un precio de referencia y se factura según los tokens reales. Cuando el precio depende de un uso que la entrada no indica, la estimación no tiene importe ni `pricing_quote`: `total_known` es false, `missing_usage` indica cada valor que falta y `usage_help` explica cómo proporcionarlo. Consulta [Facturación](/es/mcp/billing). Que la consulta funcione no demuestra que la entrada sea válida ni que la cotización esté completa.
+Devuelve input_valid, problems, warnings, estimate, pricing_scope (`account`: los precios que se aplican a tu cuenta; `public_default`: los precios públicos predeterminados, sin descuentos de cuenta), final_budget_enforced y, cuando están disponibles, el saldo y los límites. El estado de la estimación puede ser estimated, partial, token_billed, needs_input o no_price; token_billed lleva un precio de referencia y se factura según los tokens reales. Cuando el precio depende de un uso que la entrada no indica, la estimación no tiene importe ni `pricing_quote`: `total_known` es false, `missing_usage` indica cada valor que falta y `usage_help` explica cómo proporcionarlo. Consulta [Facturación](/es/mcp/billing). Que la consulta funcione no demuestra que la entrada sea válida ni que la cotización esté completa.
 
 Una estimación que se puede aprobar devuelve además `pricing_quote`, el registro de aprobación para exactamente esta entrada. Cuando el usuario apruebe, pásalo con la misma entrada a la herramienta de generación. Es válido durante 24 horas desde la estimación (`expires_at`), al precio aprobado o a uno inferior: la herramienta de generación vuelve a estimar y envía si el precio no ha cambiado o es inferior, también cuando las reglas de precios se hayan actualizado después. Un precio más alto se rechaza con `price_changed`, una entrada modificada con `quote_input_changed` y un `pricing_quote` caducado con `quote_expired`; en cada caso hacen falta una nueva estimación y una nueva aprobación. Con `inputs`, el resultado indica la estimación de cada entrada y el total, y un único `pricing_quote` aprueba exactamente esas entradas en ese orden. Nunca aprueba una sola entrada, y el `pricing_quote` de una sola entrada nunca aprueba un lote.
 
@@ -122,7 +122,7 @@ Esta herramienta no tiene el argumento `max_cost_usd` y no genera el quote_id lo
 {"name":"get_pricing_rules","arguments":{"model":"seedance-2.5-text-to-video","view":"full"}}
 ```
 
-Devuelve las reglas de precios públicas predeterminadas: la tarifa unitaria de cada componente de facturación (cadenas decimales), el cargo mínimo, los tramos y las expresiones completas, además de price_scope y price_selection. Son tarifas de referencia sin descuentos de cuenta, no la cotización de una tarea, ni una factura, ni un tope de gasto final; no multipliques las tarifas unitarias para obtener una factura. Usa `estimate_cost` para conocer el costo previsto de una generación concreta; evalúa las mismas reglas con la entrada real. Un resultado vacío significa que no hay reglas públicas que coincidan, no que el modelo sea gratis. En una lista, un modelo cuyas reglas no se pueden leer o están incompletas se omite, aparece en `rejected_models` y se indica en `warnings`; los demás modelos se devuelven con normalidad, y un modelo omitido no es gratis. La consulta de un solo modelo sigue fallando cuando sus reglas no se pueden leer.
+Devuelve las reglas de precios: la tarifa unitaria de cada componente de facturación (cadenas decimales), el cargo mínimo, los tramos y las expresiones completas, además de price_scope y price_selection. Con sesión iniciada o clave API, son los precios que se aplican a tu cuenta (`price_scope: account`); si no, los públicos predeterminados, sin descuentos de cuenta (`price_scope: public_default`). Son tarifas de referencia, no la cotización de una tarea, ni una factura, ni un tope de gasto final; no multipliques las tarifas unitarias para obtener una factura. Usa `estimate_cost` para conocer el costo previsto de una generación concreta; evalúa las mismas reglas con la entrada real. Un resultado vacío significa que no hay reglas que coincidan, no que el modelo sea gratis. En una lista, un modelo cuyas reglas no se pueden leer o están incompletas se omite, aparece en `rejected_models` y se indica en `warnings`; los demás modelos se devuelven con normalidad, y un modelo omitido no es gratis. La consulta de un solo modelo sigue fallando cuando sus reglas no se pueden leer.
 
 ### generate_image, generate_video, generate_audio
 
@@ -279,7 +279,7 @@ Solo para conexiones remotas con sesión iniciada. Devuelve las reglas paso a pa
 {"name":"get_media_workflow","arguments":{"workflow":"ad-rebuild","run_id":"RUN_ID_FROM_RESPONSE","estimate":{"output_seconds":10,"keyframes":5,"quality":"720p","aspect_ratio":"9:16","creator_images":1}}}
 ```
 
-La primera llamada devuelve el resumen, `run_id` y la lista de secciones. Con `estimate` y sin `section`, solo se devuelve la estimación: `total_credits`, `total_usd`, qué cubre, `valid_until` y si el saldo y cualquier límite de EvoLink MCP la cubren (`enough_balance`, `short_by_credits`, `enough_limit`). No se cobra nada. El total usa los precios públicos predeterminados y es válido durante 24 horas; los cargos se calculan según el uso real.
+La primera llamada devuelve el resumen, `run_id` y la lista de secciones. Con `estimate` y sin `section`, solo se devuelve la estimación: `total_credits`, `total_usd`, qué cubre, `valid_until` y si el saldo y cualquier límite de EvoLink MCP la cubren (`enough_balance`, `short_by_credits`, `enough_limit`). No se cobra nada. El total usa los precios que se aplican a tu cuenta (si no se pueden leer, los públicos predeterminados, y la estimación lo indica) y es válido durante 24 horas; los cargos se calculan según el uso real.
 
 ### analyze_video
 
@@ -361,7 +361,7 @@ Los ejemplos que usan name / arguments describen la entrada de las herramientas,
 | upload_file | /url o /base64 del servicio de archivos; el stdio local puede leer los directorios permitidos |
 | prepare_upload, get_upload | URL PUT alojada de un solo uso y su estado; la recuperación de comprobantes depende de la compatibilidad del servicio de archivos |
 
-Los parámetros del modelo van en arguments.input, y el servidor los convierte en solicitudes REST. media_seconds es una indicación para la facturación; max_cost_usd solo comprueba las estimaciones antes del envío. El MCP estima a partir de las reglas de precios públicas (tarifas de referencia, sin descuentos de cuenta) y sigue sin tener un tope de la liquidación final.
+Los parámetros del modelo van en arguments.input, y el servidor los convierte en solicitudes REST. media_seconds es una indicación para la facturación; max_cost_usd solo comprueba las estimaciones antes del envío. Con sesión iniciada o clave API, el MCP estima con los precios que se aplican a tu cuenta; si no, a partir de las reglas de precios públicas predeterminadas (tarifas de referencia, sin descuentos de cuenta). Sigue sin tener un tope de la liquidación final.
 
 ### Subidas, recuperación y acceso
 
