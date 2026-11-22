@@ -1,12 +1,12 @@
 ---
 title: "MCP 工具与接口参考"
-description: "20 个工具的参数、示例、结果、协议与后台接口映射"
+description: "22 个工具的参数、示例、结果、协议与后台接口映射"
 ---
 
 <span id="mcp-tools" />
 ## MCP 工具参考
 
-本页说明远程 OAuth MCP 的 20 个工具。三个工作流工具（`get_media_workflow`、`analyze_video`、`get_video_analysis`）和 `make_frames` 只提供给已登录的远程连接。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
+本页说明远程 OAuth MCP 的 22 个工具。五个工作流工具（`get_media_workflow`、`analyze_video`、`get_video_analysis`、`generate_workflow_media`、`record_workflow_delivery`）和 `make_frames` 只提供给已登录的远程连接。工具名以实际 `tools/list` 为准。本地 stdio 不提供 `prepare_upload` / `get_upload`，`upload_file` 可增加已允许目录的本地路径。
 
 JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 REST 请求体；它们也不代表已批准费用。
 
@@ -31,6 +31,8 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 | get_media_workflow | 读取工作流的分步规则和一个预估总价 | 无 |
 | analyze_video | 为工作流的某一步分析视频 | 有，按 token |
 | get_video_analysis | 取回还在进行的视频分析 | 无 |
+| generate_workflow_media | 把一次付费生成作为工作流某一次运行的一个步骤提交 | 有 |
+| record_workflow_delivery | 记录工作流某一次运行交付的是哪一条已完成的视频 | 无 |
 | make_frames | 为不能运行命令的助手抽帧、裁剪、做视频总览图和带编号的拼图 | 无 |
 
 ### search_models
@@ -142,6 +144,7 @@ JSON 中的 `name` / `arguments` 表示让 MCP 客户端调用工具，不是 RE
 | media_seconds | number | 否 | 大于 0、不超过 3600；仅估价提示 |
 | wait_seconds | integer | 否 | 0–40；提交后等结果的秒数。图片默认 40，视频和音频默认 0；0 表示提交后马上返回 task_id。整批只能用 0 |
 | skip_estimate | boolean | 否 | 只在用户明确说不用估价、不用确认时使用：不估价，直接提交。见[不估价直接生成](#skip-estimate) |
+| workflow | object | 否 | 只在 EvoLink 工作流里使用：`run_id` 和 `step`。工作流里用的是 generate_workflow_media，它必须带这个参数 |
 
 先查模型/参数、估价、展示限制并等待明确批准，再调用；用户明确说不用估价时除外（见下文）。以下只是调用形状：
 
@@ -293,7 +296,8 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 | run_id | string | 是 | 来自 get_media_workflow |
 | step | string | 是 | 工作流的步骤名，例如 `reference_analysis` 或 `delivery_check` |
 | purpose | string | 是 | `breakdown`、`sound` 或 `compare` |
-| video_url | string | 是 | EvoLink 文件链接（上传得到）或 EvoLink 视频任务的结果链接；MP4 或 MOV，不超过 30 秒 |
+| video_url | string | `video_url` 和 `input_task_id` 二选一 | EvoLink 文件链接（上传得到）或 EvoLink 视频任务的结果链接；MP4 或 MOV，不超过 30 秒 |
+| input_task_id | string | `video_url` 和 `input_task_id` 二选一 | 同一账户里一个已完成的视频任务的 ID。分析时读取它的视频，这次检查会和这个任务记在一起 |
 | target | string | 仅 `compare` 需要 | 用来对照检查视频的计划 |
 | attempt | integer | 否 | 默认 1；只有报错的下一步提示这样做时才加大 |
 
@@ -301,7 +305,11 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-返回 `status`、`analysis`、`analysis_id`、token `usage`、`charged` 和 `charged_by_this_call`。扣费之前会先检查文件；读不到的链接、不是视频的文件、过长的文件都会被拒绝并说明原因。**同样的输入在 24 小时内再次调用，返回第一次的结果，不再扣费**（`charged_by_this_call:false`），所以超时或连接断开后，原样再发一次同一个调用即可。分析较慢时返回 `status:processing` 和一个 `analysis_id`，交给 get_video_analysis。每个账户每分钟、每天能发起的分析次数有限；报错会说明要等多久。每一笔扣费在控制台历史记录里显示为一次 Gemini 模型调用。
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"delivery_check","purpose":"compare","input_task_id":"TASK_ID","target":"THE_PLAN"}}
+```
+
+`video_url` 和 `input_task_id` 只传其中一个。返回 `status`、`analysis`、`analysis_id`、token `usage`、`charged` 和 `charged_by_this_call`。扣费之前会先检查文件；读不到的链接、不是视频的文件、过长的文件都会被拒绝并说明原因。**同样的输入在 24 小时内再次调用，返回第一次的结果，不再扣费**（`charged_by_this_call:false`），所以超时或连接断开后，原样再发一次同一个调用即可。分析较慢时返回 `status:processing` 和一个 `analysis_id`，交给 get_video_analysis。每个账户每分钟、每天能发起的分析次数有限；报错会说明要等多久。每一笔扣费在控制台历史记录里显示为一次 Gemini 模型调用。
 
 ### get_video_analysis
 
@@ -312,6 +320,39 @@ task_ids 不能与 status/type/model/page/since/until 混用。批量返回 task
 ```
 
 最多等待约 30 秒，返回已完成的分析，或者再次返回 `status:processing`。免费。结果保留约 1 小时；ID 已经不在时，用同样的输入把原来的 analyze_video 调用再发一次。
+
+### generate_workflow_media
+
+仅限已登录的远程连接，在工作流规则里写明了生成步骤时提供。把一次付费生成作为工作流某一次运行的一个步骤提交，这样以后可以从这一次运行找到这个任务。估价、批准、价格和重试都和 generate_image、generate_video、generate_audio 一样，其他参数也一样。
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| kind | string | 是 | `image`、`video` 或 `audio`：模型的类型 |
+| workflow | object | 是 | `run_id`（来自 get_media_workflow）和 `step`（工作流规则里写明的生成步骤，例如 `keyframe` 或 `final_video`） |
+| model | string | 是 | 这一类型的模型 |
+| 其他参数 | | | 和生成工具一样：`input`、`inputs`、`pricing_quote`、`client_request_id`、`wait_seconds` 等 |
+
+```json
+{"name":"generate_workflow_media","arguments":{"kind":"video","model":"MODEL_ID","input":{"prompt":"..."},"pricing_quote":{"...":"from estimate_cost"},"workflow":{"run_id":"RUN_ID_FROM_RESPONSE","step":"final_video"}}}
+```
+
+返回的内容和生成工具一样。给出的步骤如果不是这一次运行里这一类型的生成步骤，会在提交之前被拒绝，不产生任何费用。把任务和它所属的运行关联起来只是一条记录：不改变价格，也不改变结果；记录做不成时，生成照样提交。
+
+### record_workflow_delivery
+
+仅限已登录的远程连接，和 generate_workflow_media 一起提供。免费。记录工作流某一次运行交付的是哪一条已完成的视频。
+
+| 参数 | 类型 | 必填 | 默认/范围 |
+|---|---|---|---|
+| run_id | string | 是 | 来自 get_media_workflow |
+| task_id | string | 是 | 这一次运行里生成的一个已完成的视频任务 |
+| previous_task_id | string | 否 | 只在替换之前的选择时使用：之前记录的那个任务 |
+
+```json
+{"name":"record_workflow_delivery","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","task_id":"TASK_ID"}}
+```
+
+返回 `delivered_task_id`。不是这一次运行、这个账户里已完成的视频任务，会被拒绝。如果暂时记录不了这个选择，照原计划交付视频，稍后再试。
 
 ### make_frames
 

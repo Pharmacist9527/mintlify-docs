@@ -1,12 +1,12 @@
 ---
 title: "MCP tool and API reference"
-description: "Parameters, examples, results, protocol, and backend mapping for 20 tools"
+description: "Parameters, examples, results, protocol, and backend mapping for 22 tools"
 ---
 
 <span id="mcp-tools" />
 ## MCP tool reference
 
-This page describes the 20 tools of the OAuth remote MCP. The three workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`) and `make_frames` are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
+This page describes the 22 tools of the OAuth remote MCP. The five workflow tools (`get_media_workflow`, `analyze_video`, `get_video_analysis`, `generate_workflow_media`, `record_workflow_delivery`) and `make_frames` are offered to signed-in remote connections only. The connected server's `tools/list` is authoritative. Local stdio does not expose `prepare_upload` or `get_upload`; its `upload_file` also accepts paths within explicitly allowed directories.
 
 The `name` and `arguments` examples describe MCP tool calls, not REST request bodies. An example does not authorize a paid generation.
 
@@ -31,6 +31,8 @@ The `name` and `arguments` examples describe MCP tool calls, not REST request bo
 | get_media_workflow | Read a workflow's step rules and one estimated total | None |
 | analyze_video | Analyze a video for a workflow step | Paid, by tokens |
 | get_video_analysis | Collect a video analysis that was still running | None |
+| generate_workflow_media | Submit a paid generation as a step of a workflow run | Paid |
+| record_workflow_delivery | Record which finished video of a workflow run was delivered | None |
 | make_frames | Frames, crops and contact sheets of a video, and numbered image boards, for assistants that cannot run commands | None |
 
 ### search_models
@@ -142,6 +144,7 @@ Choose the tool matching the output type. They share these top-level arguments:
 | media_seconds | number | No | Greater than 0 and at most 3600; estimation hint only |
 | wait_seconds | integer | No | 0–40; how long to wait for the result after submitting. Images default to 40, video and audio to 0; 0 returns the task_id right away. A batch accepts only 0 |
 | skip_estimate | boolean | No | Only when the user explicitly said not to estimate or confirm; submits without an approved estimate. See [generating without an estimate](#skip-estimate) |
+| workflow | object | No | Only inside an EvoLink workflow: `run_id` and `step`. A workflow uses generate_workflow_media, which requires it |
 
 Inspect the model and inputs, estimate the complete request, disclose limitations, and obtain explicit cost approval before calling, unless the user opted out of estimates (below). This is an illustrative call shape:
 
@@ -293,7 +296,8 @@ Signed-in remote connections only. Analyzes one video for a workflow step. Bille
 | run_id | string | Yes | From get_media_workflow |
 | step | string | Yes | A step name of the workflow, for example `reference_analysis` or `delivery_check` |
 | purpose | string | Yes | `breakdown`, `sound` or `compare` |
-| video_url | string | Yes | An EvoLink file link (from an upload) or the result link of an EvoLink video task; MP4 or MOV, 30 seconds or shorter |
+| video_url | string | One of `video_url` and `input_task_id` | An EvoLink file link (from an upload) or the result link of an EvoLink video task; MP4 or MOV, 30 seconds or shorter |
+| input_task_id | string | One of `video_url` and `input_task_id` | The ID of a completed video task of the same account. Its video is read, and the check is recorded with that task |
 | target | string | Only for `compare` | The plan the video is checked against |
 | attempt | integer | No | 1 by default; raise it only when an error's next step says so |
 
@@ -301,7 +305,11 @@ Signed-in remote connections only. Analyzes one video for a workflow step. Bille
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-Returns `status`, `analysis`, `analysis_id`, token `usage`, `charged` and `charged_by_this_call`. The file is checked before anything is charged; a link that cannot be read, a file that is not a video or one that is too long is refused with the reason. **The same inputs within 24 hours return the first result and are not charged again** (`charged_by_this_call:false`), so after a timeout or a dropped connection, send exactly the same call. A slow analysis returns `status:processing` with an `analysis_id` for get_video_analysis. Each account can start a limited number of analyses per minute and per day; the error says how long to wait. Each charge appears in the dashboard history as a Gemini model call.
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"delivery_check","purpose":"compare","input_task_id":"TASK_ID","target":"THE_PLAN"}}
+```
+
+Pass exactly one of `video_url` and `input_task_id`. Returns `status`, `analysis`, `analysis_id`, token `usage`, `charged` and `charged_by_this_call`. The file is checked before anything is charged; a link that cannot be read, a file that is not a video or one that is too long is refused with the reason. **The same inputs within 24 hours return the first result and are not charged again** (`charged_by_this_call:false`), so after a timeout or a dropped connection, send exactly the same call. A slow analysis returns `status:processing` with an `analysis_id` for get_video_analysis. Each account can start a limited number of analyses per minute and per day; the error says how long to wait. Each charge appears in the dashboard history as a Gemini model call.
 
 ### get_video_analysis
 
@@ -312,6 +320,39 @@ Signed-in remote connections only. Required `analysis_id`, from analyze_video:
 ```
 
 Waits up to about 30 seconds and returns the finished analysis, or `status:processing` again. Free. Results are kept for about an hour; when an ID is no longer held, send the original analyze_video call again with the same inputs.
+
+### generate_workflow_media
+
+Signed-in remote connections only, offered when the workflow's rules name generation steps. Submits one paid generation as a step of a workflow run, so that the task can be found from its run later. Estimates, approval, prices and retries are those of generate_image, generate_video and generate_audio, and so are the other parameters.
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| kind | string | Yes | `image`, `video` or `audio`: the kind of the model |
+| workflow | object | Yes | `run_id`, from get_media_workflow, and `step`, a generation step the workflow's rules name (for example `keyframe` or `final_video`) |
+| model | string | Yes | A model of that kind |
+| other parameters | | | As for the generate tools: `input`, `inputs`, `pricing_quote`, `client_request_id`, `wait_seconds` and the rest |
+
+```json
+{"name":"generate_workflow_media","arguments":{"kind":"video","model":"MODEL_ID","input":{"prompt":"..."},"pricing_quote":{"...":"from estimate_cost"},"workflow":{"run_id":"RUN_ID_FROM_RESPONSE","step":"final_video"}}}
+```
+
+Returns what the generate tools return. A step that is not a generation step of that run for the given kind is refused before anything is submitted, and nothing is charged. Tying a task to its run is a record only: it changes neither the price nor the result, and when the record cannot be made the generation is submitted all the same.
+
+### record_workflow_delivery
+
+Signed-in remote connections only, offered together with generate_workflow_media. Free. Records which completed video of a workflow run was delivered.
+
+| Parameter | Type | Required | Default / range |
+|---|---|---|---|
+| run_id | string | Yes | From get_media_workflow |
+| task_id | string | Yes | A completed video task generated in this run |
+| previous_task_id | string | No | Only when replacing an earlier selection: the task recorded before |
+
+```json
+{"name":"record_workflow_delivery","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","task_id":"TASK_ID"}}
+```
+
+Returns `delivered_task_id`. A task that is not a completed video of this run and account is refused. If the selection cannot be recorded just now, deliver the video as planned and try again later.
 
 ### make_frames
 
