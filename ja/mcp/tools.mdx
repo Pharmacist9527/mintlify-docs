@@ -1,12 +1,12 @@
 ---
 title: "MCP ツールと API のリファレンス"
-description: "20個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
+description: "22個のツールのパラメータ、例、結果、プロトコル、バックエンドとの対応"
 ---
 
 <span id="mcp-tools" />
 ## MCP ツールリファレンス
 
-このページでは、OAuth を使うリモート MCP の20個のツールを説明します。3つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`）と `make_frames` は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
+このページでは、OAuth を使うリモート MCP の22個のツールを説明します。5つのワークフローツール（`get_media_workflow`、`analyze_video`、`get_video_analysis`、`generate_workflow_media`、`record_workflow_delivery`）と `make_frames` は、ログイン済みのリモート接続にのみ提供されます。接続先サーバーの `tools/list` が正となります。ローカル stdio は `prepare_upload` と `get_upload` を提供しません。ローカル stdio の `upload_file` は、明示的に許可されたディレクトリ内のパスも受け付けます。
 
 `name` と `arguments` を使った例は、MCP のツール呼び出しを表すもので、REST のリクエストボディではありません。例があるからといって、有料生成が許可されるわけではありません。
 
@@ -31,6 +31,8 @@ description: "20個のツールのパラメータ、例、結果、プロトコ�
 | get_media_workflow | ワークフローのステップのルールと、1つの見積もり合計額を読む | なし |
 | analyze_video | ワークフローのステップ用に動画を分析する | 有料（トークン課金） |
 | get_video_analysis | まだ実行中だった動画分析を取得する | なし |
+| generate_workflow_media | 有料生成を、ワークフローの実行のステップとして送信する | 有料 |
+| record_workflow_delivery | ワークフローの実行で完成した動画のうち、どれが受け渡されたかを記録する | なし |
 | make_frames | コマンドを実行できないアシスタント向けの、動画のフレーム、切り抜き、一覧シートと、番号付きの画像ボード | なし |
 
 ### search_models
@@ -142,6 +144,7 @@ input_valid、problems、warnings、estimate、pricing_scope（`account` はア�
 | media_seconds | number | いいえ | 0 より大きく、3600 以下。見積もり用のヒントとしてのみ使われます |
 | wait_seconds | integer | いいえ | 0–40。送信後に結果を待つ時間です。デフォルトは、画像が 40、動画と音声が 0 です。0 を指定すると、task_id がすぐに返されます。バッチでは 0 だけを指定できます |
 | skip_estimate | boolean | いいえ | ユーザーが、見積もりや確認は不要だと明確に述べた場合にだけ使います。承認済みの見積もりなしで送信します。[見積もりなしで生成する](#skip-estimate)を参照してください |
+| workflow | object | いいえ | EvoLink のワークフローの中でだけ使います：`run_id` と `step`。ワークフローでは generate_workflow_media を使い、そこではこのパラメータが必須です |
 
 呼び出す前に、モデルと入力を確認し、リクエスト全体を見積もり、制限を伝えたうえで、料金について明確な承認を得てください。ただし、ユーザーが見積もりを不要とした場合は除きます（後述）。次は、呼び出しの形を示す例です：
 
@@ -293,7 +296,8 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 | run_id | string | はい | get_media_workflow から取得します |
 | step | string | はい | ワークフローのステップ名。たとえば `reference_analysis` や `delivery_check` |
 | purpose | string | はい | `breakdown`、`sound`、`compare` のいずれか |
-| video_url | string | はい | EvoLink のファイルリンク（アップロードで得たもの）、または EvoLink の動画タスクの結果のリンク。MP4 または MOV で、30秒以内 |
+| video_url | string | `video_url` と `input_task_id` のどちらか一方 | EvoLink のファイルリンク（アップロードで得たもの）、または EvoLink の動画タスクの結果のリンク。MP4 または MOV で、30秒以内 |
+| input_task_id | string | `video_url` と `input_task_id` のどちらか一方 | 同じアカウントの、完了した動画タスクの ID。そのタスクの動画が読み取られ、この確認はそのタスクと合わせて記録されます |
 | target | string | `compare` の場合のみ | 動画を照らし合わせる対象のプラン |
 | attempt | integer | いいえ | デフォルトは 1。エラーに示された次の手順で、そうするよう指示された場合にだけ、値を上げます |
 
@@ -301,7 +305,11 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-`status`、`analysis`、`analysis_id`、トークンの `usage`、`charged`、`charged_by_this_call` を返します。ファイルは、課金が発生する前に確認されます。読み取れないリンク、動画ではないファイル、長すぎるファイルは、理由を示したうえで拒否されます。**24時間以内の同じ入力に対しては、最初の結果が返され、もう一度課金されることはありません**（`charged_by_this_call:false`）。そのため、タイムアウトしたあとや接続が切れたあとは、まったく同じ呼び出しを送信してください。分析に時間がかかる場合は、`status:processing` と、get_video_analysis に渡す `analysis_id` が返されます。各アカウントが開始できる分析の数には、1分あたりと1日あたりの上限があります。どれだけ待てばよいかは、エラーに示されます。課金はそれぞれ、ダッシュボードの履歴に Gemini モデルの呼び出しとして表示されます。
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"delivery_check","purpose":"compare","input_task_id":"TASK_ID","target":"THE_PLAN"}}
+```
+
+`video_url` と `input_task_id` は、どちらか一方だけを渡してください。`status`、`analysis`、`analysis_id`、トークンの `usage`、`charged`、`charged_by_this_call` を返します。ファイルは、課金が発生する前に確認されます。読み取れないリンク、動画ではないファイル、長すぎるファイルは、理由を示したうえで拒否されます。**24時間以内の同じ入力に対しては、最初の結果が返され、もう一度課金されることはありません**（`charged_by_this_call:false`）。そのため、タイムアウトしたあとや接続が切れたあとは、まったく同じ呼び出しを送信してください。分析に時間がかかる場合は、`status:processing` と、get_video_analysis に渡す `analysis_id` が返されます。各アカウントが開始できる分析の数には、1分あたりと1日あたりの上限があります。どれだけ待てばよいかは、エラーに示されます。課金はそれぞれ、ダッシュボードの履歴に Gemini モデルの呼び出しとして表示されます。
 
 ### get_video_analysis
 
@@ -312,6 +320,39 @@ upload_id、upload_url、method:PUT、command、max_bytes、expires_at を返し
 ```
 
 最大で約30秒待機し、完了した分析を返すか、もう一度 `status:processing` を返します。無料です。結果は約1時間保持されます。ID が保持されなくなっている場合は、元の analyze_video の呼び出しを、同じ入力でもう一度送信してください。
+
+### generate_workflow_media
+
+ログイン済みのリモート接続でのみ、ワークフローのルールに生成のステップが示されている場合に提供されます。有料生成を1件、ワークフローの実行のステップとして送信します。これにより、あとでその実行からタスクを見つけられます。見積もり、承認、価格、再試行は generate_image、generate_video、generate_audio と同じで、そのほかのパラメータも同じです。
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| kind | string | はい | `image`、`video`、`audio` のいずれか：モデルの種類 |
+| workflow | object | はい | get_media_workflow から取得した `run_id` と、ワークフローのルールに示された生成のステップである `step`（たとえば `keyframe` や `final_video`） |
+| model | string | はい | その種類のモデル |
+| そのほかのパラメータ | | | 生成ツールと同じです：`input`、`inputs`、`pricing_quote`、`client_request_id`、`wait_seconds` など |
+
+```json
+{"name":"generate_workflow_media","arguments":{"kind":"video","model":"MODEL_ID","input":{"prompt":"..."},"pricing_quote":{"...":"from estimate_cost"},"workflow":{"run_id":"RUN_ID_FROM_RESPONSE","step":"final_video"}}}
+```
+
+生成ツールが返すものと同じものを返します。指定したステップが、その実行における、指定した種類の生成のステップでない場合は、何も送信されないうちに拒否され、課金は発生しません。タスクをその実行に結び付けるのは、記録のためだけです。価格も結果も変わりません。記録を作成できない場合でも、生成はそのまま送信されます。
+
+### record_workflow_delivery
+
+ログイン済みのリモート接続でのみ、generate_workflow_media と一緒に提供されます。無料です。ワークフローの実行で完了した動画のうち、どれが受け渡されたかを記録します。
+
+| パラメータ | 型 | 必須 | デフォルト／範囲 |
+|---|---|---|---|
+| run_id | string | はい | get_media_workflow から取得します |
+| task_id | string | はい | この実行で生成された、完了した動画タスク |
+| previous_task_id | string | いいえ | 以前の選択を置き換える場合にのみ指定します：以前に記録されたタスク |
+
+```json
+{"name":"record_workflow_delivery","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","task_id":"TASK_ID"}}
+```
+
+`delivered_task_id` を返します。この実行とこのアカウントの、完了した動画でないタスクは拒否されます。選択をすぐに記録できない場合は、予定どおり動画を受け渡し、あとでもう一度試してください。
 
 ### make_frames
 

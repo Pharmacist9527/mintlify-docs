@@ -1,12 +1,12 @@
 ---
 title: "Referencia de herramientas y de la API de MCP"
-description: "Parámetros, ejemplos, resultados, protocolo y correspondencia con el backend de las 20 herramientas"
+description: "Parámetros, ejemplos, resultados, protocolo y correspondencia con el backend de las 22 herramientas"
 ---
 
 <span id="mcp-tools" />
 ## Referencia de herramientas de MCP
 
-Esta página describe las 20 herramientas del MCP remoto con OAuth. Las tres herramientas de flujo de trabajo (`get_media_workflow`, `analyze_video`, `get_video_analysis`) y `make_frames` solo se ofrecen a las conexiones remotas con sesión iniciada. La referencia válida es el `tools/list` del servidor conectado. El stdio local no ofrece `prepare_upload` ni `get_upload`; su `upload_file` acepta además rutas dentro de directorios permitidos explícitamente.
+Esta página describe las 22 herramientas del MCP remoto con OAuth. Las cinco herramientas de flujo de trabajo (`get_media_workflow`, `analyze_video`, `get_video_analysis`, `generate_workflow_media`, `record_workflow_delivery`) y `make_frames` solo se ofrecen a las conexiones remotas con sesión iniciada. La referencia válida es el `tools/list` del servidor conectado. El stdio local no ofrece `prepare_upload` ni `get_upload`; su `upload_file` acepta además rutas dentro de directorios permitidos explícitamente.
 
 Los ejemplos con `name` y `arguments` describen llamadas a herramientas MCP, no cuerpos de solicitudes REST. Un ejemplo no autoriza ninguna generación de pago.
 
@@ -31,6 +31,8 @@ Los ejemplos con `name` y `arguments` describen llamadas a herramientas MCP, no 
 | get_media_workflow | Lee las reglas paso a paso de un flujo de trabajo y un único total estimado | Ninguno |
 | analyze_video | Analiza un video para un paso de un flujo de trabajo | De pago, por tokens |
 | get_video_analysis | Recoge un análisis de video que seguía en curso | Ninguno |
+| generate_workflow_media | Envía una generación de pago como paso de una ejecución de un flujo de trabajo | De pago |
+| record_workflow_delivery | Registra cuál de los videos terminados de una ejecución de un flujo de trabajo se entregó | Ninguno |
 | make_frames | Fotogramas, recortes y hojas de fotogramas de un video, y paneles numerados de imágenes, para asistentes que no pueden ejecutar comandos | Ninguno |
 
 ### search_models
@@ -142,6 +144,7 @@ Elige la herramienta que corresponda al tipo de salida. Comparten estos argument
 | media_seconds | number | No | Mayor que 0 y como máximo 3600; solo es una indicación para la estimación |
 | wait_seconds | integer | No | 0–40; cuánto tiempo se espera el resultado después de enviar. El valor predeterminado es 40 para imágenes y 0 para video y audio; 0 devuelve el task_id de inmediato. Un lote solo acepta 0 |
 | skip_estimate | boolean | No | Solo cuando el usuario haya dicho explícitamente que no hace falta estimar ni confirmar; envía sin una estimación aprobada. Consulta [Generar sin estimación](#skip-estimate) |
+| workflow | object | No | Solo dentro de un flujo de trabajo de EvoLink: `run_id` y `step`. Un flujo de trabajo usa generate_workflow_media, que lo exige |
 
 Revisa el modelo y las entradas, estima la solicitud completa, informa de las limitaciones y obtén la aprobación explícita del costo antes de llamar, salvo que el usuario haya renunciado a las estimaciones (véase más abajo). Este es un ejemplo ilustrativo del formato de la llamada:
 
@@ -293,7 +296,8 @@ Solo para conexiones remotas con sesión iniciada. Analiza un video para un paso
 | run_id | string | Sí | Procede de get_media_workflow |
 | step | string | Sí | Nombre de un paso del flujo de trabajo, por ejemplo `reference_analysis` o `delivery_check` |
 | purpose | string | Sí | `breakdown`, `sound` o `compare` |
-| video_url | string | Sí | Un enlace de archivo de EvoLink (obtenido de una subida) o el enlace del resultado de una tarea de video de EvoLink; MP4 o MOV, de 30 segundos o menos |
+| video_url | string | Uno de los dos: `video_url` o `input_task_id` | Un enlace de archivo de EvoLink (obtenido de una subida) o el enlace del resultado de una tarea de video de EvoLink; MP4 o MOV, de 30 segundos o menos |
+| input_task_id | string | Uno de los dos: `video_url` o `input_task_id` | El identificador de una tarea de video completada de la misma cuenta. Se lee su video, y la comprobación queda registrada con esa tarea |
 | target | string | Solo para `compare` | El plan con el que se compara el video |
 | attempt | integer | No | 1 de forma predeterminada; auméntalo solo cuando lo indique el siguiente paso de un error |
 
@@ -301,7 +305,11 @@ Solo para conexiones remotas con sesión iniciada. Analiza un video para un paso
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-Devuelve `status`, `analysis`, `analysis_id`, el `usage` de tokens, `charged` y `charged_by_this_call`. El archivo se comprueba antes de que se cobre nada; un enlace que no se puede leer, un archivo que no es un video o uno demasiado largo se rechazan indicando el motivo. **Las mismas entradas dentro de un plazo de 24 horas devuelven el primer resultado y no se vuelven a cobrar** (`charged_by_this_call:false`), así que, si se agota el tiempo de espera o se corta la conexión, envía exactamente la misma llamada. Un análisis lento devuelve `status:processing` con un `analysis_id` para get_video_analysis. Cada cuenta puede iniciar un número limitado de análisis por minuto y por día; el error indica cuánto hay que esperar. Cada cargo aparece en el historial de la consola como una llamada a un modelo de Gemini.
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"delivery_check","purpose":"compare","input_task_id":"TASK_ID","target":"THE_PLAN"}}
+```
+
+Pasa exactamente uno de los dos: `video_url` o `input_task_id`. Devuelve `status`, `analysis`, `analysis_id`, el `usage` de tokens, `charged` y `charged_by_this_call`. El archivo se comprueba antes de que se cobre nada; un enlace que no se puede leer, un archivo que no es un video o uno demasiado largo se rechazan indicando el motivo. **Las mismas entradas dentro de un plazo de 24 horas devuelven el primer resultado y no se vuelven a cobrar** (`charged_by_this_call:false`), así que, si se agota el tiempo de espera o se corta la conexión, envía exactamente la misma llamada. Un análisis lento devuelve `status:processing` con un `analysis_id` para get_video_analysis. Cada cuenta puede iniciar un número limitado de análisis por minuto y por día; el error indica cuánto hay que esperar. Cada cargo aparece en el historial de la consola como una llamada a un modelo de Gemini.
 
 ### get_video_analysis
 
@@ -312,6 +320,39 @@ Solo para conexiones remotas con sesión iniciada. `analysis_id` es obligatorio 
 ```
 
 Espera hasta unos 30 segundos y devuelve el análisis terminado o, de nuevo, `status:processing`. Es gratis. Los resultados se conservan aproximadamente una hora; cuando un identificador ya no se conserve, vuelve a enviar la llamada original a analyze_video con las mismas entradas.
+
+### generate_workflow_media
+
+Solo para conexiones remotas con sesión iniciada; se ofrece cuando las reglas del flujo de trabajo indican pasos de generación. Envía una generación de pago como paso de una ejecución de un flujo de trabajo, para que más adelante la tarea se pueda encontrar a partir de su ejecución. Las estimaciones, la aprobación, los precios y los reintentos son los de generate_image, generate_video y generate_audio, y también lo son los demás parámetros.
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| kind | string | Sí | `image`, `video` o `audio`: el tipo del modelo |
+| workflow | object | Sí | `run_id`, que procede de get_media_workflow, y `step`, un paso de generación que indican las reglas del flujo de trabajo (por ejemplo `keyframe` o `final_video`) |
+| model | string | Sí | Un modelo de ese tipo |
+| otros parámetros | | | Como en las herramientas de generación: `input`, `inputs`, `pricing_quote`, `client_request_id`, `wait_seconds` y los demás |
+
+```json
+{"name":"generate_workflow_media","arguments":{"kind":"video","model":"MODEL_ID","input":{"prompt":"..."},"pricing_quote":{"...":"from estimate_cost"},"workflow":{"run_id":"RUN_ID_FROM_RESPONSE","step":"final_video"}}}
+```
+
+Devuelve lo mismo que las herramientas de generación. Un paso que no es un paso de generación de esa ejecución para el tipo indicado se rechaza antes de enviar nada, y no se cobra nada. Vincular una tarea con su ejecución es solo un registro: no cambia ni el precio ni el resultado, y cuando el registro no se puede hacer, la generación se envía igualmente.
+
+### record_workflow_delivery
+
+Solo para conexiones remotas con sesión iniciada, junto con generate_workflow_media. Es gratis. Registra cuál de los videos completados de una ejecución de un flujo de trabajo se entregó.
+
+| Parámetro | Tipo | Obligatorio | Predeterminado / rango |
+|---|---|---|---|
+| run_id | string | Sí | Procede de get_media_workflow |
+| task_id | string | Sí | Una tarea de video completada, generada en esta ejecución |
+| previous_task_id | string | No | Solo al sustituir una selección anterior: la tarea registrada antes |
+
+```json
+{"name":"record_workflow_delivery","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","task_id":"TASK_ID"}}
+```
+
+Devuelve `delivered_task_id`. Una tarea que no es un video completado de esta ejecución y de esta cuenta se rechaza. Si la selección no se puede registrar en este momento, entrega el video como estaba previsto y vuelve a intentarlo más tarde.
 
 ### make_frames
 

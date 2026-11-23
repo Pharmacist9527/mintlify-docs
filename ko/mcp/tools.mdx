@@ -1,12 +1,12 @@
 ---
 title: "MCP 도구 및 API 레퍼런스"
-description: "도구 20개의 매개변수, 예시, 결과, 프로토콜, 백엔드 매핑"
+description: "도구 22개의 매개변수, 예시, 결과, 프로토콜, 백엔드 매핑"
 ---
 
 <span id="mcp-tools" />
 ## MCP 도구 레퍼런스
 
-이 페이지는 OAuth 원격 MCP의 도구 20개를 설명합니다. 워크플로 도구 세 개(`get_media_workflow`, `analyze_video`, `get_video_analysis`)와 `make_frames`는 로그인한 원격 연결에만 제공됩니다. 연결된 서버의 `tools/list`가 기준입니다. 로컬 stdio는 `prepare_upload`와 `get_upload`를 제공하지 않으며, 로컬 stdio의 `upload_file`은 명시적으로 허용된 디렉토리 안의 경로도 받습니다.
+이 페이지는 OAuth 원격 MCP의 도구 22개를 설명합니다. 워크플로 도구 다섯 개(`get_media_workflow`, `analyze_video`, `get_video_analysis`, `generate_workflow_media`, `record_workflow_delivery`)와 `make_frames`는 로그인한 원격 연결에만 제공됩니다. 연결된 서버의 `tools/list`가 기준입니다. 로컬 stdio는 `prepare_upload`와 `get_upload`를 제공하지 않으며, 로컬 stdio의 `upload_file`은 명시적으로 허용된 디렉토리 안의 경로도 받습니다.
 
 `name`과 `arguments`로 된 예시는 MCP 도구 호출을 나타내며, REST 요청 본문이 아닙니다. 예시가 있다고 해서 유료 생성이 승인되는 것은 아닙니다.
 
@@ -31,6 +31,8 @@ description: "도구 20개의 매개변수, 예시, 결과, 프로토콜, 백엔
 | get_media_workflow | 워크플로의 단계별 규칙과 예상 합계 하나 읽기 | 없음 |
 | analyze_video | 워크플로의 한 단계를 위한 영상 분석 | 유료, 토큰 기준 |
 | get_video_analysis | 아직 실행 중이던 영상 분석 결과 수집 | 없음 |
+| generate_workflow_media | 워크플로 실행의 한 단계로 유료 생성 제출 | 유료 |
+| record_workflow_delivery | 워크플로 실행에서 완성된 영상 중 어느 것이 전달되었는지 기록 | 없음 |
 | make_frames | 명령을 실행할 수 없는 어시스턴트를 위한 영상의 프레임, 잘라내기, 프레임 시트, 번호가 붙은 이미지 보드 | 없음 |
 
 ### search_models
@@ -142,6 +144,7 @@ input_valid, problems, warnings, estimate, pricing_scope(`account`: 계정에 �
 | media_seconds | number | 아니요 | 0보다 크고 3600 이하. 예상 비용 산정용 힌트일 뿐입니다 |
 | wait_seconds | integer | 아니요 | 0–40. 제출한 뒤 결과를 기다리는 시간입니다. 이미지는 기본값 40, 영상과 오디오는 기본값 0입니다. 0이면 task_id를 바로 반환합니다. 배치는 0만 받습니다 |
 | skip_estimate | boolean | 아니요 | 사용자가 예상 비용 산정이나 확인을 하지 말라고 명시적으로 말한 경우에만 사용합니다. 승인된 예상 비용 없이 제출합니다. [예상 비용 산정 없이 생성하기](#skip-estimate) 참고 |
+| workflow | object | 아니요 | EvoLink 워크플로 안에서만 사용합니다: `run_id`와 `step`. 워크플로에서는 generate_workflow_media를 사용하며, 그 도구에서는 이 매개변수가 필수입니다 |
 
 호출하기 전에 모델과 입력을 확인하고, 요청 전체의 예상 비용을 산정하고, 제한 사항을 알리고, 비용에 대한 명시적인 승인을 받으세요. 단, 사용자가 예상 비용 산정을 생략하기로 한 경우(아래 참고)는 예외입니다. 아래는 호출 형식을 보여 주는 예시입니다:
 
@@ -293,7 +296,8 @@ upload_id, upload_url, method:PUT, command, max_bytes, expires_at을 반환합�
 | run_id | string | 예 | get_media_workflow에서 받은 값 |
 | step | string | 예 | 워크플로의 단계 이름. 예: `reference_analysis` 또는 `delivery_check` |
 | purpose | string | 예 | `breakdown`, `sound` 또는 `compare` |
-| video_url | string | 예 | EvoLink 파일 링크(업로드로 받은 링크) 또는 EvoLink 영상 작업의 결과 링크. MP4 또는 MOV, 30초 이하 |
+| video_url | string | `video_url`과 `input_task_id` 중 하나 | EvoLink 파일 링크(업로드로 받은 링크) 또는 EvoLink 영상 작업의 결과 링크. MP4 또는 MOV, 30초 이하 |
+| input_task_id | string | `video_url`과 `input_task_id` 중 하나 | 같은 계정의 완료된 영상 작업 ID. 그 작업의 영상을 읽으며, 이 검사는 그 작업과 함께 기록됩니다 |
 | target | string | `compare`일 때만 | 영상과 대조해 검사할 기준이 되는 계획 |
 | attempt | integer | 아니요 | 기본값 1. 오류의 다음 단계 안내에서 그렇게 하라고 할 때에만 올리세요 |
 
@@ -301,7 +305,11 @@ upload_id, upload_url, method:PUT, command, max_bytes, expires_at을 반환합�
 {"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"reference_analysis","purpose":"breakdown","video_url":"https://files.evolink.ai/YOUR_FILE.mp4"}}
 ```
 
-`status`, `analysis`, `analysis_id`, 토큰 `usage`, `charged`, `charged_by_this_call`을 반환합니다. 요금이 부과되기 전에 먼저 파일을 검사합니다. 읽을 수 없는 링크, 영상이 아닌 파일, 너무 긴 파일은 사유와 함께 거부됩니다. **24시간 이내에 같은 입력으로 호출하면 첫 결과가 반환되며 다시 과금되지 않습니다**(`charged_by_this_call:false`). 따라서 시간 초과나 연결 끊김이 발생한 뒤에는 완전히 같은 호출을 다시 보내세요. 분석이 오래 걸리면 `status:processing`과 함께 get_video_analysis에 사용할 `analysis_id`가 반환됩니다. 계정마다 분당, 그리고 하루에 시작할 수 있는 분석 횟수가 제한되어 있으며, 얼마나 기다려야 하는지는 오류에 나옵니다. 부과된 요금은 건마다 콘솔 기록에 Gemini 모델 호출로 표시됩니다.
+```json
+{"name":"analyze_video","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","step":"delivery_check","purpose":"compare","input_task_id":"TASK_ID","target":"THE_PLAN"}}
+```
+
+`video_url`과 `input_task_id` 중 정확히 하나만 전달하세요. `status`, `analysis`, `analysis_id`, 토큰 `usage`, `charged`, `charged_by_this_call`을 반환합니다. 요금이 부과되기 전에 먼저 파일을 검사합니다. 읽을 수 없는 링크, 영상이 아닌 파일, 너무 긴 파일은 사유와 함께 거부됩니다. **24시간 이내에 같은 입력으로 호출하면 첫 결과가 반환되며 다시 과금되지 않습니다**(`charged_by_this_call:false`). 따라서 시간 초과나 연결 끊김이 발생한 뒤에는 완전히 같은 호출을 다시 보내세요. 분석이 오래 걸리면 `status:processing`과 함께 get_video_analysis에 사용할 `analysis_id`가 반환됩니다. 계정마다 분당, 그리고 하루에 시작할 수 있는 분석 횟수가 제한되어 있으며, 얼마나 기다려야 하는지는 오류에 나옵니다. 부과된 요금은 건마다 콘솔 기록에 Gemini 모델 호출로 표시됩니다.
 
 ### get_video_analysis
 
@@ -312,6 +320,39 @@ upload_id, upload_url, method:PUT, command, max_bytes, expires_at을 반환합�
 ```
 
 최대 약 30초까지 기다린 뒤 완료된 분석을 반환하거나, 다시 `status:processing`을 반환합니다. 무료입니다. 결과는 약 한 시간 동안 보관됩니다. ID가 더 이상 보관되어 있지 않으면 원래의 analyze_video 호출을 같은 입력으로 다시 보내세요.
+
+### generate_workflow_media
+
+로그인한 원격 연결 전용이며, 워크플로 규칙에 생성 단계가 명시되어 있을 때 제공됩니다. 유료 생성 하나를 워크플로 실행의 한 단계로 제출하여, 나중에 그 실행에서 작업을 찾을 수 있게 합니다. 예상 비용 산정, 승인, 가격, 재시도는 generate_image, generate_video, generate_audio와 같으며, 나머지 매개변수도 같습니다.
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| kind | string | 예 | `image`, `video` 또는 `audio`: 모델의 유형 |
+| workflow | object | 예 | get_media_workflow에서 받은 `run_id`, 그리고 워크플로 규칙에 명시된 생성 단계인 `step`(예: `keyframe` 또는 `final_video`) |
+| model | string | 예 | 해당 유형의 모델 |
+| 나머지 매개변수 | | | 생성 도구와 같습니다: `input`, `inputs`, `pricing_quote`, `client_request_id`, `wait_seconds` 등 |
+
+```json
+{"name":"generate_workflow_media","arguments":{"kind":"video","model":"MODEL_ID","input":{"prompt":"..."},"pricing_quote":{"...":"from estimate_cost"},"workflow":{"run_id":"RUN_ID_FROM_RESPONSE","step":"final_video"}}}
+```
+
+생성 도구가 반환하는 것과 같은 내용을 반환합니다. 지정한 단계가 그 실행에서 해당 유형의 생성 단계가 아니면 제출이 이루어지기 전에 거부되며, 요금은 부과되지 않습니다. 작업을 그 실행에 연결하는 것은 기록일 뿐입니다. 가격도 결과도 바뀌지 않으며, 기록을 남길 수 없을 때에도 생성은 그대로 제출됩니다.
+
+### record_workflow_delivery
+
+로그인한 원격 연결 전용이며, generate_workflow_media와 함께 제공됩니다. 무료입니다. 워크플로 실행에서 완료된 영상 중 어느 것이 전달되었는지 기록합니다.
+
+| 매개변수 | 유형 | 필수 | 기본값 / 범위 |
+|---|---|---|---|
+| run_id | string | 예 | get_media_workflow에서 받은 값 |
+| task_id | string | 예 | 이 실행에서 생성된, 완료된 영상 작업 |
+| previous_task_id | string | 아니요 | 이전 선택을 바꿀 때에만: 이전에 기록된 작업 |
+
+```json
+{"name":"record_workflow_delivery","arguments":{"run_id":"RUN_ID_FROM_RESPONSE","task_id":"TASK_ID"}}
+```
+
+`delivered_task_id`를 반환합니다. 이 실행과 이 계정의 완료된 영상이 아닌 작업은 거부됩니다. 지금 바로 선택을 기록할 수 없으면 계획대로 영상을 전달하고 나중에 다시 시도하세요.
 
 ### make_frames
 
