@@ -1,0 +1,431 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Seed Audio 1.5 音频生成接口",
+    "description": "Seed Audio 1.5 音频生成接口。根据文字生成包含对白、旁白、音效与配乐的完整音频，可参考 1 张图片或最多 6 段参考音色，单次最长 6 分钟。",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.evolink.ai",
+      "description": "生产环境"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/audios/generations": {
+      "post": {
+        "summary": "Seed Audio 1.5 音频生成",
+        "description": "> 🚧 **该模型暂未开放，敬请期待**\n\n- 根据提示词生成包含对白、旁白、音效与配乐的完整音频；可参考 `1` 张图片，或最多 `6` 段参考音频（模仿音色、生成多人对白），图片与音频不能同时传\n- 单次最长生成 `6` 分钟音频\n- 提示词必须包含要念出来的台词，不支持只有音效或配乐的音频\n- 异步处理模式，使用返回的任务ID [进行查询](/cn/api-manual/task-management/get-task-detail)，提交后不支持取消\n- 生成的链接有效期为 7 天，请尽快保存\n\n**计费说明：**\n- 按生成音频的时长计费，按秒计，不足 1 秒按 1 秒计\n- 提交时按提示词长度预扣积分（`usage.credits_reserved`），完成后按实际时长结算，多退少补；失败全额退还\n\n**任务结果（`status` 为 `completed` 时）：**\n\n| 字段 | 说明 |\n|---|---|\n| `results[0]` / `result_data[0].audio_url` | 音频链接 |\n| `result_data[0].duration` | 音频时长（秒） |\n| `result_data[0].subtitles` | 字幕，`[{\"format\": \"srt\", \"content\": \"…\"}, {\"format\": \"jsonl\", \"content\": \"…\"}]`；jsonl 每行一个词及起止时间（秒） |\n| `usage.billed_seconds` / `usage.credits_used` | 计费秒数 / 实际消耗积分 |",
+        "operationId": "createSeedAudio15",
+        "tags": [
+          "音频生成"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeedAudio15Request"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "只传提示词",
+                  "value": {
+                    "model": "seed-audio-1.5",
+                    "prompt": "用温和、清晰的中文女声，稍慢地只读引号里的台词：“今天的海面很平静。”全程只有人声。",
+                    "format": "mp3"
+                  }
+                },
+                "image_ref": {
+                  "summary": "参考图片生成",
+                  "value": {
+                    "model": "seed-audio-1.5",
+                    "prompt": "按图中的海边场景生成声音。远处海浪持续，近处传来两声海鸥叫。中文旁白轻声说：“我们到了。”只朗读引号内的台词。",
+                    "image_urls": [
+                      "https://example.com/beach.jpg"
+                    ],
+                    "subtitles": true
+                  }
+                },
+                "dialogue": {
+                  "summary": "两段参考音频生成双人对白",
+                  "value": {
+                    "model": "seed-audio-1.5",
+                    "prompt": "参考音频1是主持人，参考音频2是嘉宾。主持人用普通话轻快地问：“这是你第一次听到海浪吗？”停半秒，嘉宾温和地答：“是的，比想象中更安静。”只读两句引号内的台词。",
+                    "audio_urls": [
+                      "https://example.com/host.wav",
+                      "https://example.com/guest.mp3"
+                    ],
+                    "format": "mp3"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "音频生成任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeedAudioResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unsupported_parameter",
+                    "message": "video_urls is not supported for seed-audio-1.5; use seed-audio-1.5-video-to-audio",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证、Token无效或过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or expired token",
+                    "type": "authentication_error"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "配额不足、需要充值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "insufficient_quota",
+                    "message": "Insufficient quota. Please top up your account.",
+                    "type": "insufficient_quota"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "model_access_denied",
+                    "message": "Token does not have access to model: seed-audio-1.5",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "Too many requests, please try again later",
+                    "type": "rate_limit_error"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "internal_error",
+                    "message": "Internal server error",
+                    "type": "api_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SeedAudio15Request": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "模型名称",
+            "enum": [
+              "seed-audio-1.5"
+            ],
+            "default": "seed-audio-1.5",
+            "example": "seed-audio-1.5"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "描述要生成的声音，并写明要念出来的台词\n\n- 台词写出全文并加引号，标明说话人与语种\n- 使用参考音频时，写明每段对应哪个角色，例如「参考音频1是主持人，参考音频2是嘉宾」\n- 可以按 `[起始秒:结束秒]` 分段安排声音出现的时间",
+            "example": "用温和、清晰的中文女声，稍慢地只读引号里的台词：“你好，这是一次接口测试。”全程只有人声。"
+          },
+          "image_urls": {
+            "type": "array",
+            "description": "参考图片，按画面内容生成声音\n\n- 只支持 `1` 张\n- **与 `audio_urls` 不能同时传**\n- 公网可访问的链接，或 base64（写成 `data:image/png;base64,…` 等）\n\n**图片要求：**\n- 宽、高各 `300` ~ `6000` 像素，宽高比 `0.4` ~ `2.5`\n- 格式：`jpeg` / `png` / `webp` / `bmp` / `tiff` / `gif` / `heic` / `heif`，大小 < `10 MB`",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1,
+            "example": [
+              "https://example.com/beach.jpg"
+            ]
+          },
+          "audio_urls": {
+            "type": "array",
+            "description": "参考音频，用来模仿音色或生成多人对白\n\n- **与 `image_urls` 不能同时传**\n\n- 最多 `6` 段，按数组顺序编号为参考音频1、参考音频2……\n- 在 `prompt` 中写明每段参考音频对应哪个角色，例如「参考音频1是主持人，参考音频2是嘉宾」\n\n**每段参考音频的要求：**\n- 公网可访问的链接，或 base64（写成 `data:audio/mp3;base64,…` 或 `data:audio/wav;base64,…`）\n- 时长 `2` ~ `30` 秒，所有参考音频合计 ≤ `180` 秒\n- 格式：`wav` / `mp3`，大小 ≤ `15 MB`",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "example": [
+              "https://example.com/host.wav"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "输出音频格式\n\n- `wav`（默认）\n- `mp3`\n- `ogg_opus`：只支持 `48000` 采样率\n- `pcm`：不带文件头的原始音频数据（16 位），普通播放器无法直接播放，需要自行处理",
+            "enum": [
+              "wav",
+              "mp3",
+              "pcm",
+              "ogg_opus"
+            ],
+            "default": "wav",
+            "example": "mp3"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "description": "输出采样率（Hz）\n\n- `wav` / `mp3` / `pcm` 可选下列任一值，默认 `44100`\n- `ogg_opus` 只能为 `48000`，不传时自动使用 `48000`",
+            "enum": [
+              8000,
+              16000,
+              24000,
+              32000,
+              44100,
+              48000
+            ],
+            "default": 44100,
+            "example": 24000
+          },
+          "speech_rate": {
+            "type": "integer",
+            "description": "语速调节（整数）\n\n- `0`：正常语速（默认）\n- `100`：约 2 倍速\n- `-50`：约半速\n\n取值范围 `-50` ~ `100`",
+            "minimum": -50,
+            "maximum": 100,
+            "default": 0,
+            "example": 10
+          },
+          "loudness_rate": {
+            "type": "integer",
+            "description": "音量调节（整数）\n\n- `0`：正常音量（默认）\n- `100`：约 2 倍音量\n- `-50`：约一半音量\n\n取值范围 `-50` ~ `100`",
+            "minimum": -50,
+            "maximum": 100,
+            "default": 0,
+            "example": 0
+          },
+          "pitch_rate": {
+            "type": "integer",
+            "description": "音调调节，单位为**半音**\n\n- `0`：默认音调（不调整）\n- **正值升高音调**：`12` 为升高一个八度\n- **负值降低音调**：`-12` 为降低一个八度\n\n取值范围 `-12` ~ `12`",
+            "minimum": -12,
+            "maximum": 12,
+            "default": 0,
+            "example": 0
+          },
+          "subtitles": {
+            "type": "boolean",
+            "description": "是否返回字幕\n\n- `true`：任务结果里同时返回 `srt` 和 `jsonl` 两种字幕的文字内容\n- `false`：不返回（默认）",
+            "default": false,
+            "example": true
+          },
+          "callback_url": {
+            "type": "string",
+            "description": "任务完成后的HTTPS回调地址\n\n**回调时机：**\n- 任务完成（completed）、失败（failed）或取消（cancelled）时触发\n- 在计费确认完成后发送\n\n**安全限制：**\n- 仅支持HTTPS协议\n- 禁止回调到内网IP地址（127.0.0.1、10.x.x.x、172.16-31.x.x、192.168.x.x等）\n- URL长度不超过`2048`字符\n\n**回调机制：**\n- 超时时间：`10`秒\n- 失败后最多重试`3`次（会分别在失败的`1`秒/`2`秒/`4`秒后进行重试）\n- 回调响应体格式与任务查询接口返回的格式一致\n- 回调地址若返回2xx状态码视为成功，其他状态码会触发重试",
+            "format": "uri",
+            "example": "https://your-domain.com/webhooks/audio-completed"
+          }
+        }
+      },
+      "SeedAudioResponse": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "description": "任务创建时间戳",
+            "example": 1795776000
+          },
+          "id": {
+            "type": "string",
+            "description": "任务ID",
+            "example": "task-unified-1795776000-abcd1234"
+          },
+          "model": {
+            "type": "string",
+            "description": "实际使用的模型名称",
+            "example": "seed-audio-1.5"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "audio.generation.task"
+            ],
+            "description": "任务的具体类型"
+          },
+          "progress": {
+            "type": "integer",
+            "description": "任务进度百分比 (0-100)",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "任务状态",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ],
+            "example": "processing"
+          },
+          "task_info": {
+            "$ref": "#/components/schemas/AudioTaskInfo",
+            "description": "音频任务详细信息"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "audio"
+            ],
+            "description": "任务的输出类型",
+            "example": "audio"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AudioUsage",
+            "description": "使用量和计费信息"
+          }
+        }
+      },
+      "AudioTaskInfo": {
+        "type": "object",
+        "properties": {
+          "can_cancel": {
+            "type": "boolean",
+            "description": "任务是否可以取消（本模型提交后不支持取消）",
+            "example": false
+          },
+          "estimated_time": {
+            "type": "integer",
+            "description": "预估完成时间(秒)",
+            "minimum": 0,
+            "example": 15
+          },
+          "audio_type": {
+            "type": "string",
+            "description": "音频任务类型",
+            "example": "audio_generation"
+          }
+        }
+      },
+      "AudioUsage": {
+        "type": "object",
+        "description": "使用量信息",
+        "properties": {
+          "credits_reserved": {
+            "type": "number",
+            "description": "预扣积分数（按提示词长度估算，任务完成后按实际时长结算，多退少补）",
+            "minimum": 0,
+            "example": 4.42
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "错误代码标识符"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述信息"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "##所有接口均需要使用Bearer Token进行认证##\n\n**获取 API Key：**\n\n访问 [API Key 管理页面](https://evolink.ai/dashboard/keys) 获取您的 API Key\n\n**使用时在请求头中添加：**\n```\nAuthorization: Bearer YOUR_API_KEY\n```"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "音频生成",
+      "description": "Seed Audio 1.5 音频生成相关接口"
+    }
+  ]
+}
