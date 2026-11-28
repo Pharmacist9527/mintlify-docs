@@ -23,7 +23,7 @@
     "/v1/images/generations": {
       "post": {
         "summary": "doubao-seedream-5.5 Interface",
-        "description": "- Seedream 5.5 (doubao-seedream-5.5) supports text-to-image, image-to-image and image editing, including transparent backgrounds\n- Legacy model names `doubao-seedream-4.5` / `doubao-seedream-5.0-lite` are now routed to this model: without a quality setting, images are generated at 2K in jpeg format (png for transparent backgrounds); parameters this model does not support (3K / 4K, several images per request, more than 10 reference images, web search via `model_params.tools`, etc.) return an error\n- Processing is asynchronous. Use the returned task ID to [query task status](/en/api-manual/task-management/get-task-detail)\n- Generated image links are valid for 7 days; save them promptly\n\n### Billing\n\n- Charges are based on the actual number of generated images\n- Reference images are charged separately from generated images",
+        "description": "- Seedream 5.5 (doubao-seedream-5.5) supports text-to-image, image-to-image and image editing, including transparent backgrounds\n- Supports 1K, 1.5K, 2K, and 3K. With `quality=3K`, setting `size=auto` or omitting `size` produces a `2880×2880` square, even with reference images. For a different shape, pass a preset ratio such as `size=16:9` or explicit pixel dimensions.\n- Legacy model names `doubao-seedream-4.5` / `doubao-seedream-5.0-lite` are now routed to this model: when `quality` is omitted and `size` is a ratio, `auto`, or omitted, images default to 2K in jpeg format (png for transparent backgrounds); parameters this model does not support (4K, several images per request, more than 10 reference images, web search via `model_params.tools`, etc.) return an error. The same 3K sizing and billing rules apply to these names\n- Processing is asynchronous. Use the returned task ID to [query task status](/en/api-manual/task-management/get-task-detail)\n- Generated image links are valid for 7 days; save them promptly\n\n### Billing\n\n- Charges are based on the actual number of generated images\n- Each output image is billed by its total pixel count: up to 2,610,000 pixels at the 1K / 1.5K tier (same rate), up to 4,624,220 pixels at the 2K tier, and above that at the 3K tier\n- Reference images are charged separately from generated images",
         "operationId": "createImageGeneration",
         "tags": [
           "Image Generation"
@@ -43,6 +43,15 @@
                     "prompt": "A serene lake reflecting the beautiful sunset",
                     "size": "16:9",
                     "quality": "2K"
+                  }
+                },
+                "text_to_image_3k": {
+                  "summary": "3K Text to Image (16:9)",
+                  "value": {
+                    "model": "doubao-seedream-5.5",
+                    "prompt": "A serene lake reflecting the beautiful sunset",
+                    "size": "16:9",
+                    "quality": "3K"
                   }
                 },
                 "transparent_text_to_image": {
@@ -205,17 +214,18 @@
           },
           "size": {
             "type": "string",
-            "description": "Size of generated image, supports two formats:\n\n**Method 1 - Ratio format:**\n- `auto`, `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `4:5`, `5:4`, `9:16`, `16:9`, `21:9`, `9:21`\n- Works with the `quality` parameter to automatically generate an image at the corresponding aspect ratio and resolution, without manually specifying pixels\n\n**Method 2 - Pixel format:**\n- Width x height, e.g.: `1024x1024`, `2048x2048`\n- Total pixel range: `[921600, 4624220]`\n- Aspect ratio range: `[1/16, 16]`\n- Both width and height must be greater than `14px`\n\nDefaults to `auto` when `size` is omitted. The model determines the aspect ratio from the prompt, and `quality` sets the output resolution.",
+            "description": "Output image size.\n\n**Method 1 - Ratio format:**\n- `auto`, `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `4:5`, `5:4`, `9:16`, `16:9`, `21:9`, `9:21`\n- Works with the `quality` parameter to automatically generate an image at the corresponding aspect ratio and resolution, without manually specifying pixels\n\n**Method 2 - Pixel format:**\n- Width x height, e.g.: `1024x1024`, `2048x2048`\n- Total pixel range: `[921600, 8294400]` (up to e.g. `2880x2880` or `3840x2160`); sizes above `4624220` are billed at the 3K tier\n- Aspect ratio range: `[1/16, 16]`\n- Both width and height must be greater than `14px`\n- Explicit pixel dimensions take precedence over `quality`. The final charge is based on the actual output pixel count.\n\n**Method 3 - Resolution tier:**\n- Set `size` directly to `1K`, `1.5K`, `2K`, or `3K`. Passing `size=3K` alone produces `2880×2880`. If `quality` is also passed, the tier in `size` takes precedence.\n\nDefaults to `auto` when `size` is omitted. The model determines the aspect ratio from the prompt, and `quality` sets the output resolution (with `quality=3K` the output is a fixed 1:1 2880×2880 image).",
             "default": "auto",
             "example": "16:9"
           },
           "quality": {
             "type": "string",
-            "description": "Output resolution, used with the aspect ratio format of `size`. Defaults to `1K`.\n\n| Aspect ratio | 1K | 1.5K | 2K |\n|---|---|---|---|\n| `1:1` | 1024×1024 | 1536×1536 | 2048×2048 |\n| `2:3` | 832×1248 | 1248×1872 | 1664×2496 |\n| `3:2` | 1248×832 | 1872×1248 | 2496×1664 |\n| `3:4` | 864×1152 | 1344×1792 | 1776×2368 |\n| `4:3` | 1152×864 | 1792×1344 | 2368×1776 |\n| `4:5` | 896×1120 | 1344×1680 | 1792×2240 |\n| `5:4` | 1120×896 | 1680×1344 | 2240×1792 |\n| `9:16` | 800×1424 | 1152×2048 | 1584×2816 |\n| `16:9` | 1424×800 | 2048×1152 | 2816×1584 |\n| `21:9` | 1568×672 | 2352×1008 | 3136×1344 |\n| `9:21` | 672×1568 | 1008×2352 | 1344×3136 |",
+            "description": "Output resolution, used with the aspect ratio format of `size`. Defaults to `1K`.\n\n**Aspect ratio at 3K:** With an explicit ratio, the output uses the dimensions in the table below. Passing `size=3K` alone, or passing `quality=3K` with `size=auto` or no `size`, produces `2880×2880` at the 3K rate. Reference images also use this square canvas and may be reframed.\n\n| Aspect ratio | 1K | 1.5K | 2K | 3K |\n|---|---|---|---|---|\n| `1:1` | 1024×1024 | 1536×1536 | 2048×2048 | 2880×2880 |\n| `2:3` | 832×1248 | 1248×1872 | 1664×2496 | 2336×3504 |\n| `3:2` | 1248×832 | 1872×1248 | 2496×1664 | 3504×2336 |\n| `3:4` | 864×1152 | 1344×1792 | 1776×2368 | 2448×3264 |\n| `4:3` | 1152×864 | 1792×1344 | 2368×1776 | 3264×2448 |\n| `4:5` | 896×1120 | 1344×1680 | 1792×2240 | 2560×3200 |\n| `5:4` | 1120×896 | 1680×1344 | 2240×1792 | 3200×2560 |\n| `9:16` | 800×1424 | 1152×2048 | 1584×2816 | 2160×3840 |\n| `16:9` | 1424×800 | 2048×1152 | 2816×1584 | 3840×2160 |\n| `21:9` | 1568×672 | 2352×1008 | 3136×1344 | 4368×1872 |\n| `9:21` | 672×1568 | 1008×2352 | 1344×3136 | 1872×4368 |",
             "enum": [
               "1K",
               "1.5K",
-              "2K"
+              "2K",
+              "3K"
             ],
             "default": "1K",
             "example": "2K"
